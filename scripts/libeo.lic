@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.2.0')
-    EO.require('0.2.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.3.0')
+    EO.require('0.3.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,18 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.2.0
+       version: 0.3.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.3.0 (2026-11-13)
+    - EO::Containers, from eloot 2.15.0: the OPEN, LOOK IN and CLOSE answers, whether
+      Lich has a container's contents (listed?), opening one that does not (ensure_open),
+      waiting for contents (contents_ready?), reading them fresh (fresh_contents), close
+    - EO::Hands, from eloot 2.15.0: the GET and PUT answers, what the hands hold
+      (holding?), freeing one (free_hand), taking an item (take), wearing one (wear),
+      putting one in a container (store), and the READY list's STORE and READY
+      (stow_ready, return_ready, ready_word)
   v0.2.0 (2026-11-13)
     - EO.use: a script lends the library its own helpers (command, result, wait, go,
       say, and any other by name), and EO.command, EO.result, EO.settle, EO.go2 and
@@ -33,7 +41,7 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers]
+parts = %w[version helpers containers hands]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
