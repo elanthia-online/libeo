@@ -1,0 +1,41 @@
+=begin
+  libeo: the shared library for the e-scripts.
+
+  Loaded once per session with Script.loadlib('libeo'); definitions persist after the
+  library script exits. Script.loadlib never loads it twice, so a script that needs a newer
+  copy than the session holds runs libeo again. Then it names the version it was built
+  against and the library refuses a mismatch loudly:
+
+    Script.loadlib('libeo')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.1.0')
+    EO.require('0.1.0')
+
+  This file only loads the library. The library itself is scripts/eo/, one file per
+  concern; each file opens with what it holds, and README.md has the list.
+
+        author: elanthia-online
+  contributors: Nisugi
+          game: Gemstone
+          tags: library, utility, eo
+      required: Lich >= 5.22.0
+       version: 0.1.0
+
+  Version Control:
+  Major_change.feature_addition.bugfix
+  v0.1.0 (2026-11-13)
+    - the loader and the version gate: EO.require, EO.version
+=end
+
+# The library's files, in the order they load: a file may use what an
+# earlier one defines.
+parts = %w[version]
+
+base = File.join(SCRIPT_DIR, 'eo')
+verbose = $VERBOSE
+begin
+  # a second run in a session redefines every constant; that is the point
+  $VERBOSE = nil
+  parts.each { |part| load File.join(base, "#{part}.rb") }
+ensure
+  $VERBOSE = verbose
+end
