@@ -6,7 +6,8 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.1.0')             the version the script was built against
+EO.require('0.2.0')             the version the script was built against
+EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
 ## What is in it
@@ -14,6 +15,7 @@ EO.require('0.1.0')             the version the script was built against
 | File | What it holds |
 |---|---|
 | `eo/version.rb` | `EO.require` and `EO.version`, the version gate |
+| `eo/helpers.rb` | `EO.use`: a script lends its own helpers; `EO.command`, `EO.result`, `EO.settle`, `EO.go2` and `EO.say` call the running script's |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
