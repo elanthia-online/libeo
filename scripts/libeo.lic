@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.9.0')
-    EO.require('0.9.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.10.0')
+    EO.require('0.10.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,22 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.9.0
+       version: 0.10.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.10.0 (2026-11-13)
+    - EO::Cleanse::Wounds, from ecleanse 2.4.0: whether wounds and scars allow a cast, as
+      they are and under Sigil of Determination (allow_cast?, allow_cast_with_sigil?),
+      and changing stance (stance)
+    - EO::Cleanse::Afflictions: curing disease and poison (cure_disease, cure_poison),
+      retreating from a root or press (retreat), dispelling debuffs (dispel_debuffs),
+      the ways out of a stun and of a web (stun_means, break_stun, stun_maneuver,
+      web_escape?, break_web), quieting a room (settle_room)
+    - EO::Cleanse::Recovery: getting a lost weapon back: calming the room (calm,
+      stop_calm), the spirit servant (servant), a bonded weapon (await_bonded), RECOVER
+      ITEM (search, restore_hands), prying one from webbing (pry), one floated away
+      (float_back), the Sanctum's clench (clench)
   v0.9.0 (2026-11-13)
     - EO::Cleanse, from ecleanse 2.4.0: the debuffs and room hazards by name, the spell a
       character has for each job (spell), TARGET and its answers (target), the mana
@@ -102,6 +114,7 @@
 parts = %w[
   version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
+  cleanse/wounds cleanse/afflictions cleanse/recovery
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
