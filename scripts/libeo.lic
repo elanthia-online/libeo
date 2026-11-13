@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.7.0')
-    EO.require('0.7.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.8.0')
+    EO.require('0.8.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.7.0
+       version: 0.8.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.8.0 (2026-11-13)
+    - EO::Casting, from ewaggle 2.2.0: the multicast count by mana control
+      (max_multicast), one cast and what its answer means (cast), having the mana or
+      stamina for it and making mana by Sign of Wracking, Sigil of Power or Symbol of
+      Mana (ready, ready_stamina, Resources, safe_to_wrack?, wander_step), another
+      character's active spells (active_on), and manna bread (new_in_hand, gobble)
   v0.7.0 (2026-11-13)
     - EO::Locker, from eloot 2.15.0: a house's locker rooms by the map's tags (che_rooms,
       che_town_id, town_name), LOCKER INFO's town (info_town), rooms nearest first
@@ -81,7 +87,7 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard]
+parts = %w[version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard casting]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
