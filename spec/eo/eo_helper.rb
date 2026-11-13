@@ -15,6 +15,7 @@ require_relative '../../scripts/eo/helpers'
 RSpec.shared_context 'a script lending helpers' do
   let(:sent) { [] }
   let(:said) { [] }
+  let(:went) { [] }
   let(:answers) { {} }
 
   def answer_to(command)
@@ -29,7 +30,9 @@ RSpec.shared_context 'a script lending helpers' do
     EO.use(
       command: ->(text, _pattern = nil, **) { sent << text && answer_to(text) },
       result: ->(text, _pattern = nil, **) { sent << text && answer_to(text).first },
-      say: ->(type:, text:, **) { said << [type, text] }
+      say: ->(type:, text:, **) { said << [type, text] },
+      wait: -> { sent << :wait },
+      go: ->(place) { went << place }
     )
   end
 

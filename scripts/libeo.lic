@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.3.0')
-    EO.require('0.3.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.4.0')
+    EO.require('0.4.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,20 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.3.0
+       version: 0.4.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.4.0 (2026-11-13)
+    - EO::Town, from eloot 2.15.0: Four Winds Isle and the way off it (fwi?, leave_fwi),
+      the shop to walk to and whether to go (shop_elsewhere?, nearest_shop), a shop in a
+      bounty's town within the region (in_region), the trash receptacle (trash_can), the
+      locksmith pool's worker (pool_worker)
+    - EO::Items, from eloot 2.15.0: MARK's unsellable (marked?), throwing an item away
+      (toss), phasing a box and bringing it back (phase, unphase), lifting a curse by 315
+      or an eonake gauntlet (lift_curse), waiting for the disk (await_disk)
+    - EO::Boxes, from eloot 2.15.0: opening a box, looking in, taking coins once and the
+      answers to it, and which emptied box is kept (keep?)
   v0.3.0 (2026-11-13)
     - EO::Containers, from eloot 2.15.0: the OPEN, LOOK IN and CLOSE answers, whether
       Lich has a container's contents (listed?), opening one that does not (ensure_open),
@@ -41,7 +51,7 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers containers hands]
+parts = %w[version helpers containers hands town items boxes]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
