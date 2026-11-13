@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.4.0')
-    EO.require('0.4.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.5.0')
+    EO.require('0.5.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,20 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.4.0
+       version: 0.5.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.5.0 (2026-11-13)
+    - EO::Stow, from eloot 2.15.0: the bags an item is tried in by the STOW list (route),
+      the overflow bags in number order (overflow_keys), the bags to open before looting
+      (bags_for)
+    - EO::Loot, from eloot 2.15.0: what in a room is no loot (junk?, with the name, noun
+      and disk lists), whether an item is wanted (wanted?, CATEGORIES), a list as one
+      whole-word pattern (words), and LOOT on a dead creature (search, in_hand?, bramble?)
+    - EO::Skinning, from eloot 2.15.0: which dead to leave (skip?, sometimes?), a
+      bounty's creature (for_bounty), edged or blunt (by_tool), getting ready (prepare),
+      the SKIN (skin), standing up after (stand_up)
   v0.4.0 (2026-11-13)
     - EO::Town, from eloot 2.15.0: Four Winds Isle and the way off it (fwi?, leave_fwi),
       the shop to walk to and whether to go (shop_elsewhere?, nearest_shop), a shop in a
@@ -51,7 +61,7 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers containers hands town items boxes]
+parts = %w[version helpers containers hands town items boxes stow loot skinning]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
