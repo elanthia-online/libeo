@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.11.0')
-    EO.require('0.11.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.12.0')
+    EO.require('0.12.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,18 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.11.0
+       version: 0.12.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.12.0 (2026-11-13)
+    - EO::Herbs::Doses::Monitor, from eherbs 2.3.0: the doses left in each herb and
+      potion, read from the game's lines as they are used, measured, bought and
+      bundled, and kept in $eherbs_measure
+    - EO::Herbs::Sack, from eherbs 2.3.0: the herb sack's OPEN, LOOK, PUT and GET answers,
+      opening it (open), its contents by form (by_form), a Survivalist's Kit's
+      (kit_contents), those of something in the room (room_contents, in_room), putting
+      a herb in and taking one out (put, take, free_hand, free_hands)
   v0.11.0 (2026-11-13)
     - EO::Herbs::Table, from eherbs 2.3.0: every herb with where it is sold, what it
       treats and its doses (KNOWN), the stock targets (DEFAULT_DOSES), the two tiers of
@@ -124,7 +132,7 @@ parts = %w[
   version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
   cleanse/wounds cleanse/afflictions cleanse/recovery
-  herbs/table herbs/injuries
+  herbs/table herbs/injuries herbs/doses herbs/sack
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
