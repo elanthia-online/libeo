@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.10.0')
-    EO.require('0.10.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.11.0')
+    EO.require('0.11.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,19 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.10.0
+       version: 0.11.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.11.0 (2026-11-13)
+    - EO::Herbs::Table, from eherbs 2.3.0: every herb with where it is sold, what it
+      treats and its doses (KNOWN), the stock targets (DEFAULT_DOSES), the two tiers of
+      blood (major_blood?, blood_tier, blood_bucket, in_category?), where herbs are sold
+      (sold_at?), and what is drunk or cannot be bundled (DRINKABLE, CANT_BUNDLE)
+    - EO::Herbs::Injuries, from eherbs 2.3.0: the herb type a character's wounds call for
+      next (next_type), what a dead character or an escort needs from how the game
+      describes them (appraise, escort), the character's condition by type (status),
+      and whether wounds allow a spell (able_to_cast?)
   v0.10.0 (2026-11-13)
     - EO::Cleanse::Wounds, from ecleanse 2.4.0: whether wounds and scars allow a cast, as
       they are and under Sigil of Determination (allow_cast?, allow_cast_with_sigil?),
@@ -115,6 +124,7 @@ parts = %w[
   version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
   cleanse/wounds cleanse/afflictions cleanse/recovery
+  herbs/table herbs/injuries
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
