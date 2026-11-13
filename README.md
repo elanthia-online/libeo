@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.14.0')             the version the script was built against
+EO.require('0.15.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -45,6 +45,9 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/guild/tables.rb` | `EO::Guild::Tables`: the Adventurer's Guild's towns, people and their rooms, what they say, and the kinds of task by name |
 | `eo/guild/npcs.rb` | `EO::Guild::NPCs`: someone in the room by name, the taskmaster to ask (Seldit searched for on Sailor's Grief), a town's guard rooms |
 | `eo/guild/location.rb` | `EO::Guild::Location`: a task's place as a start room and boundaries, cut down to a connected part when large; a room id from a map id or a uid |
+| `eo/guild/taskmaster.rb` | `EO::Guild::Taskmaster`: get, turn in, remove and expedite a task; boosts and vouchers |
+| `eo/guild/assignments.rb` | `EO::Guild::Assignments`: the furrier, herbalist and gem dealer visits, and the guards', a found heirloom in hand |
+| `eo/guild/vetting.rb` | `EO::Guild::Vetting`: whether a task is one the character takes |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
