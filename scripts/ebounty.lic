@@ -10,10 +10,14 @@
           game: Gemstone
           tags: bounty, adventure's guild, advguild, bounties
       required: Lich >= 5.22.0
-       version: 1.14.0
+       version: 1.15.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v1.15.0 (2026-11-13)
+    - the profile file is read and written through libeo (EO::Settings), so other scripts
+      can read ebounty's settings (EO::Settings.read(:ebounty)); the settings table's
+      lookups are libeo's too
   v1.14.0 (2026-11-13)
     - the guild's tables, finding its people and places, the asking with its retries, the
       vetting of a task, the rule handed to the hunting script, and the steps of foraging
@@ -324,11 +328,9 @@ module EBounty
   end
 
   def self.load_profile
-    filename = File.join(DATA_DIR, XMLData.game, Char.name, "ebounty.yaml")
+    settings_hash = EO::Settings.load_profile('ebounty')
 
-    if File.exist?("#{filename}")
-      settings_hash = YAML.load_file(filename)
-    elsif !File.exist?("#{filename}")
+    if settings_hash.nil?
       EBounty.msg("info", " No current settings found.  Loading defaults for configurtion.")
       EBounty.msg("info", " Suggest you configure to your needs with ;ebounty setup")
       settings_hash = EBounty.load_defaults()
@@ -338,8 +340,7 @@ module EBounty
   end
 
   def self.save_profile(settings)
-    filename = File.join(DATA_DIR, XMLData.game, Char.name, "ebounty.yaml")
-    File.write(filename, settings.to_yaml)
+    filename = EO::Settings.save_profile('ebounty', settings)
     EBounty.msg("info", " Settings saved to file: #{filename}.")
   end
 
@@ -1033,6 +1034,8 @@ module EBounty
   # Lich::WebUI::ListSettingsForm: Save & Close returns the edited settings, which
   # are saved to the profile; Cancel or closing the window discards them.
   class Setup
+    extend EO::Settings::Registry
+
     attr_reader :settings
 
     # Lich keeps this class between runs in a session. Drop the old constants so an
@@ -1284,23 +1287,7 @@ module EBounty
     end
 
     # True when Lich can open a WebUI window for this script.
-    def self.available?
-      defined?(Lich::WebUI) && Lich::WebUI.respond_to?(:presentation_enabled?) && Lich::WebUI.presentation_enabled? &&
-        defined?(Lich::WebUI::ListSettingsForm)
-    end
-
-    def self.get_category(key)
-      @@categories.each { |category, data| return category unless data[key].nil? }
-      nil
-    end
-
-    def self.get_setting(key)
-      cat = Setup.get_category(key)
-      return nil if cat.nil?
-
-      @@categories[cat].each { |setting, data| return data if setting == key }
-      nil
-    end
+    def self.available? = EO::Settings.available?(:ListSettingsForm)
 
     # ListSettingsForm keys rows by position and seeds each viewer's table
     # selection only once, so after Add or Delete the window would keep

@@ -82,7 +82,7 @@ left is its settings, its command line and its own flow.
 | `scripts/ewaggle.lic` | 2.4.0 | `EO::Casting`, `EO::Settings` |
 | `scripts/ecleanse.lic` | 2.6.0 | `EO::Cleanse`, `EO::Settings` |
 | `scripts/eherbs.lic` | 2.5.0 | `EO::Herbs`, `EO::Settings` |
-| `scripts/ebounty.lic` | 1.14.0 | `EO::Guild` |
+| `scripts/ebounty.lic` | 1.15.0 | `EO::Guild`, `EO::Settings` |
 | `scripts/ebounty.lic` | 1.14.0 | `EO::Guild` |
 | `scripts/echild.lic` | 1.22.0 | `EO::Guild::Rescue`, `EO::Guild::Disablers`, `EO::Settings` |
 
