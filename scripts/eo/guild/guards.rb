@@ -53,7 +53,8 @@ module EO
 
           guards.each do |guard|
             result = EO.result("ask #{guard} about bounty", Tables::GUARD_RESPONSES)
-            next if result =~ Tables::GUARD_NOTHING
+            # no answer at all is not an answer: ask the next guard
+            next if result.nil? || result =~ Tables::GUARD_NOTHING
             answered = true
             break
           end
