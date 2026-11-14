@@ -74,16 +74,35 @@ module EO
       #
       # @return [void]
       def room
-        objs = reject_invalid_loot(GameObj.loot.to_a)
-        weigh_room unless objs.empty?
+        objs = room_candidates
 
         objs = loot_specials(objs) unless objs.empty?
 
         # Anything left after boxes, collectibles, and uncommon weapon/armor?
         loot_regular(objs, 'Room') unless objs.empty?
       ensure
-        stow.observe(nil)
+        forget_weights
       end
+
+      # What the room holds that is loot, weighed for this pass.
+      #
+      # @return [Array<GameObj>]
+      def room_candidates
+        objs = reject_invalid_loot(GameObj.loot.to_a)
+        weigh_room unless objs.empty?
+        objs
+      end
+
+      # Forget the weights taken for a pass.
+      #
+      # @return [void]
+      def forget_weights = stow.observe(nil)
+
+      # Open the bags loot is about to go into.
+      #
+      # @param objs [Array<GameObj>] what is to be looted
+      # @return [void]
+      def open_bags(objs) = @hands.open_loot_containers(objs)
 
       # One inventory snapshot for the pass: every item's weight, the floor's
       # too, and the room in each bag, so a bag too full for an item is passed
@@ -269,24 +288,20 @@ module EO
       def loot_regular(objs, from_where = nil, box = nil, sell_recovered: false, location: nil, data: nil)
         say('debug', "objs: #{objs} | from_where: #{from_where} | sell_recovered: #{sell_recovered} | location: #{location.inspect} | data?: #{!data.nil?}")
 
+        if from_where == 'Room'
+          room_regular_steps(objs).each(&:call)
+          return nil
+        end
+
         valid = valid_objs(objs.clone)
         invalid = invalid_objs(objs.clone)
-
-        if from_where == 'Room' && !settings[:loot_types].include?('coins')
-          valid.reject! { |o| o.name =~ /silver coin/ }
-          invalid.concat(GameObj.loot.select { |o| o.name =~ /silver coin/ })
-        end
 
         say('debug', "valid: #{valid}")
         say('debug', "invalid: #{invalid}")
 
         if !invalid.empty? && !valid.empty?
           @hands.free_hand
-          if from_where == 'Room'
-            valid.each do |obj|
-              obj.type =~ LOOT_CMD_ITEMS ? @hands.single_loot(obj) : @hands.single_drag(obj)
-            end
-          elsif from_where == 'Box'
+          if from_where == 'Box'
             return :recovered if valid.any? { |thing| stow_box_item(thing, box, location, data, sell_recovered) == :recovered }
           else
             valid.each { |thing| @hands.single_drag(thing) }
@@ -296,19 +311,14 @@ module EO
           @hands.free_hand
           say('debug', 'invalid.empty? && !valid.empty?')
 
-          if from_where == 'Room'
-            loot_all(valid)
-          elsif from_where == 'Box'
+          if from_where == 'Box'
             return :recovered if loot_box(box, location, data, sell_recovered) == :recovered
           else
             valid.each { |thing| @hands.single_drag(thing) }
           end
         end
 
-        left_behind = invalid.map(&:name)
-        say('info', " Left the following item#{left_behind.length > 1 ? 's' : ''}: #{left_behind.join(', ')}.") unless left_behind.empty?
-
-        say('debug', 'End of method')
+        report_left(invalid)
         nil
       end
 
@@ -333,45 +343,15 @@ module EO
         # Open sacks for looting the room
         @hands.open_loot_containers(objs)
 
-        loot_uncommon_regex = Regexp.union(UNCOMMON)
-
         recovered = false
 
         objs = objs.reject do |thing|
           # A recovery re-looted the whole box already; stop touching the stale list.
           next false if recovered
 
-          result = bag_loot(thing) if thing.type =~ /clothing/
-
-          next true if result == 'crumbly'
-          next false if thing.name.match?(@context.loot_exclude_regex)
-          next false if thing.name.eql?('shard of oblivion quartz') && Stats.level.eql?(100) && settings[:loot_types].include?('gem')
-          next false if thing.type =~ /cursed/ && !settings[:loot_types].include?('cursed')
-
-          next false unless
-            (thing.type.to_s.split(',').any? { |t| @context.allowed_special_types.include?(t.strip) }) ||
-            (thing.type =~ /lockandkey/i) ||
-            thing.name.match?(@context.loot_keep_regex) ||
-            (thing.type =~ /cursed/i && settings[:loot_types].include?('cursed')) ||
-            (thing.type =~ /weapon/i && thing.type =~ /uncommon/ && settings[:loot_types].include?('weapon')) ||
-            (thing.type =~ /armor/i && thing.type =~ /uncommon/ && settings[:loot_types].include?('armor')) ||
-            (thing.name =~ /orb/ && thing.type =~ /magic/ && settings[:loot_types].include?('magic')) ||
-            (thing.name =~ loot_uncommon_regex && settings[:loot_types].include?('uncommon')) ||
-            (thing.name =~ /silver coin/ && settings[:loot_types].include?('coins'))
-
-          if thing.name =~ /silver coin/
-            coin_cmd = @context.charm.nil? ? 'get coins' : "rub ##{@context.charm.id}"
-            @result.call(coin_cmd, /you (gather|summon)/i)
-          elsif @decurse.call(thing)
-            @hands.free_hand
-            if box
-              recovered = (stow_box_item(thing, box, location, data, sell_recovered) == :recovered)
-            else
-              @hands.single_drag(thing)
-            end
-          end
-
-          true
+          outcome = special(thing, box: box, location: location, data: data, sell_recovered: sell_recovered)
+          recovered = true if outcome == :recovered
+          outcome
         end
 
         if recovered
@@ -384,7 +364,101 @@ module EO
         objs
       end
 
+      # One item for loot_specials: a clothing bag looted first, then the item
+      # taken if it is one that needs handling of its own.
+      #
+      # @param thing [GameObj]
+      # @return [Boolean, Symbol] true when the item is dealt with (taken, or a
+      #   bag that decayed) and no longer left for loot_regular, false when it
+      #   is left, :recovered when a recovery looted the whole box
+      def special(thing, box: nil, location: nil, data: nil, sell_recovered: false)
+        result = bag_loot(thing) if thing.type =~ /clothing/
+
+        return true if result == 'crumbly'
+        return false if thing.name.match?(@context.loot_exclude_regex)
+        return false if thing.name.eql?('shard of oblivion quartz') && Stats.level.eql?(100) && settings[:loot_types].include?('gem')
+        return false if thing.type =~ /cursed/ && !settings[:loot_types].include?('cursed')
+        return false unless special?(thing)
+
+        outcome = true
+        if thing.name =~ /silver coin/
+          coin_cmd = @context.charm.nil? ? 'get coins' : "rub ##{@context.charm.id}"
+          @result.call(coin_cmd, /you (gather|summon)/i)
+        elsif @decurse.call(thing)
+          @hands.free_hand
+          if box
+            outcome = :recovered if stow_box_item(thing, box, location, data, sell_recovered) == :recovered
+          else
+            @hands.single_drag(thing)
+          end
+        end
+        outcome
+      end
+
+      # What looting the ordinary items of a room comes to, one action at a
+      # time: LOOT ROOM for all of them when every one is wanted, else each
+      # wanted item by LOOT or by hand. The last action says what was left.
+      #
+      # @param objs [Array<GameObj>]
+      # @return [Array<Proc>] actions to call in order
+      def room_regular_steps(objs)
+        valid = valid_objs(objs.clone)
+        invalid = invalid_objs(objs.clone)
+
+        unless settings[:loot_types].include?('coins')
+          valid.reject! { |o| o.name =~ /silver coin/ }
+          invalid.concat(GameObj.loot.select { |o| o.name =~ /silver coin/ })
+        end
+
+        say('debug', "valid: #{valid}")
+        say('debug', "invalid: #{invalid}")
+
+        steps = []
+        if !invalid.empty? && !valid.empty?
+          valid.each_with_index do |obj, index|
+            steps << lambda do
+              @hands.free_hand if index.zero?
+              obj.type =~ LOOT_CMD_ITEMS ? @hands.single_loot(obj) : @hands.single_drag(obj)
+            end
+          end
+        elsif invalid.empty? && !valid.empty?
+          steps << lambda do
+            # Make sure we have a hand free
+            @hands.free_hand
+            say('debug', 'invalid.empty? && !valid.empty?')
+            loot_all(valid)
+          end
+        end
+
+        report = -> { report_left(invalid) }
+        last = steps.pop
+        steps << (last ? -> { last.call; report.call } : report)
+        steps
+      end
+
       private
+
+      # Say what a pass left behind.
+      def report_left(invalid)
+        left_behind = invalid.map(&:name)
+        say('info', " Left the following item#{left_behind.length > 1 ? 's' : ''}: #{left_behind.join(', ')}.") unless left_behind.empty?
+
+        say('debug', 'End of method')
+      end
+
+      # Whether an item is one of those that need handling of their own.
+      def special?(thing)
+        loot_uncommon_regex = Regexp.union(UNCOMMON)
+        (thing.type.to_s.split(',').any? { |t| @context.allowed_special_types.include?(t.strip) }) ||
+          (thing.type =~ /lockandkey/i) ||
+          thing.name.match?(@context.loot_keep_regex) ||
+          (thing.type =~ /cursed/i && settings[:loot_types].include?('cursed')) ||
+          (thing.type =~ /weapon/i && thing.type =~ /uncommon/ && settings[:loot_types].include?('weapon')) ||
+          (thing.type =~ /armor/i && thing.type =~ /uncommon/ && settings[:loot_types].include?('armor')) ||
+          (thing.name =~ /orb/ && thing.type =~ /magic/ && settings[:loot_types].include?('magic')) ||
+          (thing.name =~ loot_uncommon_regex && settings[:loot_types].include?('uncommon')) ||
+          (thing.name =~ /silver coin/ && settings[:loot_types].include?('coins'))
+      end
 
       def settings = @context.settings
 

@@ -15,10 +15,13 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.18.5
+           version: 2.18.6
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.6 (2026-11-14)
+    - eloot runs a looting pass (skin, search, loot the room, hands back) through libeo's EO::Loot::Pass,
+      in the same order as before. Needs libeo 0.57.0
   v2.18.5 (2026-11-14)
     - eloot loots the room, its boxes and its bags through libeo's EO::Loot::Floor, as before.
       Needs libeo 0.56.0
@@ -392,8 +395,8 @@ before_dying { ELoot.release_room_lease(eloot_load_token) }
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.56.0')
-EO.require('0.56.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.57.0')
+EO.require('0.57.0')
 Script.require_lich_version!
 
 require 'yaml'
@@ -2314,27 +2317,12 @@ module ELoot # Main methods
   end
 
   def self.loot(corpses: nil, floor: true)
-    if Spell['Berserk'].active?
-      ELoot.msg(type: "info", text: " Berserk is active and preventing you from looting.")
-      return
-    end
+    dead = -> { corpses || GameObj.dead.to_a }
+    skin = -> { Loot.skin_pass(dead.call) } if ELoot.data.settings[:skin_enable]
 
-    sleep 0.2
-
-    # remember what is in our hands
-    ELoot.data.right_hand = GameObj.right_hand
-    ELoot.data.left_hand = GameObj.left_hand
-
-    ELoot.change_stance(ELoot.data.settings[:loot_stance])
-
-    Loot.skin(corpses || GameObj.dead.to_a) if ELoot.data.settings[:skin_enable]
-    Loot.search(corpses || GameObj.dead.to_a)
-    Loot.room if floor
-
-    # use coin hand if we have it
-    ELoot.use_coin_hand
-
-    Inventory.return_hands
+    EO::Loot::Pass.new(ELoot.data, floor: Loot.floor, hands: Inventory, corpses: dead, skin: skin, floor_loot: floor,
+                                   stance: ELoot.method(:change_stance), coin_hand: ELoot.method(:use_coin_hand),
+                                   return_hands: Inventory.method(:return_hands)).run
   end
 
   def self.sell
@@ -4457,28 +4445,12 @@ module ELoot # Room looting
       :recovered
     end
 
-    def self.search(objs = GameObj.dead.to_a) # searches dead critters
-      return if objs.empty?
-
-      free = ->(hand) { hand == :left ? Inventory.free_hands(left: true) : Inventory.free_hand }
-      stow = ->(item) { Inventory.single_drag(item) }
-      objs.each do |thing|
-        next unless EO::Loot.searchable?(thing, exclude: ELoot.data.critter_exclude_regex)
-
-        ELoot.change_stance(ELoot.data.settings[:loot_stance])
-        fput "raise ##{ELoot.data.blood_band.id} at ##{thing.id}" if ELoot.data.settings[:use_bloodbands]
-        results = EO::Loot.search(thing, free: free, stow: stow, determination: ELoot.data.settings[:sigil_determination_on_fail])
-        ELoot.msg(type: "debug", text: "Thing: #{thing.id}-#{thing.name}, Results: #{results.first}")
-      end
-
-      # if the setting is on always end in the loot stance
-      ELoot.change_stance(ELoot.data.settings[:loot_stance])
+    # The skinning of a pass, a tool group at a time (libeo's EO::Skinning::Pass).
+    def self.skin_pass(objs)
+      EO::Skinning::Pass.new(ELoot.data, corpses: objs, hands: Inventory, ensure_items: ELoot.method(:ensure_items))
     end
 
-    # Skin the dead a tool group at a time (libeo's EO::Skinning::Pass).
-    def self.skin(objs = GameObj.dead.to_a)
-      EO::Skinning::Pass.new(ELoot.data, corpses: objs, hands: Inventory, ensure_items: ELoot.method(:ensure_items)).run
-    end
+    def self.skin(objs = GameObj.dead.to_a) = Loot.skin_pass(objs).run
   end
 end
 
@@ -6362,6 +6334,7 @@ module ELoot
   end
   EO::Stow.include(RoomScopedWait)
   EO::Loot::Pickup.include(RoomScopedWait)
+  EO::Loot::Pass.include(RoomScopedWait)
   @room_api_versions ||= {}
   @room_api_versions[Script.current.name] = ELoot.get_script_version
 end

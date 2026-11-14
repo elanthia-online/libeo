@@ -407,6 +407,78 @@ RSpec.describe EO::Loot::Floor do
     end
   end
 
+  describe '#room_regular_steps' do
+    it 'is one action for each wanted item when some of the room is left, the first freeing a hand' do
+      steps = floor.room_regular_steps([ruby, pearl, rock])
+      expect(steps.size).to eq(2)
+      steps.each(&:call)
+      expect(log.map(&:first)).to eq(%i[free_hand single_loot single_loot])
+    end
+
+    it 'is a single LOOT ROOM when all of it is wanted' do
+      command_answers['loot room'] = ['There is no loot']
+      steps = floor.room_regular_steps([ruby, pearl])
+      expect(steps.size).to eq(1)
+      expect(log).to be_empty
+      steps.each(&:call)
+      expect(log).to include([:command, 'loot room'])
+    end
+
+    it 'is only the report when nothing is wanted, and says what was left in the last action' do
+      steps = floor.room_regular_steps([rock])
+      expect(steps.size).to eq(1)
+      steps.first.call
+      expect(loud).to eq([['info', ' Left the following item: grey rock.']])
+    end
+
+    it 'says nothing is left when all of it was looted' do
+      steps = floor.room_regular_steps([ruby])
+      steps.each(&:call)
+      expect(loud).to be_empty
+    end
+  end
+
+  describe '#special' do
+    it 'is false for an ordinary item and does nothing with it' do
+      expect(floor.special(ruby)).to be(false)
+      expect(log).to be_empty
+    end
+
+    it 'is true for an item it took' do
+      relic = thing.new(id: '21', name: 'old relic', type: 'collectible')
+      expect(floor.special(relic)).to be(true)
+    end
+
+    it 'is :recovered when a recovery looted the box' do
+      recovering = described_class.new(context, hands: hands, command: ->(*, **) { [] }, result: ->(*) {}, decurse: ->(_i) { true },
+                                                unlootable: ->(_i) {}, toss: ->(*, **) { true }, snapshot: -> {},
+                                                stow_box_item: ->(*) { :recovered })
+      relic = thing.new(id: '21', name: 'old relic', type: 'collectible')
+      expect(recovering.special(relic, box: chest)).to eq(:recovered)
+    end
+  end
+
+  describe '#room_candidates and #open_bags' do
+    it 'weighs the room only when it holds loot' do
+      expect(floor.room_candidates).to eq([])
+      expect(log).to be_empty
+      loot_on_floor << ruby
+      expect(floor.room_candidates).to eq([ruby])
+      expect(log).to eq([[:snapshot]])
+    end
+
+    it 'opens the bags loot goes into' do
+      floor.open_bags([ruby])
+      expect(log).to eq([[:open, ['blue ruby']]])
+    end
+
+    it 'forgets the weights' do
+      allow(stow).to receive(:observe)
+      floor.forget_weights
+      expect(stow).to have_received(:observe).with(nil)
+    end
+  end
+
   describe '#loot_all' do
     it 'asks for the unlootable list to be added to when the game says there is no loot' do
       command_answers['loot room'] = ['There is no loot here.']

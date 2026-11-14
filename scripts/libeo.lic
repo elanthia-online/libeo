@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.56.0')
-    EO.require('0.56.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.57.0')
+    EO.require('0.57.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.56.0
+       version: 0.57.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.57.0 (2026-11-14)
+    - feature: EO::Loot::Pass, one looting pass over a room a step at a time: start, step (:skinned, :no_tool,
+      :searched, :special, :looted, :no_room or :done), finish and run; a step ends with what it handled put
+      away, and :no_room names what could not be. EO::Loot::Floor gains special, room_regular_steps,
+      room_candidates, open_bags and forget_weights, which room and loot_regular now go through
   v0.56.0 (2026-11-14)
     - feature: EO::Loot::Floor, the looting of a room, its boxes and its bags: loot_specials (coins,
       cursed items, orbs, keepers), loot_regular and loot_all, bag_loot, the boxes lying in a room
@@ -413,7 +418,7 @@
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
 parts = %w[
-  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context loot/pickup loot/floor skinning skinning/pass selling locksmith locker hoard appraisal casting
+  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context loot/pickup loot/floor loot/pass skinning skinning/pass selling locksmith locker hoard appraisal casting
   cleanse/tables cleanse/hazards cleanse/afflictions cleanse/disarms cleanse/traps
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/policy guild/npcs guild/location guild/forage
