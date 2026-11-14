@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.29.0')
-    EO.require('0.29.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.30.0')
+    EO.require('0.30.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.29.0
+       version: 0.30.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.30.0 (2026-11-13)
+    - EO::Herbs::Injuries: an escort's limb wounds are read only from a line that names
+      a leg, arm or hand after "right" or "left"; a left arm scarred to rank 3 is a
+      severed limb
+    - EO::Herbs::Doses: a bundle's count is kept under the bundle's id when herbs are
+      combined into it
   v0.29.0 (2026-11-13)
     - Nothing is tried without limit any more. EO.stand and EO.kneel are new, five tries
       each, and stand in for every "until standing" and "until kneeling" (Cleanse,
