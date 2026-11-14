@@ -223,7 +223,8 @@ module EChild
   # where to
   #------------------------------------------------------------------------------#
   points = EO::Guild::Rescue.dropoffs
-  near = Script.current.vars[0] =~ /(u?\d+)/ ? $1 : nil
+  # a bare room id or uid; a number inside --disabler=617 or --test:owl2 is not one
+  near = Script.current.vars[0] =~ /(?:\A|\s)(u?\d+)(?=\s|\z)/ ? $1 : nil
   place = EO::Guild::Rescue.destination(points, near: near)
 
   #------------------------------------------------------------------------------#
