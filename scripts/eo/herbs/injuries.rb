@@ -3,8 +3,8 @@
 module EO
   module Herbs
     # What needs healing: the type of herb the character's own wounds call
-    # for next, what another's wounds call for from how the game describes
-    # them, and whether the character's wounds allow a spell.
+    # for next, and what another's wounds call for from how the game describes
+    # them.
     module Injuries
       module_function
 
@@ -230,36 +230,6 @@ module EO
           'raisedead'         => checkdead,
           'lifekeep'          => checkdead
         }
-      end
-
-      # Whether the character's wounds and scars allow a spell: nothing at
-      # rank 3 where it bears on casting, nothing past rank 1 to the head or
-      # nerves, and no arm and its hand adding to more than 1.
-      #
-      # @param injuries [Hash] XMLData.injuries
-      # @return [Boolean]
-      def able_to_cast?(injuries = XMLData.injuries)
-        right_scar = right_wound = left_scar = left_wound = 0
-
-        injuries.each do |area, h|
-          next unless area =~ /nsys|head|(left|right)(Eye|Arm|Hand)/
-          next unless h['scar'].positive? || h['wound'].positive?
-
-          return false if h['scar'] > 2 || h['wound'] > 2
-          return false if area =~ /nsys|head/ && (h['scar'] > 1 || h['wound'] > 1)
-
-          if area =~ /left(Arm|Hand)/
-            left_scar += h['scar']
-            left_wound += h['wound']
-            return false if left_scar > 1 || left_wound > 1
-          elsif area =~ /right(Arm|Hand)/
-            right_scar += h['scar']
-            right_wound += h['wound']
-            return false if right_scar > 1 || right_wound > 1
-          end
-        end
-
-        true
       end
     end
   end

@@ -160,21 +160,4 @@ RSpec.describe EO::Herbs::Injuries do
   ensure
     described_class.singleton_class.remove_method(:checkdead)
   end
-
-  describe '.able_to_cast?' do
-    def injuries(marks = {})
-      all = %w[nsys head leftEye leftArm leftHand rightArm rightHand chest].to_h { |area| [area, { 'wound' => 0, 'scar' => 0 }] }
-      marks.each { |area, mark| all[area.to_s].merge!(mark.transform_keys(&:to_s)) }
-      all
-    end
-
-    it 'allows a cast with a single rank 1 to an arm, and stops it past that' do
-      expect(described_class.able_to_cast?(injuries)).to be(true)
-      expect(described_class.able_to_cast?(injuries(leftArm: { wound: 1 }))).to be(true)
-      expect(described_class.able_to_cast?(injuries(leftArm: { wound: 1 }, leftHand: { wound: 1 }))).to be(false)
-      expect(described_class.able_to_cast?(injuries(head: { scar: 2 }))).to be(false)
-      expect(described_class.able_to_cast?(injuries(leftEye: { wound: 3 }))).to be(false)
-      expect(described_class.able_to_cast?(injuries(chest: { wound: 3 }))).to be(true)
-    end
-  end
 end

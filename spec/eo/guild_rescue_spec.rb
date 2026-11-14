@@ -43,6 +43,24 @@ RSpec.describe EO::Guild::Disablers do
 
   def best(**) = described_class.best(min_mana: 0, custom: false, untargetable: [], **)
 
+  it 'cannot cast when stunned, when Lich says the wounds stop it, or under a debuff that does' do
+    now = { stunned: false, able: true, debuffs: {} }
+    allow(described_class).to receive(:can_cast?).and_call_original
+    stub_const('Lich::Gemstone::Injured', Class.new { define_singleton_method(:able_to_cast?) { now[:able] } })
+    stub_const('Effects::Debuffs', Class.new { define_singleton_method(:to_h) { now[:debuffs] } })
+    described_class.define_singleton_method(:stunned?) { now[:stunned] }
+    described_class.define_singleton_method(:dead?) { false }
+    expect(described_class.can_cast?).to be(true)
+    expect([{ stunned: true }, { able: false }, { debuffs: { 'Silenced' => 1 } }].map { |change| now.merge(change) }.map do |then_|
+      now.replace(then_)
+      result = described_class.can_cast?
+      now.replace(stunned: false, able: true, debuffs: {})
+      result
+    end).to eq([false, false, false])
+  ensure
+    %i[stunned? dead?].each { |m| described_class.singleton_class.remove_method(m) }
+  end
+
   it 'counts Call Wind for the whole room from twenty ranks of air lore' do
     wind = -> { described_class.table.find { |d| d[:num] == 504 }[:single_target] }
     expect(wind.call).to be(true)

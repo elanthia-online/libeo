@@ -42,27 +42,13 @@ module EO
       end
 
       # Whether the character is in a state to cast: not stunned or dead,
-      # without the wounds that stop a cast (fewer of them count under
-      # Sigil of Determination, 9716), and under none of DEBUFFS.
+      # without the wounds that stop a cast (Lich's Injured.able_to_cast?),
+      # and under none of DEBUFFS.
       #
       # @return [Boolean]
       def can_cast?
         return false if stunned? or dead?
-        wounds_prevent_cast = false
-        if Spell[9716].active?
-          wounds_prevent_cast = (
-            [Wounds.head, Scars.head, Wounds.leftEye, Scars.leftEye, Wounds.rightEye, Scars.rightEye, Wounds.nsys, Scars.nsys].max > 2
-          )
-        end
-        if !Spell[9716].active?
-          wounds_prevent_cast = (
-            [Wounds.head, Scars.head, Wounds.leftEye, Scars.leftEye, Wounds.rightEye, Scars.rightEye, Wounds.nsys, Scars.nsys].max > 1 or
-            [Wounds.leftArm, Wounds.leftHand, Wounds.rightArm, Wounds.rightHand, Scars.leftArm, Scars.leftHand, Scars.rightArm, Scars.rightHand].max > 2 or
-            [Wounds.leftArm, Wounds.leftHand, Scars.leftArm, Scars.leftHand].max > 1 or
-            [Wounds.rightArm, Wounds.rightHand, Scars.leftArm, Scars.leftHand].max > 1
-          )
-        end
-        return false if wounds_prevent_cast
+        return false unless Lich::Gemstone::Injured.able_to_cast?
         # need effect names for "Terrified", "Unconscious", "Staggered", and whatever else I'm missing
         debuffs_prevent_cast = !(Effects::Debuffs.to_h.keys & DEBUFFS).empty?
         return false if debuffs_prevent_cast
