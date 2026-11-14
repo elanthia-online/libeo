@@ -1,252 +1,215 @@
 # frozen_string_literal: true
 
 module EO
-  # Hoarding gems and reagents in jars: the name a jar's label and an item
-  # share, whether a name is a gem or a reagent, what a stash of jars
-  # holds, and shaking a jar.
-  #
-  # An inventory is a list of entries, each a Hash of :item (the name),
-  # :count and :full; the empty jars are one entry of their own.
-  #
-  # Commands go through the running script's helpers (EO.use). The helpers
-  # this needs: command(text, pattern, silent:, quiet:) answering the lines,
-  # and say(type:, text:).
+  # Hoarding gems and alchemy reagents in jars: what an item is called on a
+  # jar's label, whether it is the kind being hoarded, reading a jar, the
+  # stash's inventory by looking or from a premium locker's manifest,
+  # putting an item in a jar and shaking one out.
   module Hoard
     module_function
 
     JAR = /^(?:jar|bottle|beaker)$/
+
+    # An inventory line for a stash with empty jars in it.
     EMPTY_JARS = '*** empty jars ***'
 
-    # The towns LOCKER MANIFEST takes.
-    MANIFEST_TOWNS = ["Wehnimer's Landing", 'Teras Isle', 'Solhaven', "River's Rest", 'Icemule Trace', 'Zul Logoth', "Ta'Illistim",
-                      "Ta'Vaalor", 'Mist Harbor', 'Cysaegir', "Kraken's Fall", 'Family Vault'].freeze
+    # The towns a premium member has a locker in, as LOCKER MANIFEST names them.
+    MANIFEST_TOWNS = ["Wehnimer's Landing", 'Teras Isle', 'Solhaven', "River's Rest", 'Icemule Trace', 'Zul Logoth',
+                      "Ta'Illistim", "Ta'Vaalor", 'Mist Harbor', 'Cysaegir', "Kraken's Fall", 'Family Vault'].freeze
 
-    # The line each container's part of a manifest begins with.
+    # The line of a locker manifest a container's contents follow, by its name.
     MANIFEST_SECTIONS = {
-      /trunk/i    => 'bound in wrought iron',
-      /chest/i    => 'deep chest',
-      /rack/i     => 'weapon rack',
-      /stand/i    => 'armor stand',
-      /bin/i      => 'magical item bin',
-      /wardrobe/i => 'clothing wardrobe'
+      /trunk/i => 'bound in wrought iron', /chest/i => 'deep chest', /rack/i => 'weapon rack',
+      /stand/i => 'armor stand', /bin/i => 'magical item bin', /wardrobe/i => 'clothing wardrobe'
     }.freeze
 
-    PLURALS = { 'ies' => 'y', 'onyxes' => 'onyx', 'zes' => 'z', 's' => '' }.freeze
+    PUT = /You (add|put)|The.*?is full|does not appear to be a suitable/
 
-    # The plain, singular name a jar's label and a loose item have in
-    # common: no article, size or "of polished", and a few names the two
-    # write differently.
+    # An item's name as a jar's label carries it: no article or size,
+    # singular, and the few names the game spells its own way.
     #
-    # @param name [String, GameObj, nil]
-    # @return [String, nil] nil for no name
+    # @param name [String, GameObj]
+    # @return [String, nil]
     def normalize(name)
-      EO.say(type: 'debug', text: "name: #{name}")
-      return if name.nil?
-
+      return nil if name.nil?
       if name.is_a?(String)
         case name
-        when /essences? of (air|earth|water|fire)/
-          return "essence of #{Regexp.last_match(1)}"
-        when /golden seed/
-          return 'tiny golden seed'
-        when /motes? of essence/
-          name = name.gsub(/motes?/, 'mote')
+        when /essences? of (air|earth|water|fire)/ then return "essence of #{Regexp.last_match(1)}"
+        when /golden seed/ then return 'tiny golden seed'
+        when /motes? of essence/ then name = name.gsub(/motes?/, 'mote')
         end
       end
-
-      name = name.full_name if name.is_a?(GameObj)
-      name = name.downcase
-
+      name = name.full_name if name.respond_to?(:full_name)
+      name = name.to_s.downcase
       sizes = 'tiny|small|medium|large|blue-violet|pyrite-capped vibrant'
       articles = 'some|an? |the'
       descriptors = '(?:\\w+ )*?\\w+s? of(?: polished)?|polished'
-
-      pattern = /^\s*(?:containing )?(?:#{articles})?\s*(?:#{sizes})?\s*(?:#{descriptors})?\s*(?:#{sizes})?\s*(.*?)\s*$/
-      raise 'FIXME: normalize pattern did not match but should match anything' unless name =~ pattern
-
-      name = Regexp.last_match(1)
-
-      if name =~ /^(.*?)(#{PLURALS.keys.map { |x| Regexp.escape(x) }.join('|')})$/
-        "#{Regexp.last_match(1)}#{PLURALS[Regexp.last_match(2)]}"
-      else
-        name
-      end
+      name = name[/^\s*(?:containing )?(?:#{articles})?\s*(?:#{sizes})?\s*(?:#{descriptors})?\s*(?:#{sizes})?\s*(.*?)\s*$/, 1].to_s
+      rules = { 'ies' => 'y', 'onyxes' => 'onyx', 'zes' => 'z', 's' => '' }
+      m = name.match(/^(.*?)(#{rules.keys.map { |k| Regexp.escape(k) }.join('|')})$/)
+      m ? "#{m[1]}#{rules[m[2]]}" : name
     end
 
-    # Whether a name is of the kind being hoarded, by Lich's type data and
-    # a few names it does not have.
+    # Whether a jar-label name is the kind being hoarded, by Lich's type data.
     #
     # @param item [String] a normalized name
-    # @param type [String] 'gem' or 'alchemy'
+    # @param kind [String] 'gem' or 'reagent'
     # @return [Boolean]
-    def kind?(item, type)
+    def kind?(item, kind)
       GameObj.load_data if GameObj.type_data.empty?
-
-      obj_type = type == 'alchemy' ? 'reagent' : type
-
+      data = GameObj.type_data[kind]
+      return false if data.nil?
       item = item.gsub(/teeth/, 'tooth')
       noun = item.split.last
-      data = GameObj.type_data[obj_type]
-
-      if item =~ data[:exclusion]
-        false
-      elsif data[:name].to_s.match?(/\b#{item}\b/) || data[:noun].to_s.match?(/\b#{noun}\b/)
-        true
-      elsif item =~ data[:name] || noun =~ data[:noun]
-        true
-      elsif obj_type == 'reagent' && Room.list.any? { |r| r.tags.any? { |tag| tag.end_with?(item) || (item.start_with?(tag) && item =~ /ayana/) || item.end_with?(tag) } }
-        true
-      elsif obj_type == 'reagent' && item =~ /kezmonian honey beryl|faintly glimmering dust/i
-        true
-      elsif obj_type == 'gem' && item =~ /(?:deep blue sapphire|fiery ruby|glistening onyx|sparkling emerald) talon/i
-        true
-      else
-        false
+      return false if item =~ data[:exclusion]
+      return true if data[:name].to_s.match?(/\b#{item}\b/) || data[:noun].to_s.match?(/\b#{noun}\b/)
+      return true if item =~ data[:name] || noun =~ data[:noun]
+      if kind == 'reagent'
+        return true if item =~ /kezmonian honey beryl|faintly glimmering dust/i
+        return Room.list.any? { |r| r.tags.any? { |tag| tag.end_with?(item) || (item.start_with?(tag) && item =~ /ayana/) || item.end_with?(tag) } }
       end
+      kind == 'gem' && item =~ /(?:deep blue sapphire|fiery ruby|glistening onyx|sparkling emerald) talon/i ? true : false
     end
 
-    # The entries whose name holds the filter as a phrase, whatever the case.
-    #
-    # @param entries [Array<Hash>]
-    # @param filter [String, nil]
-    # @return [Array<Hash>] all of them for no filter
-    def filter(entries, filter)
-      phrase = filter.to_s.downcase.split.join(' ')
-      return entries if phrase.empty?
-
-      entries.select { |entry| entry[:item].to_s.downcase.split.join(' ').include?(phrase) }
-    end
-
-    # LOOK IN the stash, so Lich has what it holds now: a locker's contents
-    # are not kept up to date.
-    #
     # @param stash [GameObj]
-    # @return [void]
-    def refresh(stash)
-      EO.command("look in ##{stash.id}", /<container id='.*?' title=/, silent: true, quiet: true)
+    # @return [Array<GameObj>] the jars in it with something in them
+    def jars(stash)
+      stash.contents.to_a.select { |obj| obj.noun =~ JAR && !obj.after_name.nil? }
     end
 
-    # What a jar holds, read by looking in it.
+    # @param stash [GameObj]
+    # @return [Array<GameObj>] the empty jars in it
+    def empty_jars(stash)
+      stash.contents.to_a.select { |obj| obj.noun =~ JAR && obj.after_name.nil? }
+    end
+
+    # @param stash [GameObj]
+    # @param name [String] a normalized name
+    # @return [GameObj, nil] the jar labelled for it
+    def jar_for(stash, name)
+      stash.contents.to_a.find { |obj| obj.noun =~ JAR && normalize(obj.after_name) =~ /^#{Regexp.escape(name)}$/ }
+    end
+
+    # LOOK IN a jar.
     #
     # @param jar [GameObj]
-    # @param stash [GameObj, nil] the container the jar is in, for a jar not in hand
-    # @return [Array(Integer, Boolean), Symbol, nil] the portions and whether
-    #   it is full; :empty for a jar in hand that says so; nil when the
-    #   answer said neither
-    def read_jar(jar, stash: nil)
-      lines = if stash
-                EO.command("look in ##{jar.id} from ##{stash.id}", /^Inside .*? you see [0-9]+ portion/, silent: true, quiet: true)
-              else
-                EO.command("look in ##{jar.id}", /^Inside .*? you see [0-9]+ portion|^The <a exist=".*?is empty/, silent: true, quiet: true)
-              end
-
-      if lines.find { |line| line =~ /^Inside .*? you see ([0-9]+) portion/ }
-        [Regexp.last_match[1].to_i, lines.any?(/It is full/)]
-      elsif !stash && lines.find { |line| line =~ /^The <a exist=".*?is empty/ }
-        :empty
+    # @param from [GameObj, nil] the stash it sits in, when not in hand
+    # @return [Hash, Symbol] { count:, full: }, :empty, or :unknown
+    def read(jar, from: nil)
+      where = from ? " from ##{from.id}" : ''
+      lines = EO.command("look in ##{jar.id}#{where}", /^Inside .*? you see [0-9]+ portion|^The <a exist=".*?is empty/, silent: true, quiet: true)
+      if (line = lines.find { |l| l =~ /^Inside .*? you see ([0-9]+) portion/ })
+        return { count: line[/you see ([0-9]+) portion/, 1].to_i, full: lines.any? { |l| l =~ /It is full/ } }
       end
+      return :empty if lines.any? { |l| l =~ /^The <a exist=".*?is empty/ }
+      :unknown
     end
 
-    # The inventory of a stash, by looking in every labelled jar.
+    # The stash's inventory by looking in every jar. An entry for the empty
+    # jars comes first when there are any.
     #
     # @param stash [GameObj]
-    # @param type [String] 'gem' or 'alchemy'
-    # @yield [percent] after each jar, how far along it is
-    # @return [Array<Hash>]
-    def inventory(stash, type)
-      inventory = []
-
-      refresh(stash)
-      labelled = stash.contents.find_all { |obj| obj.noun =~ JAR && !obj.after_name.nil? }
-      empty_jars = stash.contents.count { |obj| obj.noun =~ JAR && obj.after_name.nil? }
-
-      inventory << { item: EMPTY_JARS, count: empty_jars, full: '  -' } if empty_jars.positive?
-
-      labelled.each_with_index do |jar, index|
-        if (held = read_jar(jar, stash: stash))
-          count, full = held
+    # @param kind [String] 'gem' or 'reagent'
+    # @param progress [Proc, nil] called with the percent done after each jar
+    # @return [Array<Hash>] { item:, count:, full: }
+    def inventory(stash, kind, progress: nil)
+      EO.command("look in ##{stash.id}", /<container id='.*?' title=/, silent: true, quiet: true)
+      found = []
+      empties = empty_jars(stash).size
+      found << { item: EMPTY_JARS, count: empties, full: '  -' } if empties.positive?
+      list = jars(stash)
+      list.each_with_index do |jar, index|
+        state = read(jar, from: stash)
+        if state.is_a?(Hash)
           item = normalize(jar.after_name).strip
-          inventory << { item: item, count: count, full: full } if kind?(item, type)
+          found << { item: item, count: state[:count], full: state[:full] } if kind?(item, kind)
         end
-
-        yield (((index + 1).to_f / labelled.size) * 100).round(2) if block_given?
+        progress&.call((((index + 1).to_f / list.size) * 100).round(2))
       end
-
-      inventory
+      found
     end
 
-    # The town LOCKER MANIFEST knows a premium locker by.
+    # The town a premium locker's manifest is read for, from the locker
+    # city setting or the container (a trunk lives in the Family Vault).
     #
-    # @param cache [String] the stash container's name
-    # @param city [String] the locker's town, as the map names it
-    # @return [String, nil] nil when it is not a town a manifest can be had for
-    def manifest_town(cache, city)
-      town = 'Family Vault' if cache =~ /trunk/i
-      town ||= { 'Kharam-Dzu' => 'Teras Isle', 'the Isle of Four Winds' => 'Mist Harbor' }[city] || city
+    # @param city [String]
+    # @param cache [String] the container's name
+    # @return [String, nil] nil when the manifest has no such town
+    def manifest_town(city, cache)
+      town = cache =~ /trunk/i ? 'Family Vault' : ({ 'Kharam-Dzu' => 'Teras Isle', 'the Isle of Four Winds' => 'Mist Harbor' }[city] || city)
       MANIFEST_TOWNS.include?(town) ? town : nil
     end
 
-    # The inventory of a premium locker's stash, from LOCKER MANIFEST, which
-    # needs no visit.
+    # A premium locker manifest's lines for one container, as inventory.
     #
-    # @param town [String] from manifest_town
-    # @param cache [String] the stash container's name
-    # @param type [String] 'gem' or 'alchemy'
-    # @return [Array<Hash>, nil] nil when the manifest has no part for the
-    #   container, or the container is of no kind a manifest lists
-    def manifest_inventory(town, cache, type)
-      start_from = MANIFEST_SECTIONS.find { |pattern, _line| cache =~ pattern }&.last
-      return nil if start_from.nil?
+    # @param lines [Array<String>] LOCKER MANIFEST's answer
+    # @param cache [String] the container's name
+    # @param kind [String] 'gem' or 'reagent'
+    # @return [Array<Hash>, nil] { item:, count:, full: }; nil when the
+    #   container's section is not in the manifest
+    def parse_manifest(lines, cache, kind)
+      heading = MANIFEST_SECTIONS.find { |pattern, _| cache =~ pattern }&.last
+      start = heading && lines.index { |line| line.include?(heading) }
+      return nil if start.nil?
+      stop = lines[(start + 1)..].index { |line| line.strip.empty? }
+      stop = stop.nil? ? lines.size : stop + start + 1
+      section = lines[(start + 1)...stop]
 
-      lines = EO.command("locker manifest #{town}", /Thinking back, you recall the contents|Looking in front of you/, silent: true, quiet: true)
-
-      start_index = lines.index { |line| line.include?(start_from) }
-      return nil unless start_index
-
-      end_index = lines[(start_index + 1)..].index { |line| line.strip.empty? }
-      end_index = end_index.nil? ? lines.size : end_index + start_index + 1
-
-      section = lines[(start_index + 1)...end_index]
-      inventory = []
-
-      empty_jars = section.count { |line| line.match?(/(?:jar|bottle|beaker)/) && !line.include?('containing') }
-      inventory << { item: EMPTY_JARS, count: empty_jars, full: '  -' } if empty_jars.positive?
-
+      found = []
+      empties = section.count { |line| line.match?(/(?:jar|bottle|beaker)/) && !line.include?('containing') }
+      found << { item: EMPTY_JARS, count: empties, full: '  -' } if empties.positive?
       section.each do |line|
-        match = line.match(/containing\s(?<item>.*?)\s+\((?<stored>\d+)\/(?<capacity>\d+)\)(?:\s+\(.*?\))?\z/)
-        next unless match
-
-        item = normalize(match[:item]).strip
-        stored = match[:stored].strip.to_i
-        inventory << { item: item, count: stored, full: stored == match[:capacity].strip.to_i } if kind?(item, type)
+        m = line.match(/containing\s(?<item>.*?)\s+\((?<stored>\d+)\/(?<capacity>\d+)\)(?:\s+\(.*?\))?\z/)
+        next unless m
+        item = normalize(m[:item]).strip
+        found << { item: item, count: m[:stored].to_i, full: m[:stored].to_i == m[:capacity].to_i } if kind?(item, kind)
       end
-
-      inventory
+      found
     end
 
-    # The jar in a stash labelled with a name.
+    # @param town [String] from .manifest_town
+    # @return [Array<String>] LOCKER MANIFEST's answer
+    def manifest(town)
+      EO.command("locker manifest #{town}", /Thinking back, you recall the contents|Looking in front of you/, silent: true, quiet: true)
+    end
+
+    # Entries whose name holds the filter as a phrase, case-insensitively.
     #
-    # @param stash [GameObj]
-    # @param name [String] a normalized name, taken as a pattern
-    # @return [GameObj, nil]
-    def jar_of(stash, name)
-      stash.contents.find { |obj| obj.noun =~ JAR && normalize(obj.after_name) =~ /^#{name}$/ }
+    # @param entries [Array<Hash>]
+    # @param filter [String, nil]
+    # @return [Array<Hash>]
+    def filter(entries, filter)
+      phrase = filter.to_s.downcase.split.join(' ')
+      return entries if phrase.empty?
+      entries.select { |entry| entry[:item].to_s.downcase.split.join(' ').include?(phrase) }
     end
 
-    # SHAKE one item out of a jar held in a hand.
+    # Put an item in a jar held in the other hand.
+    #
+    # @param item [GameObj] in hand
+    # @param jar [GameObj] in hand
+    # @return [Symbol] :added, :started (it went into an empty jar), :filled
+    #   (the jar is full now), :full (it was already full), or :unsuitable
+    def put(item, jar)
+      result = EO.result("_drag ##{item.id} ##{jar.id}", PUT)
+      case result
+      when /does not appear to be a suitable/ then :unsuitable
+      when /is full/ then :full
+      when /into your empty (?:jar|bottle|beaker)/ then :started
+      when /filling it/ then :filled
+      else :added
+      end
+    end
+
+    # Shake one item out of a jar in hand.
     #
     # @param jar [GameObj]
-    # @return [Array(GameObj, Boolean)] what is now in a hand that is not
-    #   the jar, and whether that was the last one in it
+    # @return [Array(GameObj, Boolean)] the item now in the other hand, and
+    #   whether that was the last one
     def shake(jar)
       lines = EO.command("shake ##{jar.id}", /You give your <a exist=".*?"/)
-      item = [GameObj.right_hand, GameObj.left_hand].find { |i| i.id !~ /#{jar.id}/ }
-      [item, lines.any?(/That was the last/)]
-    end
-
-    # @return [GameObj, nil] a jar held in a hand
-    def jar_in_hand
-      [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ JAR }
+      item = [GameObj.right_hand, GameObj.left_hand].find { |i| i.id != jar.id }
+      [item, lines.any? { |l| l =~ /That was the last/ }]
     end
   end
 end

@@ -1,94 +1,58 @@
 # frozen_string_literal: true
 
 module EO
-  # Containers: seeing that one is open and that Lich knows what is in it,
-  # closing it, and reading contents the game does not refresh on its own.
-  #
-  # Lich lists a container among GameObj.containers, with its contents, once
-  # the game has shown them; that is what "listed" means here. Lich's
-  # inventory feed (Lich::Common::Inventory) knows more of what is carried:
-  # whether a container is closed or locked, without opening it.
-  #
-  # Commands go through the running script's helpers (EO.use). The helpers
-  # this needs: command(text, pattern, silent:, quiet:) answering the lines,
-  # result(text, pattern) answering one line, and say(type:, text:).
+  # Containers: opening one so its contents can be read, knowing whether we
+  # were the one who opened it, and reading contents the game does not
+  # refresh on its own. A carried container is asked of Lich's Inventory
+  # (Saga's extended feed), which knows it closed or open and what is in it
+  # without a LOOK IN; the disk, a box on the floor, and a session without
+  # the feed are read the old way.
   module Containers
     module_function
 
     # Every answer OPEN gets, including the ones that mean it was open already.
     OPEN = Regexp.union(
-      /You throw back/i,
-      /You open/i,
-      /Oh no! It's already/i,
-      /You pick at the knot/i,
-      /already open/i,
-      /is open already/i,
-      /You unfasten/i,
-      /You glance around suspiciously/i,
-      /^What were you referring to\?/i,
-      /^I could not find what you were referring to\./i,
-      /You pull the long strips of leather/i,
-      /With a flick of your wrist/i,
-      /Sliding the lever on the side/i,
-      /You rub your hand/i,
-      /There doesn't seem to be any way/i,
-      /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i,
-      /crumbles? and decays? away/,
-      /crumbles? into a pile of dust/,
-      /Myriad spectral moths pull a cloakwing/,
-      /<exposeContainer|<container/i,
-      /You undo each of the/,
-      /stuffed with a variety of shredded up paper and cloth/
+      /You throw back/i, /You open/i, /Oh no! It's already/i, /You pick at the knot/i, /already open/i,
+      /is open already/i, /You unfasten/i, /You glance around suspiciously/i, /^What were you referring to\?/i,
+      /^I could not find what you were referring to\./i, /You pull the long strips of leather/i,
+      /With a flick of your wrist/i, /Sliding the lever on the side/i, /You rub your hand/i,
+      /There doesn't seem to be any way/i, /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i,
+      /crumbles? and decays? away/, /crumbles? into a pile of dust/, /Myriad spectral moths pull a cloakwing/,
+      /<exposeContainer|<container/i, /You undo each of the/, /stuffed with a variety of shredded up paper and cloth/
     )
 
     # Every answer LOOK IN gets.
     LOOK = Regexp.union(
-      /Peering into the <a exist=.*? noun="toolkit">/i,
-      /That is closed/i,
-      /is shut too tightly to see its contents/i,
-      /In the(.*?)you see/i,
-      /In the(.*?):/i,
-      /There is nothing/i,
-      /You glance/i,
-      /^Attached to a.*keyring/i,
-      /.*?[.*?]:/i,
+      /Peering into the <a exist=.*? noun="toolkit">/i, /That is closed/i, /is shut too tightly to see its contents/i,
+      /In the(.*?)you see/i, /In the(.*?):/i, /There is nothing/i, /You glance/i, /^Attached to a.*keyring/i, /.*?[.*?]:/i,
       /The <a exist="\d+" noun="\w+">[^<]+<\/a> has (?:an? <a exist="\d+" noun="\w+">[^<]+<\/a> |nothing )?in.*scabbard and (?:an? <a exist="\d+" noun="\w+">[^<]+<\/a> |nothing )?in.*scabbard\./i,
-      /^I could not find what you were referring to\./i,
-      /Hidden within the depths of a cloakwing moth greatcloak/,
-      /<exposeContainer|<dialogData|<container/i,
-      /stuffed with a variety of shredded up paper and cloth/,
-      /As much as you'd like to open it, its not closed\./,
-      # a neck sheath and a swordbelt's scabbards show nothing Lich can list
-      /^Looking at the .*?, you notice:/i,
+      /^I could not find what you were referring to\./i, /Hidden within the depths of a cloakwing moth greatcloak/,
+      /<exposeContainer|<dialogData|<container/i, /stuffed with a variety of shredded up paper and cloth/,
+      /As much as you'd like to open it, its not closed\./, /^Looking at the .*?, you notice:/i,
       /^The .+? has .+? in its left-hand scabbard and .+? in its right-hand scabbard\.$/i
     )
 
-    CLOSE = Regexp.union(
-      /You close .*/,
-      /(?:That|It) is already closed/,
-      /What were you referring to/,
-      /seem to be any way to do that/,
-      /You tie/,
-      /You fasten the/
-    )
-
-    # A LOOK IN answer, after an OPEN, that shows there is nothing Lich will
-    # list: empty, or a container whose contents the game never itemises.
+    # A LOOK IN answer that shows there is nothing Lich will list: empty, or
+    # a container whose contents the game never itemises.
     NOTHING_LISTED = /You glance|There is nothing|stuffed with a variety of shredded up paper and cloth|^Looking at the .*?, you notice:|^The .+? has .+? in its left-hand scabbard and .+? in its right-hand scabbard\.$/i
 
-    # The same for a container whose contents were waited for and did not
-    # come. Not the same list as NOTHING_LISTED.
-    NOTHING_TO_WAIT_FOR = /The wide leather belt|You glance|There is nothing|stuffed with a variety of shredded up paper and cloth|Looking at the .*?, you notice:/i
+    CLOSE = Regexp.union(/You close .*/, /(?:That|It) is already closed/, /What were you referring to/,
+                         /seem to be any way to do that/, /You tie/, /You fasten the/)
+
+    # An OPEN answer that means nothing was opened.
+    NOT_OPENED = /\bis (?:already open|open already)\b|There doesn't seem to be any way to do that|You can't do that|You must remove|What were you referring to|I could not find/i
 
     # @param container [GameObj]
-    # @return [Boolean] whether Lich has the container's contents
+    # @return [Boolean] whether Lich has the container's contents. Under the
+    #   inventory feed that is not the same as open: see closed?
     def listed?(container)
       GameObj.containers.keys.include?(container.id) && container.contents.is_a?(Array)
     end
 
     # Whether Lich's inventory feed has answered this session. Once it has,
-    # every carried container's contents are in GameObj, a closed one's too:
-    # being listed no longer shows a container is open.
+    # every carried container's contents are copied into GameObj, a closed
+    # one's too, so contents being known no longer shows a container is open
+    # and a bag closed by hand no longer drops out of GameObj.
     #
     # @return [Boolean]
     def feed?
@@ -111,82 +75,121 @@ module EO
       nil
     end
 
-    # The feed's fresh view of a carried container: closed or not, locked
-    # or not, with its contents put in GameObj either way.
+    # Lich's fresh view of a carried container: closed and locked, and its
+    # contents copied into GameObj whether it is open or not.
     #
     # @param container [GameObj]
-    # @return [Lich::Common::Inventory::Item, nil] nil without the feed, or
-    #   for a container that is not carried (a disk, a box on the floor)
+    # @return [Lich::Common::Inventory::Item, nil] nil when the feed is absent
+    #   (a non-Saga session) or the container is not carried (a disk, a box)
     def carried(container)
       return nil unless defined?(Lich::Common::Inventory)
-
       Lich::Common::Inventory.refresh&.[](container.id)
     rescue StandardError
       nil
     end
 
-    # See that a container is open and its contents known. A carried one
-    # is asked of the inventory feed: it gets an OPEN only when it is closed,
-    # never a LOOK IN, and nothing at all when it is locked. Any other, or
-    # without the feed: one already listed is left alone, and one that is
-    # not is taken for closed, so it gets an OPEN and then a LOOK IN.
+    # Open +container+ only if it is closed, and refresh what Lich knows is
+    # inside.
     #
     # @param container [GameObj]
-    # @return [Symbol] :listed (open and known, nothing sent), :locked,
-    #   :nothing (opened, and empty or not itemised), or :opened
-    def ensure_open(container)
-      if (item = carried(container))
-        return :listed unless item.closed?
-        return :locked if item.locked?
+    # @return [Boolean] true when this call opened it, so the caller can close
+    #   it again before the script dies
+    def open(container)
+      return false if container.name =~ /keyring/
+      item = carried(container)
+      return open_unseen(container) if item.nil?
+      return false unless item.closed? && !item.locked?
 
-        EO.command("open ##{container.id}", OPEN, silent: true, quiet: true)
-        return :opened
-      end
-      return :listed if listed?(container)
-
-      EO.command("open ##{container.id}", OPEN, silent: true, quiet: true)
-      lines = EO.command("look in ##{container.id}", LOOK, silent: true, quiet: true)
-      lines.any? { |l| l =~ NOTHING_LISTED } ? :nothing : :opened
+      lines = EO.command("open ##{container.id}", Regexp.union(NOT_OPENED, OPEN), silent: true, quiet: true)
+      contents_ready?(container)
+      lines.none? { |l| l =~ NOT_OPENED }
     end
 
-    # Wait for Lich to have a container's contents, looking in once more when
-    # they do not come.
+    # Open a container Lich's Inventory cannot see. An open container
+    # answers LOOK IN with its contents, so it never gets an OPEN. Custom
+    # open and close messages vary too much to trust, so the only proof we
+    # opened something is LOOK IN saying it was closed and OPEN not saying it
+    # was already open.
     #
     # @param container [GameObj]
-    # @param seconds [Numeric] how long each of the two waits lasts
-    # @param from [String, nil] who asked, for the messages when it fails
-    # @return [Boolean] false when the contents never came
-    def contents_ready?(container, seconds: 3, from: nil)
-      tenths = seconds * 10
-      tenths.times do
-        return true if listed?(container)
-        sleep 0.1
-      end
-      EO.say(type: 'info', text: "This failed the first time. Trying again. | Container: #{container.name} | GameObj.containers.keys: #{GameObj.containers.keys.include?(container.id)} | container.contents.is_a?: #{container.contents.is_a?(Array)} | caller: #{from}")
+    # @return [Boolean] true when this call opened it
+    def open_unseen(container)
+      id = container.id
+      return false if listed?(container)
 
-      # goofy things happen: ask once more
-      lines = EO.command("look in ##{container.id}", LOOK, silent: true, quiet: true)
-      tenths.times do
-        return true if listed?(container)
-        return true if lines.any? { |l| l =~ NOTHING_TO_WAIT_FOR }
+      shown = /In the <a exist="#{id}"|This <a exist="#{id}"[^>]*>.*?<\/a>.*?inside|There is nothing in there/
+      look = Regexp.union(shown, /<exposeContainer id=['"]#{id}['"]|<container id=['"]#{id}['"]|\bis closed\b/i)
+      lines = EO.command("look in ##{id}", look, silent: true, quiet: true)
+      return false if lines.any? { |l| l =~ shown }
+
+      was_closed = lines.any? { |l| l =~ /\bis closed\b/i }
+      lines = EO.command("open ##{id}", Regexp.union(NOT_OPENED, /exist="#{id}"|<exposeContainer|^You\b/i), silent: true, quiet: true)
+      opened = was_closed && lines.none? { |l| l =~ NOT_OPENED }
+
+      EO.command("look in ##{id}", look, silent: true, quiet: true)
+      20.times do
+        break if listed?(container)
         sleep 0.1
       end
-      EO.say(type: 'info', text: "This failed the second time. | Container: #{container.inspect} | caller: #{from}")
-      EO.say(type: 'info', text: " Unable to determine the contents of  #{container.name}.")
+      opened
+    end
+
+    # See that a container is open and its contents known, opening it if
+    # need be (the quick path: no proof of who opened it).
+    #
+    # @param container [GameObj]
+    # @return [Symbol] :listed (contents known), :nothing (empty, or a
+    #   container the game does not itemise), or :unknown
+    def ensure_open(container)
+      return :listed if container.nil?
+      item = carried(container)
+      return ensure_open_unseen(container) if item.nil?
+      return :unknown if item.locked?
+
+      EO.command("open ##{container.id}", OPEN, silent: true, quiet: true) if item.closed?
+      item.children.empty? ? :nothing : :listed
+    end
+
+    # @api private
+    def ensure_open_unseen(container)
+      return :listed if listed?(container)
+      EO.command("open ##{container.id}", OPEN, silent: true, quiet: true)
+      lines = EO.command("look in ##{container.id}", LOOK, silent: true, quiet: true)
+      return :nothing if lines.any? { |l| l =~ NOTHING_LISTED }
+      listed?(container) ? :listed : :unknown
+    end
+
+    # Wait for Lich to have a container's contents, asking again when it
+    # takes too long.
+    #
+    # @param container [GameObj]
+    # @param seconds [Numeric]
+    # @return [Boolean]
+    def contents_ready?(container, seconds: 3)
+      (seconds * 10).to_i.times do
+        return true if listed?(container)
+        sleep 0.1
+      end
+      return true if carried(container) && listed?(container)
+
+      lines = EO.command("look in ##{container.id}", LOOK, silent: true, quiet: true)
+      (seconds * 10).to_i.times do
+        return true if listed?(container)
+        return true if lines.any? { |l| l =~ NOTHING_LISTED }
+        sleep 0.1
+      end
       false
     end
 
     # Lich only updates a container's contents when the game sends a
-    # refresh, and some containers never get one (a disk, a skin sack the
-    # furrier emptied), so what Lich holds can still list what has since been
-    # taken out. Look in, then read. A carried container is read from the
-    # inventory feed instead, which asks the game afresh.
+    # refresh, and some containers never get one (a disk, a sack the
+    # furrier emptied). Ask again, then read.
     #
     # @param container [GameObj, nil]
-    # @return [Array<GameObj>] the contents, [] with no container
+    # @return [Array<GameObj>]
     def fresh_contents(container)
       return [] if container.nil?
-      return container.contents.to_a if carried(container)
+      return container.contents.to_a if carried(container) && listed?(container)
 
       EO.command("look in ##{container.id}", LOOK, silent: true, quiet: true)
       container.contents.to_a

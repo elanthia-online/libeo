@@ -1,146 +1,192 @@
 # frozen_string_literal: true
 
 module EO
-  # Skinning: which of the dead to skin and with what kind of tool, getting
-  # ready, the SKIN itself, and standing up after.
-  #
-  # Commands go through the running script's helpers (EO.use). The helper
-  # this needs: command(text, pattern, silent:, quiet:) answering the lines.
+  # Skinning the dead: which need a blunt tool, getting ready to skin,
+  # and the skinning itself with what the game answers.
   module Skinning
     module_function
 
-    # Creatures a blade does nothing to: they take a blunt tool.
+    # Creatures whose hide gives only to a blunt weapon.
     BLUNT = /krynch|stone mastiff|krag dweller|cavern urchin|massive boulder/i
 
-    # Creatures never skinned, by name.
+    # What never skins, whoever tries.
     NEVER = /(?:ethereal|ghostly|unwordly|Grimswarm|child)/
 
-    SKIN_ANSWER = Regexp.union(
-      /You skinned/i,
-      /You botched/i,
-      /already been/i,
-      /cannot skin/i,
-      /must be a member/i,
-      /can only skin/i,
-      /You are unable to break through/i,
-      /You break through the crust of the/i,
-      /You crack open a portion/i,
-      /Because your account is free/i,
-      /it's not possible to get a worthwhile/i
+    RESULT = Regexp.union(
+      /You skinned/i, /You botched/i, /already been/i, /cannot skin/i, /must be a member/i, /can only skin/i,
+      /You are unable to break through/i, /You break through the crust of the/i, /You crack open a portion/i,
+      /Because your account is free/i, /it's not possible to get a worthwhile/i
     )
+    BROKE_OPEN = Regexp.union(/You break through the crust of the .+ and withdraw (.+)!/i, /You crack open a portion of the .+ and uncover (.+)!/i)
+    # e.g. OSA ship captains: the skin has been ruined with alchemical components
+    UNSKINNABLE = /You cannot skin|ruined with alchemical components/
 
-    # A skinning that broke something open and left a gem in the left hand.
-    BROKE_OPEN = Regexp.union(
-      /You break through the crust of the .+ and withdraw (.+)!/i,
-      /You crack open a portion of the .+ and uncover (.+)!/i
-    )
-
-    # A creature that cannot be skinned, now or ever. The second is a
-    # creature such as an OSA ship captain, ruined with alchemical components.
-    CANNOT = /You cannot skin|ruined with alchemical components/
-
-    # A rotting chimera is skinned only now and then: when DESCRIBE shows
-    # its scorpion tail.
+    # The creatures eloot's settings say not to skin: its critter
+    # exclusions as whole words, and its skin exclusions.
     #
-    # @param obj [GameObj]
-    # @return [Boolean]
-    def sometimes?(obj)
-      if obj.name =~ /rotting chimera/
-        lines = EO.command('describe chimera', /The twisted and confused form/, silent: true, quiet: true)
-        return true if lines.any? { |line| line =~ /A huge scorpion tail rises high from the rear/ }
-      end
-
-      false
+    # @param settings [Hash] eloot's settings
+    # @return [Regexp]
+    def exclusions(settings)
+      excluded = [Loot.words(settings[:critter_exclude])]
+      excluded << Regexp.union(settings[:skin_exclude]) unless settings[:skin_exclude].to_a.empty?
+      Regexp.union(excluded)
     end
 
-    # Whether a dead creature is left unskinned.
-    #
     # @param obj [GameObj]
-    # @param unskinnable [Array<String>] names learned not to skin
-    # @param exclude [Array<String, Regexp>] names the character leaves alone
-    # @param never [Regexp] names never searched or skinned
     # @return [Boolean]
-    def skip?(obj, unskinnable:, exclude:, never:)
-      ((unskinnable.include?(obj.name) && !sometimes?(obj)) ||
-        obj.type =~ /bandit/ ||
-        obj.name =~ NEVER ||
-        (exclude.length.positive? && obj.name =~ Regexp.union(exclude)) ||
-        obj.name.match?(never)) ? true : false
+    def blunt?(obj)
+      obj.name =~ BLUNT ? true : false
     end
 
-    # The dead that match a bounty's creature.
+    # The dead that are worth a try: not bandits, not the never-skinned,
+    # not on the given lists.
     #
     # @param objs [Array<GameObj>]
-    # @param creature [String] the creature the bounty names
+    # @param unskinnable [Array<String>] names learned to fail
+    # @param exclude [Regexp, nil] the driver's skin and critter exclusions
     # @return [Array<GameObj>]
-    def for_bounty(objs, creature)
-      wanted = creature.to_s.downcase
-      objs.select { |obj| obj.name.to_s.downcase.include?(wanted) }
+    def candidates(objs, unskinnable: [], exclude: nil)
+      objs.reject do |obj|
+        unskinnable.include?(obj.name) || obj.type =~ /bandit/ || obj.name =~ NEVER || (exclude && obj.name.match?(exclude))
+      end
     end
 
-    # Split the dead into those a blade skins and those that take a blunt tool.
-    #
-    # @param objs [Array<GameObj>]
-    # @return [Array(Array<GameObj>, Array<GameObj>)] the edged, then the blunt
-    def by_tool(objs)
-      blunt = objs.find_all { |obj| obj.name =~ BLUNT }
-      [objs.reject { |obj| obj.name =~ BLUNT }, blunt]
-    end
-
-    # Get ready to skin: kneel while nothing is there to fight, Sigil of
-    # Resolve, and Nature's Touch (604) kept up past the skinning, three casts at most.
+    # Kneel when nothing hostile is about, and the skinning buffs.
     #
     # @param kneel [Boolean]
-    # @param resolve [Boolean]
-    # @param nature [Boolean] keep 604 up
+    # @param resolve [Boolean] Sigil of Resolve
+    # @param nature [Boolean] 604, kept up with time to spare
     # @return [void]
-    def prepare(kneel:, resolve:, nature:)
-      EO.kneel if GameObj.targets.empty? && kneel
+    def prepare(kneel: false, resolve: false, nature: false)
+      3.times do
+        break unless kneel && GameObj.targets.empty? && !kneeling?
 
-      if resolve &&
-         Spell['Sigil of Resolve'].affordable? &&
-         !Spell['Sigil of Resolve'].active?
+        dothistimeout('kneel', 3, /You kneel down\.$|You move to|You are already kneeling\.$/)
+      end
+      if resolve && Spell['Sigil of Resolve'].affordable? && !Spell['Sigil of Resolve'].active?
         Spell['Sigil of Resolve'].cast
       end
-
       return unless nature && Spell[604].affordable? && (!Spell[604].active? || (Spell[604].timeleft * 60).truncate <= 10)
-
+      # three casts at most: a cast that keeps failing would never end
       3.times do
         break if Spell[604].active? && (Spell[604].timeleft * 60).truncate > 5
 
         Spell[604].cast
-        sleep(0.1)
+        sleep 0.1
       end
     end
 
-    # SKIN one creature with the tool in the hand named. A gem a skinning
-    # broke out is stowed from the left hand.
+    # A creature that skins only some of the time, tried even when learned
+    # unskinnable: the rotting chimera with a scorpion tail.
     #
     # @param obj [GameObj]
-    # @param hand [String] 'right' or 'left', the hand holding the tool
-    # @return [Symbol] :cannot (this creature is not one to skin) or :done
-    def skin(obj, hand)
-      res = dothistimeout("skin ##{obj.id} #{hand}", 2, SKIN_ANSWER)
-      if res =~ CANNOT
-        :cannot
-      else
-        fput "stow gem ##{GameObj.left_hand.id}" if res =~ BROKE_OPEN
-        :done
-      end
+    # @return [Boolean]
+    def occasional?(obj)
+      return false unless obj.name =~ /rotting chimera/
+
+      lines = EO.command('describe chimera', /The twisted and confused form/, silent: true, quiet: true)
+      lines.any? { |line| line =~ /A huge scorpion tail rises high from the rear/ }
     end
 
-    # Stand up after skinning, on the offensive while nothing is there to
-    # fight, and go back to the stance held before.
+    # The dead to skin, split by the tool they want: the candidates, the
+    # occasional skinner tried even when learned unskinnable, and with a
+    # bounty creature only that creature.
     #
-    # @param stance [Proc] given a stance's name, changes to it
-    # @return [void]
-    def stand_up(stance:)
-      return if standing?
+    # @param objs [Array<GameObj>]
+    # @param unskinnable [Array<String>]
+    # @param exclude [Regexp, nil]
+    # @param creature [String, nil] skin only this (a skinning bounty's creature)
+    # @return [Array(Array<GameObj>, Array<GameObj>)] the edged and the blunt
+    def choose(objs, unskinnable: [], exclude: nil, creature: nil)
+      unskinnable = unskinnable.reject { |name| objs.any? { |obj| obj.name == name && occasional?(obj) } }
+      objs = candidates(objs, unskinnable: unskinnable, exclude: exclude)
+      objs = objs.select { |obj| obj.name.to_s.downcase.include?(creature.downcase) } if creature
+      blunt, edged = objs.partition { |obj| blunt?(obj) }
+      [edged, blunt]
+    end
 
-      prev_stance = Stance.current
-      stance.call('offensive') if GameObj.targets.empty?
-      EO.stand
-      stance.call(prev_stance)
+    # The skinning tool on the READY list: the blunt one for blunt
+    # creatures, else the edged one, else the right hand.
+    #
+    # @param ready [Hash{Symbol => GameObj}] Lich's ReadyList.ready_list
+    # @param blunt [Boolean]
+    # @return [GameObj, nil] nil when a blunt tool is wanted and none is listed
+    def tool(ready, blunt:)
+      listed = ready[blunt ? :skin_weapon_blunt : :skin_weapon]
+      return listed unless listed.to_s.empty?
+
+      blunt ? nil : GameObj.right_hand
+    end
+
+    # @param ready [Hash{Symbol => GameObj}]
+    # @param blunt [Boolean]
+    # @return [GameObj, nil] where the skinning tool goes back, nil for the default bag
+    def sheath(ready, blunt:) = ready[blunt ? :skin_sheath_blunt : :skin_sheath]
+
+    # The skinning tool in hand for the block, then put away: both hands
+    # freed for a blunt tool, one for an edged; a tool already in hand is
+    # used where it is and left there.
+    #
+    # @param tool [GameObj]
+    # @param blunt [Boolean]
+    # @param free [Proc] given :both or :one, frees the hands
+    # @param draw [Proc] given the tool, puts it in a hand
+    # @param put_away [Proc] given the tool, puts it back
+    # @yieldparam hand [String] 'right' or 'left'
+    # @return [Object, nil] the block's value, nil when the tool could not be drawn
+    def with_tool(tool, blunt:, free:, draw:, put_away:)
+      waitrt?
+      held = !blunt && Hands.holding?(tool)
+      free.call(blunt ? :both : :one) unless held
+      unless Hands.holding?(tool)
+        waitrt?
+        draw.call(tool)
+      end
+      return nil unless Hands.holding?(tool)
+
+      result = yield(tool.id == GameObj.left_hand.id ? 'left' : 'right')
+      put_away.call(tool) unless held
+      result
+    end
+
+    # Up again after skinning, a few tries at most, in offensive stance when
+    # nothing is about and back to the stance it was in.
+    #
+    # @return [Boolean] whether standing
+    def stand_up
+      return true if standing?
+
+      # a frenzy holds the stance
+      change = ->(stance) { Lich::Gemstone::Stance.change(stance) unless Effects::Debuffs.active?('Frenzy') }
+      before = Lich::Gemstone::Stance.current
+      change.call('offensive') if GameObj.targets.empty?
+      5.times do
+        break if standing?
+
+        dothistimeout('stand', 3, /You stand|You quickly roll|You are already standing/)
+      end
+      change.call(before)
+      standing?
+    end
+
+    # Skin each corpse with the tool in +hand+, stowing a gem that breaks
+    # out of a boulder.
+    #
+    # @param objs [Array<GameObj>]
+    # @param hand [String] 'right' or 'left', where the tool is
+    # @return [Array<String>] the names the game said cannot be skinned
+    def skin(objs, hand:)
+      learned = []
+      objs.each do |obj|
+        result = dothistimeout("skin ##{obj.id} #{hand}", 2, RESULT)
+        if result =~ UNSKINNABLE
+          learned << obj.name
+        elsif result =~ BROKE_OPEN
+          fput "stow gem ##{GameObj.left_hand.id}"
+        end
+      end
+      waitrt?
+      learned.uniq
     end
   end
 end

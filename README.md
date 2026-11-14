@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.45.0')             the version the script was built against
+EO.require('0.46.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -26,18 +26,19 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/settings/words.rb` | `EO::Settings`: changing one setting from the command line (`update_from_words`, `coerce`, `setting_name`) |
 | `eo/settings/table.rb` | `EO::Settings::Registry` and `Listing`: a script's table of settings by category, with defaults, and its printed listing |
 | `eo/settings/window.rb` | `EO::Settings::Controls` and `ListForm`: the parts of a setup window the scripts share |
-| `eo/containers.rb` | `EO::Containers`: whether Lich has a container's contents, opening one that does not, waiting for contents, reading them fresh, closing |
-| `eo/hands.rb` | `EO::Hands`: what the hands hold, freeing one, taking an item, wearing one, putting one in a container, the READY list's STORE and READY; every outcome comes back as a word |
-| `eo/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a shop in a bounty's town within the region, Four Winds Isle and the way off it, the trash receptacle, the locksmith pool's worker |
-| `eo/items.rb` | `EO::Items`: throwing an item away unless it is marked, phasing a box and bringing it back, lifting a curse, waiting for the disk |
-| `eo/boxes.rb` | `EO::Boxes`: opening a box, looking in, taking its coins, which emptied box is kept |
-| `eo/stow.rb` | `EO::Stow`: the bags an item may go in by the STOW list, in order; `EO::Stow::Weights`: by the inventory feed's weights, whether a bag has the room, and moving a box to make it |
-| `eo/loot.rb` | `EO::Loot`: what in a room is no loot, whether an item is wanted, searching a dead creature |
-| `eo/skinning.rb` | `EO::Skinning`: which dead to skin and with what kind of tool, getting ready, the skinning, standing up after |
-| `eo/selling.rb` | `EO::Selling`: selling one item to a shop, asking a shop what an item is worth |
-| `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (how he is called, his fee, the pay) and the locksmith pool (the drop-off order, the give, the return, the pool's depth, the rising tip) |
-| `eo/locker.rb` | `EO::Locker`: which rooms hold a character's locker, the last step into a booth, a debt, opening the locker and finding the stash in it |
-| `eo/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, a stash's inventory by looking or from a premium locker's manifest, shaking a jar |
+| `eo/containers.rb` | `EO::Containers`: open a container only when it is closed, see one open, read contents the game does not refresh; a carried container is asked of Lich's `Inventory`, the rest by LOOK IN |
+| `eo/hands.rb` | `EO::Hands`: free a hand, take an item, wear, put into a container, the READY list; every outcome comes back as a word, over Lich's `Stash` for which hand holds what and opening the way to an item |
+| `eo/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a bounty town's region, Four Winds Isle, the trash can, the locksmith pool's worker, depositing all but the silver to keep |
+| `eo/items.rb` | `EO::Items`: toss unless marked, phase and unphase a box, lift a curse, and the disk that follows the character |
+| `eo/boxes.rb` | `EO::Boxes`: opening a box, its coins by GET or a coin charm, which emptied box to keep, setting a box on a disk |
+| `eo/stow.rb` | `EO::Stow`: where an item goes by the STOW list (its type's bag, the default, the overflow bags in order), which bags are full or, by the inventory feed's weights, lack the room, moving a box to make room, the bags to open before looting, and what a put taught: a bag that closes itself, a crumbly or unlootable item |
+| `eo/loot.rb` | `EO::Loot`: the room's non-loot (features, spell effects, disks), which loot a `Policy` wants (read from eloot's settings or built), and searching the dead: LOOT's answers, a find at your feet or in your hand |
+| `eo/skinning.rb` | `EO::Skinning`: who needs a blunt tool, which dead to skin and with which tool, the tool drawn and put back, getting ready, the skinning and what it learned, standing up after |
+| `eo/selling.rb` | `EO::Selling`: sell one item at a shop: sold, refused or kept |
+| `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (activator, open, fee) and the locksmith pool (box order, incremental tips, the give, the list and depth, taking boxes back) |
+| `eo/locker.rb` | `EO::Locker`: the character's locker rooms, getting into a booth (taken, elsewhere, a debt), opening it to a container, leaving |
+| `eo/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, reading a jar, the stash inventory by looking or from a premium locker manifest, filling and shaking |
+| `eo/appraisal.rb` | `EO::Appraisal`: ask a shop what an item is worth and read the answer |
 | `eo/casting.rb` | `EO::Casting`: the multicast count, one cast and what its answer means, having the mana or stamina for it (Sign of Wracking, Sigil of Power, Symbol of Mana), another character's active spells, manna bread |
 | `eo/cleanse/tables.rb` | `EO::Cleanse`: the debuffs and room hazards by name, the spell a character has for each job, TARGET and its answers |
 | `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: a web, globe or cloud got rid of by spell, Spell Cleave or Spell Thieve; acidic mist blown away; a runestone broken |

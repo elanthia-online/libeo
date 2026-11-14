@@ -2,43 +2,30 @@
 
 module EO
   # Things done to one item: throwing it away unless it is marked, phasing
-  # a box and bringing it back, lifting a curse, and waiting for the disk
-  # that follows the character.
-  #
-  # Commands go through the running script's helpers (EO.use). The helpers
-  # this needs: command(text, pattern, silent:, quiet:) answering the lines,
-  # result(text, pattern) answering one line, and wait().
+  # a box, lifting a curse, and the disk that follows the character.
   module Items
     module_function
 
     # @param obj [GameObj]
-    # @return [Boolean] whether MARK has the item as unsellable
+    # @return [Boolean] whether MARK says the item is unsellable (kept on purpose)
     def marked?(obj)
       lines = EO.command("mark ##{obj.id} status", /is not marked as unsellable|has been marked as unsellable/, silent: true, quiet: true)
-      lines.any? { |line| line =~ /has been marked as unsellable/ }
+      lines.any? { |l| l =~ /has been marked as unsellable/ }
     end
 
-    # Throw away an item held in a hand, trying while it stays there. An
-    # item marked unsellable is not thrown.
+    # Trash or drop an item from a hand, retrying while it stays there. An
+    # item marked unsellable is never tossed.
     #
     # @param obj [GameObj]
     # @param command [String] "trash" or "drop"
     # @param attempts [Integer]
-    # @param poll [Boolean] watch the hand for a second after each try, for
-    #   an item that gives no roundtime, where otherwise roundtime is waited out
-    # @param on_marked [Proc, nil] called when the item turns out marked
-    # @return [Symbol] :marked, :tossed, or :kept (still in hand)
-    def toss(obj, command, attempts: 1, poll: false, on_marked: nil)
-      if marked?(obj)
-        on_marked&.call
-        return :marked
-      end
-
+    # @param poll [Boolean] a quick in-hand poll instead of the roundtime wait
+    # @return [Symbol] :tossed, :marked, or :kept (still in hand after every try)
+    def toss(obj, command, attempts: 1, poll: false)
+      return :marked if marked?(obj)
       attempts.times do
         break unless Hands.holding?(obj)
-
-        fput("#{command} ##{obj.id}")
-
+        fput "#{command} ##{obj.id}"
         if poll
           10.times do
             break unless Hands.holding?(obj)
@@ -48,117 +35,133 @@ module EO
           EO.settle
         end
       end
-
       Hands.holding?(obj) ? :kept : :tossed
     end
 
-    # Phase a box (704) so it weighs nothing, casting again through spell
-    # hindrance while the mana lasts. Enruned and mithril boxes are left.
+    # Phase a box so it weighs nothing, unless it is enruned or mithril.
     #
     # @param box [GameObj]
-    # @return [void]
+    # @return [Boolean] whether a cast was made
     def phase(box)
-      return unless box.type =~ /box/
-      return if box.name =~ /enruned|mithril/i
-      return unless Spell[704].known? && Spell[704].affordable?
-
+      return false unless box.type =~ /box/
+      return false if box.name =~ /enruned|mithril/i
+      return false unless Spell[704].known? && Spell[704].affordable?
       loop do
-        cast_result = Spell[704].cast("at ##{box.id}")
-        break unless cast_result =~ /^\[Spell Hindrance for/ && Spell[704].affordable?
+        result = Spell[704].cast("at ##{box.id}")
+        break unless result =~ /^\[Spell Hindrance for/ && Spell[704].affordable?
       end
+      true
     end
 
-    # Bring a phased box back by dropping it, which puts it in a hand again.
+    # Drop a phased box so it comes back solid, and pick it up again.
     #
     # @param box [GameObj]
-    # @return [GameObj, nil] the box as it is now: the same one when it was
-    #   not phased, else the box found in a hand
+    # @return [GameObj, nil] the box in hand after
     def unphase(box)
       lines = EO.command("look at ##{box.id}", /You see/, silent: true, quiet: true)
-      return box unless lines.any? { |line| line =~ /shifting/i }
-
+      return box unless lines.any? { |l| l =~ /shifting/i }
       dothistimeout("drop ##{box.id}", 3, /flickers in and out of existence/)
       EO.settle
-
       EO.command('glance hands', /<(right|left)/, silent: true, quiet: true)
-
       [GameObj.right_hand, GameObj.left_hand].find { |hand| hand.type =~ /box/ }
     end
 
-    # Make a cursed item safe to pick up: Remove Curse (315) when known,
-    # with a mana pulse when it cannot be afforded; else an eonake gauntlet,
-    # moved to the hand that will do the picking up.
+    # Lift a curse with 315, or by wearing an eonake gauntlet on the hand
+    # that will hold the item.
     #
-    # @param obj [GameObj] the cursed item
+    # @param obj [GameObj]
     # @param gauntlet [GameObj, nil] a worn eonake gauntlet
-    # @return [Symbol] :lifted, :no_mana (315 is known and cannot be
-    #   afforded), or :cannot
-    def lift_curse(obj, gauntlet: nil)
-      Lich::Gemstone::Mana.pulse(315)
-
-      return :no_mana if Spell[315].known? && !Spell[315].affordable?
-
-      if Spell[315].known? && Spell[315].affordable?
+    # @return [Symbol] :clean (not cursed), :cast, :gauntlet, :no_mana, or :cannot
+    def decurse(obj, gauntlet: nil)
+      return :clean unless obj.type =~ /cursed/
+      if Spell[315].known?
+        Lich::Gemstone::Mana.pulse(315) unless Spell[315].affordable?
+        return :no_mana unless Spell[315].affordable?
         Spell[315].cast("at ##{obj.id}")
-        return :lifted
+        return :cast
       end
+      return :cannot if gauntlet.nil?
 
-      unless gauntlet.nil?
-        lines = EO.command("look ##{gauntlet.id}", /You are currently wearing the <a exist="[^"]+" noun="gauntlet">eonake gauntlet<\/a>/, silent: true, quiet: true)
-        gauntlet_hand = Regexp.last_match(1) if lines.any? { |l| l =~ /(right|left) hand/ }
-
-        if GameObj.right_hand.name == 'Empty'
-          return :lifted if gauntlet_hand == 'right'
-
-          if gauntlet_hand == 'left'
-            move_gauntlet(gauntlet, :right)
-            return :lifted
-          end
-        end
-
-        if GameObj.left_hand.name == 'Empty'
-          return :lifted if gauntlet_hand == 'left'
-
-          if gauntlet_hand == 'right'
-            move_gauntlet(gauntlet, :left)
-            return :lifted
-          end
-        end
+      lines = EO.command("look ##{gauntlet.id}", /You are currently wearing the <a exist="[^"]+" noun="gauntlet">eonake gauntlet<\/a>/, silent: true, quiet: true)
+      on = lines.any? { |l| l =~ /(right|left) hand/ } ? Regexp.last_match(1) : nil
+      [%w[right Empty], %w[left Empty]].each do |side, _|
+        next unless (side == 'right' ? GameObj.right_hand : GameObj.left_hand).name == 'Empty'
+        return :gauntlet if on == side
+        next unless on
+        EO.result("remove ##{gauntlet.id}", /You slip the gauntlet from/)
+        held = side == 'right' ? GameObj.right_hand : GameObj.left_hand
+        EO.result('swap', /You swap/) unless held.id == gauntlet.id
+        EO.result("wear ##{gauntlet.id}", /You slip the eonake gauntlet over/)
+        return :gauntlet
       end
-
       :cannot
     end
 
-    # Take the gauntlet off, see it into the hand it is wanted on, wear it.
-    #
-    # @api private
-    # @param gauntlet [GameObj]
-    # @param side [Symbol] :right or :left, the hand it should end up on
-    def move_gauntlet(gauntlet, side)
-      EO.result("remove ##{gauntlet.id}", /You slip the gauntlet from/)
-      # read after the REMOVE: it lands in whichever hand is free
-      hand = side == :right ? GameObj.right_hand : GameObj.left_hand
-      EO.result('swap', /You swap/) unless hand.id == gauntlet.id
-      EO.result("wear ##{gauntlet.id}", /You slip the eonake gauntlet over/)
-    end
+    # The disk that follows the character: a hook keeps the handle current
+    # as the disk arrives, follows and disintegrates. The hook persists
+    # across script runs where Lich allows, since the disk outlives them.
+    module Disk
+      module_function
 
-    # Wait up to five seconds for the character's disk when it has fallen
-    # behind or gone.
-    #
-    # @param disk [GameObj] the disk as the script last knew it
-    # @param on_wait [Proc, nil] called once when there is a wait to make
-    # @return [GameObj, nil] the disk now, nil when it did not come
-    def await_disk(disk, on_wait: nil)
-      if disk.status&.include?('gone') || ::Disk.mine.nil?
-        on_wait&.call
+      HOOK = 'eloot_diskintegration'
 
-        50.times do
-          break if ::Disk.mine
-          sleep 0.1
+      # @return [GameObj, nil] the character's disk, now
+      def mine
+        ::Disk.mine.nil? ? nil : GameObj[::Disk.mine.id]
+      end
+
+      DISINTEGRATES = %r{The <a exist="-?\d+" noun="([^"]+)">([^<]+)</a>\s+disintegrates}
+
+      # @param on_change [Proc] called with the disk GameObj or nil as it changes
+      # @param current [Proc] the disk the script holds now, or nil: only that
+      #   disk's own disintegration clears it (another's in the room does
+      #   not), and a disk that arrives is taken only when none is held
+      # @return [void]
+      def watch(on_change, current:)
+        return if DownstreamHook.list.include?(HOOK)
+        hook = proc do |server|
+          case server
+          when DISINTEGRATES
+            held = current.call
+            on_change.call(nil) if held && held.noun.to_s == Regexp.last_match(1) && held.name.to_s == Regexp.last_match(2)
+          when /Your <a exist="-?\d+" noun="[^"]+">[^<]+<\/a> arrives, following you dutifully\./
+            on_change.call(mine) if current.call.nil? && !::Disk.mine.nil?
+          when /A small circular container suddenly appears and floats rather serenely over to you\./
+            # this runs where the game's lines are read: a disk Lich does not
+            # know by now will not turn up while it waits here
+            5.times do
+              break unless ::Disk.mine.nil?
+              sleep 0.2
+            end
+            on_change.call(mine) unless ::Disk.mine.nil?
+          end
+          server
+        end
+        if DownstreamHook.method(:add).parameters.any? { |_t, n| n == :persist }
+          DownstreamHook.add(HOOK, hook, persist: true)
+        else
+          DownstreamHook.add(HOOK, hook)
         end
       end
 
-      ::Disk.mine ? GameObj[::Disk.mine.id] : nil
+      # Wait for the disk to catch up, then see that it is open.
+      #
+      # @param seconds [Numeric]
+      # @return [GameObj, nil] the disk, nil when it never came
+      def wait(seconds: 5)
+        (seconds * 10).to_i.times do
+          break if ::Disk.mine
+          sleep 0.1
+        end
+        disk = mine
+        Containers.ensure_open(disk) if disk
+        disk
+      end
+
+      # @return [Array<GameObj>] the disk's contents, read fresh
+      def contents
+        Containers.fresh_contents(wait)
+      end
     end
   end
 end

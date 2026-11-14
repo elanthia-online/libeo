@@ -15,10 +15,44 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.17.0
+           version: 2.18.0
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.0 (2026-11-13)
+    - eloot sends, waits, walks and speaks through libeo's own helpers and no longer lends
+      its own; the flows it handed on step by step are libeo's whole: the locker (rooms,
+      booth entry, open, leave), the town locksmith and the locksmith pool (the table's
+      bell, keys or chime, the open and its fee, the tip, the give, the list and its depth,
+      the return), the hoarding jars (reading a jar, the stash inventory by looking or from
+      a premium locker manifest, filling and shaking a jar), the appraisal reading
+      (EO::Appraisal), the loot decision with a policy from the settings, selling one item,
+      and searching the dead (LOOT's answers, a find at your feet or in your hand, the
+      Sigil of Determination retry). The bank is Lich's Bank. Needs libeo 0.46.0
+    - looting the room weighs it first (one inventory refresh): a bag without the room for an
+      item is passed over instead of tried, a box is moved aside to make room before pausing
+      for full bags, and a disk full by its item count or 500 lbs is not tried. Needs the
+      extended inventory feed; without it everything is tried as before. The bag weights are
+      dropped when the room is done and after an unpause
+    - which bag an item goes in (type, default, overflow), the full bags, and learning
+      auto-closers and crumbly items come from libeo (EO::Stow). A bag found closed is not
+      added to the auto-closer list: it is now a bag eloot opened in the last minute and
+      did not close. Check ;eloot settings auto_close for bags that do not belong there
+    - opening a box and taking its coins, the box worth keeping, and setting a box on a
+      disk come from libeo (EO::Boxes). A coin charm gets five tries instead of pointing
+      forever; looting a box outside a sell trip no longer fails counting its silvers; a
+      box on the floor with coins it cannot pick up is looted anyway, where it used to
+      try GET COINS forever
+    - skinning's creature choice, the tool drawn and put back, and standing up after come
+      from libeo (EO::Skinning). Kneeling to skin gives up after three tries and standing
+      after five, where both used to try forever (a web or bind kept the script stuck); a
+      skinning tool that cannot be drawn skips the skinning instead of trying bare-handed
+    - fix: a deposit that fails (the walk did not reach a bank, the bank refused) is said
+      so, and box looting stops asking for coins it cannot hold instead of walking to the
+      bank again and again; the box is kept with its coins, not emptied and thrown away
+    - fix: ;eloot settings takes a decimal value (alpha_rate); it stopped with "don't know
+      how to normalize a Float". The command-line settings change is libeo's now
+    - depositing keeps the silver set to keep through libeo (EO::Town.keep_silver)
   v2.17.0 (2026-11-13)
     - taking an item, wearing it, putting it in a bag, the READY list's STORE and READY, freeing
       a hand, and opening a container and waiting on its contents come from libeo (EO::Hands,
@@ -331,45 +365,16 @@ end
 before_dying { ELoot.release_room_lease(eloot_load_token) }
 
 # Check version of Lich for compatibility
-lich_gem_requires = Script.list.find { |x| x.name == Script.current.name }.inspect[/required: Lich >= (\d+\.\d+\.\d+)/i, 1]
-
-if Gem::Version.new(LICH_VERSION) < Gem::Version.new(lich_gem_requires)
-  if $frontend == 'stormfront' || $frontend == 'profanity'
-    _respond "\<preset id=\"speech\"\>" + "########################################" + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "Script:#{script.name} now requires a newer version of Lich(#{lich_gem_requires}+) to run." + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "Please update to a newer version." + "\<\/preset\>"
-    _respond ""
-    _respond "\<preset id=\"thought\"\>" + "Currently Running Lich Version: #{Gem::Version.new(LICH_VERSION)}" + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "For help updating visit: https://gswiki.play.net/Lich_(software)/Installation" + "\<\/preset\>"
-    _respond "\<preset id=\"speech\"\>" + "########################################" + "\<\/preset\>"
-  else
-    _respond "##" + "########################################"
-    _respond ">" + "Script:#{script.name} now requires a newer version of Lich(#{lich_gem_requires}+) to run."
-    _respond ">" + "Please update to a newer version."
-    _respond ">" + ""
-    _respond ">" + "Currently Running Lich Version: #{Gem::Version.new(LICH_VERSION)}"
-    _respond ">" + "For help updating visit: https://gswiki.play.net/Lich_(software)/Installation"
-    _respond "##" + "########################################"
-  end
-  exit
-end
+# A libeo loaded earlier in this Lich session may be older than this script
+# needs; load it again unless the one loaded is new enough.
+# Script.loadlib loads libeo once a session; a copy older than this script needs is run again
+Script.loadlib('libeo')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.46.0')
+EO.require('0.46.0')
+Script.require_lich_version!
 
 require 'yaml'
 require 'terminal-table'
-
-# Script.loadlib loads libeo once a session; a copy older than this script
-# needs is run again.
-Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.44.0')
-EO.require('0.44.0')
-
-# What libeo's steps send, wait for, walk and say goes through this script's
-# own helpers, so they retry, check the room's lease and speak as they did.
-EO.use(command: ->(*args, **opts) { ELoot.get_command(*args, **opts) },
-       result: ->(*args) { ELoot.get_res(*args) },
-       wait: -> { ELoot.wait_rt },
-       go: ->(place) { ELoot.go2(place) },
-       say: ->(**opts) { ELoot.msg(**opts) })
 
 module ELoot # Writes debug output to a file
   class DebugLogger
@@ -483,7 +488,7 @@ end
 
 module ELoot # Data
   class Data
-    attr_accessor :disk, :disk_full, :sacks_full, :ready_method, :settings, :skinners, :skinsheath, :silent_open, :checked_bags,
+    attr_accessor :disk, :disk_full, :ready_method, :settings, :skinners, :skinsheath, :silent_open, :checked_bags,
                   :close_regex, :look_regex, :sacks_closed, :all_loot_categories, :regex_gold_rings, :right_hand, :left_hand, :skin_edged, :skin_blunt,
                   :coin_hand, :coin_container, :silver_breakdown, :over_max, :pawn_recheck, :jewelry_wrong_shop, :get_regex, :put_regex, :alchemy_mode, :sell_containers, :local_gemshop, :local_furrier, :log_unlootables,
                   :charm, :gauntlet, :coin_bag, :account_type, :locker, :container_settings, :everything_list, :everything,
@@ -493,6 +498,29 @@ module ELoot # Data
                   :use_house_locker, :che_rooms, :che_entry, :che_exit, :towns, :gambling_kit, :gambling_kit_full, :ready_lines, :weapon_inv, :original_readylist, :blood_band,
                   :transmog_cache, :loot_exclude_regex, :critter_exclude_regex, :loot_keep_regex, :allowed_special_types, :sell_exclude_regex, :no_vib_regex, :vib_scrolls_regex,
                   :pool_command, :town_refused
+
+    # Where loot goes (libeo's EO::Stow); it keeps which bags are full.
+    def stow
+      @stow ||= EO::Stow.new(learned: lambda do |kind, obj|
+        case kind
+        when :auto_close
+          @settings[:auto_close].push(obj.name)
+          ELoot.msg(type: "info", text: " #{obj.name} must be an autocloser, adding to list.")
+          ELoot.save_profile()
+        when :crumbly
+          ELoot.msg(type: "info", text: " This item was crumbly, adding to list")
+          @settings[:crumbly].push(obj.name)
+          ELoot.save_profile()
+        when :unlootable then ELoot.unlootable(obj)
+        end
+      end)
+    end
+
+    def sacks_full = stow.full
+
+    def sacks_full=(full)
+      stow.full = full
+    end
 
     def initialize(settings)
       @settings = settings
@@ -506,7 +534,7 @@ module ELoot # Data
 
       # inventory type
       @sacks_closed = []
-      @sacks_full = { "last cleared" => [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, Script.current.vars[0]] }
+      self.sacks_full = { "last cleared" => [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, Script.current.vars[0]] }
       @checked_bags = []
       @sell_containers = []
       @ready_lines = []
@@ -650,13 +678,9 @@ module ELoot # Data
       )
 
       @get_regex = EO::Hands::GET
-
       @put_regex = EO::Hands::PUT
-
       @look_regex = EO::Containers::LOOK
-
       @silent_open = EO::Containers::OPEN
-
       @close_regex = EO::Containers::CLOSE
 
       @urchin_msg = Regexp.union(
@@ -680,9 +704,9 @@ module ELoot # Data
 
       @regex_gold_rings = /^(dingy|plain|braided|twisted|intricate|large|thin|wide|polished|scratched|thick|dull|faded|small|flawless|inlaid|dirt\-caked|ornate|exquisite|shiny|bright|narrow) gold ring$|^gold ring$/
 
-      @reject_loot_names = EO::Loot::NON_LOOT_NAMES
+      @reject_loot_names = EO::Loot::REJECT_NAMES
 
-      @reject_loot_nouns = EO::Loot::NON_LOOT_NOUNS
+      @reject_loot_nouns = EO::Loot::REJECT_NOUNS
 
       @all_loot_categories = EO::Loot::CATEGORIES
 
@@ -709,6 +733,11 @@ module ELoot # UI Setup
   # Lich::WebUI::ListSettingsForm: Save & Close returns the edited settings, which
   # are saved to the profile; Cancel or closing the window discards them.
   class Setup
+    # Lich keeps this class between runs in a session. A method a newer version
+    # dropped would otherwise still run, ahead of the one the class now includes.
+    # First, so it removes nothing this run defines.
+    (instance_methods(false) + private_instance_methods(false)).each { |name| remove_method(name) }
+
     attr_reader :settings, :status
 
     # Lich keeps this class between runs in a session. Drop the old constants so an
@@ -935,48 +964,19 @@ module ELoot # UI Setup
       }
     }
 
+    extend EO::Settings::Registry
+    include EO::Settings::ListForm
+    include EO::Settings::Listing
+
+    def listed_categories = %w[loot sell skin internal]
+
+    def list_extra
+      _respond("#{monsterbold_start}= GameObj Types =#{monsterbold_end}\n")
+      _respond(GameObj.type_data.map { |k, _v| k }.sort.join(', '))
+    end
+
     # True when Lich can open a WebUI window for this script.
-    def self.available?
-      defined?(Lich::WebUI) && Lich::WebUI.respond_to?(:presentation_enabled?) && Lich::WebUI.presentation_enabled? &&
-        defined?(Lich::WebUI::ListSettingsForm)
-    end
-
-    def self.get_category(key)
-      @@categories.each { |category, data| return category unless data[key].nil? }
-      nil
-    end
-
-    def self.get_setting(key)
-      cat = Setup.get_category(key)
-      return nil if cat.nil?
-
-      @@categories[cat].each { |setting, data| return data if setting == key }
-      nil
-    end
-
-    # ListSettingsForm keys rows by position and seeds each viewer's table
-    # selection only once, so after Add or Delete the window would keep
-    # highlighting a row the form no longer has selected (and Delete would do
-    # nothing). Clearing that viewer's selection keeps the two in step.
-    @form_class = nil
-
-    def self.form_class
-      @form_class ||= Class.new(Lich::WebUI::ListSettingsForm) do
-        private
-
-        def render_field(tree, field, refs, **overrides)
-          ref = super
-          (@tables ||= {})[field[:key]] = ref if field && @lists.key?(field[:key])
-          ref
-        end
-
-        def change_list(key, action, event)
-          super
-          table = @tables&.[](key)
-          @page.set(table.cid, :selected, [], viewer: event.viewer_id) if table
-        end
-      end
-    end
+    def self.available? = EO::Settings.available?(:ListSettingsForm)
 
     def initialize(settings)
       @owner = Script.current
@@ -984,9 +984,7 @@ module ELoot # UI Setup
       @version = ELoot.get_script_version
       @status = ''
       validate_settings
-
-      # remove settings that doesn't exist
-      @settings.delete_if { |key, _| next Setup.get_category(key).nil? }
+      Setup.prune(@settings)
 
       # options the character can't use are shown disabled and forced off
       unavailable.each { |key| @settings[key] = false }
@@ -1035,32 +1033,6 @@ module ELoot # UI Setup
 
     # ---------------------------------------------------------- lifecycle --
 
-    # Opens the window and waits. Save & Close returns the edited settings, which
-    # are saved to the profile; Cancel or closing the window discards them.
-    def start
-      result = form.show.wait
-      if result
-        apply(result)
-        ELoot.msg(type: "info", text: " Setup saved.")
-      else
-        ELoot.msg(type: "info", text: " Setup closed without saving.")
-      end
-    end
-
-    # The window, ready to show. Lists are edited on copies so Cancel discards them too.
-    def form
-      setup = self
-      @live = form_values
-      @drafts = LISTS.to_h { |key| [key, Array(@settings[key]).dup] }
-      @form = Setup.form_class.new(owner: @owner, id: PAGE_ID, title: title, values: @live, fields: fields,
-                                   lists: LISTS.to_h { |key| [key, list_spec(key)] },
-                                   normalize: ->(draft) { setup.normalize(draft) },
-                                   layout: ->(ui, field, save) { setup.layout(ui, field, save) },
-                                   props: { size: [900, 820], viewport: true })
-    end
-
-    attr_reader :drafts
-
     def apply(result)
       @settings.merge!(result)
       validate_settings
@@ -1071,140 +1043,61 @@ module ELoot # UI Setup
       "ELoot Setup v#{@version}"
     end
 
+    def notify(text)
+      ELoot.msg(type: "info", text: text)
+    end
+
     # ------------------------------------------------------ fields and values --
 
     def shown_keys
       @@categories.values_at(:loot, :boxes, :sell, :skin, :hoard).flat_map(&:keys).uniq - HIDDEN
     end
 
-    def boolean?(key)
-      [true, false].include?(Setup.get_setting(key)[:default])
-    end
-
-    def member_key(key, value)
-      :"#{key}-#{value.tr(' ', '_')}"
-    end
-
     # Exclusive pairs share a group name; SettingsForm unchecks the other half.
-    def exclusive_group(key)
+    def exclusive_for(key)
       EXCLUSIVE.key?(key) ? [key, EXCLUSIVE[key]].min : nil
     end
 
-    def fields
-      list = shown_keys.reject { |key| LISTS.include?(key) || MEMBERS.key?(key) }.map do |key|
-        if SPINS.key?(key)
-          max, step, digits = SPINS[key]
-          { key: key, type: :number_input, min: 0, max: max, step: step, digits: digits, stepper_buttons: true, align: :start }
-        elsif SELECTS.key?(key)
-          { key: key, type: :select, options: SELECTS[key].map { |value, text| { value: value, label: text } } }
-        elsif key.to_s.end_with?('_locker_name')
-          { key: key, type: :select, editable: true, options: locker_options, placeholder: 'Select Locker Location' }
-        elsif key == :overflow_containers
-          { key: key, type: :textarea, rows: 3 }
-        elsif boolean?(key)
-          { key: key, type: :checkbox, exclusive: exclusive_group(key) }.compact
-        else
-          { key: key, type: :text_input }
-        end
-      end
-      MEMBERS.each { |key, items| items.each { |value, _| list << { key: member_key(key, value), type: :checkbox } } }
-      list
-    end
-
-    def form_values
-      shown_keys.each_with_object({}) do |key, values|
-        if MEMBERS.key?(key)
-          MEMBERS[key].each { |value, _| values[member_key(key, value)] = Array(@settings[key]).include?(value) }
-        elsif LISTS.include?(key)
-          values[key] = Array(@settings[key]).dup
-        elsif SPINS.key?(key)
-          values[key] = spin_value(key)
-        elsif SELECTS.key?(key)
-          values[key] = select_value(key)
-        elsif boolean?(key)
-          values[key] = @settings[key] ? true : false
-        else
-          values[key] = @settings[key].to_s.strip
-        end
+    # The locker places, and the overflow containers' several lines.
+    def field_for(key)
+      if key.to_s.end_with?('_locker_name')
+        { key: key, type: :select, editable: true, options: locker_options, placeholder: 'Select Locker Location' }
+      elsif key == :overflow_containers
+        { key: key, type: :textarea, rows: 3 }
       end
     end
 
-    # Display value for a spinner: inside min..max and on a step, as the contract requires.
-    def spin_value(key)
-      max, step, digits = SPINS.fetch(key)
-      number = digits.zero? ? @settings[key].to_i : @settings[key].to_f
-      ((number.clamp(0, max) / step).round * step).round(digits)
-    end
+    def text_value(key) = @settings[key].to_s.strip
 
-    # A saved value that isn't one of the choices shows the first choice.
-    def select_value(key)
-      value = @settings[key].to_s
-      SELECTS.fetch(key).any? { |option, _| option == value } ? value : SELECTS.fetch(key).first.first
-    end
-
-    # Turns the submitted window values back into settings. A number or choice the
-    # player left as displayed keeps its saved value, even one the window had to adjust.
-    def normalize(draft)
-      result = shown_keys.to_h do |key|
-        value =
-          if MEMBERS.key?(key)
-            known = MEMBERS[key].map(&:first)
-            (Array(@settings[key]) - known + known.select { |item| draft[member_key(key, item)] }).uniq.sort
-          elsif LISTS.include?(key)
-            Array(draft[key]).dup
-          elsif SPINS.key?(key)
-            number_setting(key, draft[key])
-          elsif SELECTS.key?(key)
-            draft[key] == select_value(key) ? @settings[key] : draft[key].to_s
-          elsif boolean?(key)
-            draft[key] ? true : false
-          else
-            draft[key].to_s.strip
-          end
-        [key, value]
-      end
+    # Options the character can't use are saved off.
+    def finish(result)
       unavailable.each { |key| result[key] = false }
       result
     end
 
-    def number_setting(key, value)
-      raise ArgumentError, "#{key} must be a number." unless value.is_a?(Numeric)
-      return @settings[key] if value == spin_value(key)
+    def unavailable?(key) = unavailable.include?(key)
 
-      max, _step, digits = SPINS.fetch(key)
-      (digits.zero? ? value.round : value.to_f.round(digits)).clamp(0, max)
-    end
+    def check_events(key) = gate(key)
+
+    def inline_weights = [1, 4]
 
     # ------------------------------------------------------------------ lists --
 
-    def list_spec(key)
-      setup = self
-      { columns: list_columns(key), rows: proc { setup.list_rows(key) }, value: proc { setup.drafts[key].dup },
-        add: ->(text) { setup.add_entry(key, text) }, delete: ->(index) { setup.delete_entry(key, index) },
-        clear_after_add: true }
+    # A scroll must start with its spell number.
+    def accept_entry?(key, text)
+      return true unless key == :sell_keep_scrolls
+
+      spell_no = text[/^\d+/]
+      return true unless spell_no.nil? || Spell[spell_no].nil?
+
+      @status = "\"#{text}\" does not start with a spell number."
+      false
     end
 
-    def add_entry(key, text)
-      text = text.to_s.strip
-      return if text.empty?
+    def list_headers?(key) = key == :sell_keep_scrolls
 
-      if key == :sell_keep_scrolls
-        spell_no = text[/^\d+/]
-        if spell_no.nil? || Spell[spell_no].nil?
-          @status = "\"#{text}\" does not start with a spell number."
-          return
-        end
-      end
-
-      list = @drafts[key]
-      list.push(text) unless list.map(&:to_s).include?(text)
-      sort_list(key, list)
-      @status = ''
-    end
-
-    def delete_entry(key, index)
-      @drafts[key].delete_at(index)
-      sort_list(key, @drafts[key])
+    def render_list(ui, key, title, hint: 'Add an entry', height: 200, **opts)
+      super(ui, key, title, hint: hint, height: height, **opts)
     end
 
     def sort_list(key, list)
@@ -1270,10 +1163,6 @@ module ELoot # UI Setup
     end
 
     # ------------------------------------------------------------- render --
-
-    def control(ui, key, **props)
-      @field.call(ui, key, **props)
-    end
 
     attr_reader :refs
 
@@ -1541,85 +1430,7 @@ module ELoot # UI Setup
 
     attr_reader :live
 
-    def render_footer(ui, save)
-      setup = self
-      ui.divider(key: 'footer-div')
-      ui.columns(key: 'footer', count: 3, weights: [5, 1, 1], compact: true, row_align: :center, margin: 6) do
-        ui.text(slot: '0', key: 'footer-text', wrap: true,
-                content: "#{setup.status.empty? ? '' : "#{setup.status}    "}Save & Close saves your settings. Cancel or closing the window discards your changes.")
-        ui.button(slot: '1', key: 'cancel', label: 'Cancel', tooltip: 'Close this window without saving.', on: { activate: ->(_ev) { setup.cancel } })
-        save.call(ui, slot: '2', variant: :primary, tooltip: 'Save the settings to your eloot profile and close this window.')
-      end
-    end
-
-    def cancel
-      @form.close
-    end
-
     # --------------------------------------------------------- render parts --
-
-    def place(slot)
-      slot ? { slot: slot } : {}
-    end
-
-    def tip_for(tip)
-      tip ? { tooltip: tip } : {}
-    end
-
-    def render_check(ui, key, label, slot: nil, off: false, tip: nil)
-      control(ui, key, label: label, disabled: off || unavailable.include?(key), **place(slot), **tip_for(tip), **gate(key))
-    end
-
-    # Checkboxes over one array setting. items: [stored value, label]
-    def render_members(ui, key, items, off: false, tips: {}, columns: 4)
-      setup = self
-      items.each_slice(columns).with_index do |group, row|
-        ui.columns(key: "#{key}-#{row}", count: columns, gap: 8) do
-          group.each_with_index do |(value, label), column|
-            setup.control(ui, setup.member_key(key, value), slot: column.to_s, label: label, disabled: off, **setup.tip_for(tips[value]))
-          end
-        end
-      end
-    end
-
-    def render_entry(ui, key, label, slot: nil, off: false, tip: nil, hint: nil)
-      control(ui, key, label: label, disabled: off, **place(slot), **tip_for(tip), **hint_for(hint))
-    end
-
-    # A text box with its label beside it instead of above it.
-    def render_inline_entry(ui, key, label, off: false, tip: nil, hint: nil)
-      setup = self
-      ui.columns(key: "#{key}-row", count: 2, weights: [1, 4], gap: 8, compact: true, row_align: :center) do
-        ui.text(slot: '0', key: "#{key}-label", content: label, **setup.tip_for(tip))
-        setup.control(ui, key, slot: '1', disabled: off, **setup.tip_for(tip), **setup.hint_for(hint))
-      end
-    end
-
-    def hint_for(hint)
-      hint ? { placeholder: hint } : {}
-    end
-
-    def render_spin(ui, key, label, slot: nil, off: false, tip: nil)
-      @refs[key] = control(ui, key, label: label, disabled: off, **place(slot), **tip_for(tip))
-    end
-
-    def render_select(ui, key, label, slot: nil, off: false, tip: nil)
-      control(ui, key, label: label, disabled: off, **place(slot), **tip_for(tip))
-    end
-
-    # An add/delete list: entry box, Add and Delete in a row, above the table.
-    # The entry comes first because Add submits it.
-    def render_list(ui, key, title, slot: nil, off: false, tip: nil, hint: 'Add an entry', height: 200)
-      setup = self
-      ui.group(key: "#{key}-box", label: title, **place(slot), **tip_for(tip)) do
-        ui.columns(key: "#{key}-controls", count: 3, weights: [3, 1, 1], gap: 4, compact: true, row_align: :center) do
-          setup.control(ui, :"#{key}_entry", slot: '0', placeholder: hint, disabled: off)
-          setup.control(ui, :"#{key}_add", slot: '1', label: 'Add', disabled: off)
-          setup.control(ui, :"#{key}_delete", slot: '2', label: 'Delete', disabled: off)
-        end
-        setup.control(ui, key, headers: key == :sell_keep_scrolls, min_height: height, max_height: height, disabled: off)
-      end
-    end
 
     # --------------------------------------------------------- other output --
 
@@ -1670,68 +1481,10 @@ module ELoot # UI Setup
       respond table
       respond
     end
-
-    def list(cat_to_list: 'all')
-      indent_size = 2
-      print_array =
-        proc do |key, value, indent|
-          _respond("#{' ' * indent_size * indent.to_i}#{key}:")
-          value.sort_by!(&:to_s).each { |entry| _respond("#{' ' * indent_size * (indent.to_i + 1)}#{value.index(entry) + 1}. #{entry}") }
-        end
-
-      print_value = proc { |key, value, indent| _respond("#{' ' * indent_size * indent.to_i}#{key}: #{value}") }
-
-      categories = cat_to_list == 'all' ? %w[loot sell skin internal] : [cat_to_list]
-      if $frontend == 'stormfront'
-        output = "<output class=\"mono\"/>\n"
-      else
-        output = String.new
-      end
-      categories.each do |opt|
-        _respond("#{output}") if !output.empty?
-        _respond("#{monsterbold_start}= #{opt.capitalize} =#{monsterbold_end}\n")
-        @@categories[opt.to_sym].each do |id, _|
-          value = @settings[id]
-          value.is_a?(Array) ? print_array.call(id, value, 1) : print_value.call(id, value, 1)
-        end
-      end
-      _respond("#{monsterbold_start}= GameObj Types =#{monsterbold_end}\n")
-      _respond("#{GameObj.type_data.map { |k, _v| k }.sort.join(', ')}")
-      if $frontend == 'stormfront'
-        output = "<output class=\"\"/>\n"
-        _respond("#{output}")
-      end
-    end
   end
 end
 
 module ELoot # Profile loading/saving and settings
-  def self.coerce_setting_value(setting_name, default, input)
-    case default
-    when TrueClass, FalseClass
-      fix_option = { 'on' => true, 'true' => true, 'yes' => true, 'off' => false, 'false' => false, 'no' => false }
-      fix_option.fetch(input[0]) do |v|
-        ELoot.msg(type: "error", text: %{Expected a boolean (true/false/yes/no) value for "#{setting_name} but got "#{v}"})
-        exit
-      end
-    when Array
-      input
-    when Integer
-      v = input[0]
-      if v =~ /\A[+-]?\d+\z/
-        v.to_i
-      else
-        ELoot.msg(type: "error", text: %{Expected an integer value for #{setting_name} value but got "#{v}"})
-        exit
-      end
-    when String
-      input.join(" ")
-    else
-      ELoot.msg(type: "error", text: "Recognized #{setting_name} but don't know how to normalize a #{default.class} type setting")
-      exit
-    end
-  end
-
   def self.launch_settings_ui
     Setup.new(data.settings).start
     ELoot.load(load_profile)
@@ -1888,19 +1641,16 @@ module ELoot # Profile loading/saving and settings
   def self.load_defaults()
     default_hash = defaults_hash
 
-    Dir.mkdir(File.join(DATA_DIR, XMLData.game)) unless File.exist?(File.join(DATA_DIR, XMLData.game))
-    Dir.mkdir(File.join(DATA_DIR, XMLData.game, Char.name)) unless File.exist?(File.join(DATA_DIR, XMLData.game, Char.name))
-
-    File.write(File.join(DATA_DIR, XMLData.game, Char.name, "eloot.yaml"), default_hash.to_yaml)
+    EO::Settings.save_profile('eloot', default_hash)
 
     default_hash
   end
 
   def self.load_profile(name: Char.name)
     if name != nil
-      filename = File.join(DATA_DIR, XMLData.game, name, "eloot.yaml")
+      filename = EO::Settings.profile_path('eloot', name: name)
       if File.exist?(filename) && name == Char.name
-        settings_hash = YAML.load_file(filename)
+        settings_hash = EO::Settings.load_profile('eloot')
       elsif !File.exist?(filename) && name != Char.name
         ELoot.msg(type: "error", text: " ELoot.load_profile: Attempt to load a profile that does not exist.")
       elsif !File.exist?(filename) && name == Char.name
@@ -1914,10 +1664,6 @@ module ELoot # Profile loading/saving and settings
     end
 
     settings_hash
-  end
-
-  def self.normalize_setting_name(input)
-    input.downcase.tr('-', '_').to_sym
   end
 
   def self.save_hoard_profile
@@ -1942,8 +1688,7 @@ module ELoot # Profile loading/saving and settings
   end
 
   def self.save_profile(silent: false)
-    filename = File.join(DATA_DIR, XMLData.game, Char.name, "eloot.yaml")
-    File.write(filename, ELoot.data.settings.to_yaml)
+    filename = EO::Settings.save_profile('eloot', ELoot.data.settings)
     ELoot.msg(type: "info", text: " Settings saved to file: #{filename}.") unless silent
   end
 
@@ -1973,23 +1718,12 @@ module ELoot # Profile loading/saving and settings
     end
   end
 
+  # ;eloot settings <name> <value>: one setting changed from the command line.
   def self.update_setting(input)
-    setting_to_update = normalize_setting_name(input.first)
-    ELoot.msg(type: "debug", text: "Normalized #{input.first} as #{setting_to_update}")
-
-    if ELoot.data.settings.keys.include?(setting_to_update)
-      default_value = ELoot.data.settings[setting_to_update].dup
-      ELoot.msg(type: "debug", text: "recognized #{setting_to_update} as as valid #{default_value.class} setting")
-      new_value = coerce_setting_value(setting_to_update, default_value, input[1..-1])
-      ELoot.msg(type: "debug", text: "Normalized #{input[1..-1]} as #{new_value.inspect}")
-
-      data.settings[setting_to_update] = new_value
-      ELoot.msg(type: "info", text: " Updated #{setting_to_update} to #{new_value}")
-      ELoot.save_profile()
-    else
-      ELoot.msg(type: "error", text: " #{setting_to_update} is not a recognized setting. Recognized setting names:")
-      ELoot.msg(type: "error", text: ELoot.data.settings.keys.sort.join("\n"))
-    end
+    EO::Settings.update_from_words(input, ELoot.data.settings, say: ->(type, text) { ELoot.msg(type: type, text: text) }) { ELoot.save_profile }
+  rescue ArgumentError => e
+    ELoot.msg(type: "error", text: e.message)
+    exit
   end
 end
 
@@ -2581,27 +2315,11 @@ module ELoot # Main methods
   end
 end
 
-module ELoot # Regional bounty Selling
+module ELoot # Regional bounty Selling, over libeo's Town
   module Region
-    def self.by_town(tag) = EO::Town.by_town(tag, ELoot.data.towns)
-
-    def self.tag_for_town(town, tag) = EO::Town.in_town(town, tag, ELoot.data.towns)
-
-    # Determine if the bounty town is within the characters region
-    # vaalor ferry, west cart, east cart, RR boot
-    def self.in_region(place)
-      EO::Town.in_region(place, town: Bounty.town, towns: ELoot.data.towns)
-    end
-
-    def self.furrier
-      ELoot.msg(type: "debug")
-      self.in_region("furrier")
-    end
-
-    def self.gemshop
-      ELoot.msg(type: "debug")
-      self.in_region("gemshop")
-    end
+    # A shop in the bounty's town, when it can be reached without leaving the region.
+    def self.furrier = EO::Town.in_region('furrier', Bounty.town)
+    def self.gemshop = EO::Town.in_region('gemshop', Bounty.town)
   end
 end
 
@@ -2609,37 +2327,6 @@ module ELoot # Script utility type methods
   def self.capitalize_words(string)
     cap_string = string.to_s.split.each { |i| i.capitalize! }.join(' ')
     return cap_string
-  end
-
-  def self.disk_usage
-    return unless ELoot.data.settings[:use_disk]
-
-    # The integration hook persists between script runs, but ELoot.data does not.
-    # Seed the current run before deciding whether a new hook is needed.
-    ELoot.data.disk = Disk.mine.nil? ? nil : GameObj[Disk.mine.id]
-    return if ELoot.respond_to?(:room_scope?) && ELoot.room_scope?
-    return if DownstreamHook.list.include?("eloot_diskintegration")
-
-    eloot_diskintegration = proc { |server|
-      case server
-      when /The <a exist="-?\d+" noun="#{Regexp.escape(ELoot.data.disk&.noun.to_s)}">#{Regexp.escape(ELoot.data.disk&.name.to_s)}<\/a>\s+disintegrates/
-        ELoot.data.disk = nil
-      when /Your <a exist="-?\d+" noun="[^"]+">[^<]+<\/a> arrives, following you dutifully\./
-        ELoot.data.disk ||= GameObj[Disk.mine.id] unless Disk.mine.nil?
-      when /A small circular container suddenly appears and floats rather serenely over to you\./
-        sleep 0.2 while Disk.mine.nil?
-        ELoot.data.disk = GameObj[Disk.mine.id]
-      end
-      server
-    }
-    # v5.19.0 introduces a shared hook registry. Hooks are either
-    # removed when their owning script exits, or explicitly marked
-    # to persist and are cleaned up separately.
-    if DownstreamHook.method(:add).parameters.any? { |_t, n| n == :persist }
-      DownstreamHook.add('eloot_diskintegration', eloot_diskintegration, persist: true)
-    else
-      DownstreamHook.add('eloot_diskintegration', eloot_diskintegration)
-    end
   end
 
   def self.reset_disk_full(rebuild: true)
@@ -2657,7 +2344,13 @@ module ELoot # Script utility type methods
     end
   end
 
-  def self.fix_item_key(item) = EO::Hands.ready_word(item)
+  def self.fix_item_key(item)
+    case item.to_s
+    when 'secondary_weapon' then '2weapon'
+    when 'ranged_weapon'    then 'ranged'
+    else item
+    end
+  end
 
   def self.format_number(number)
     whole, decimal = number.to_s.split('.')
@@ -2684,7 +2377,7 @@ module ELoot # Script utility type methods
       raise if lines.any? { |l| l =~ rt_regex }
     rescue => error
       ELoot.room_checkpoint!(error)
-      ELoot.wait_rt
+      EO.settle
       retry
     end
 
@@ -2700,7 +2393,7 @@ module ELoot # Script utility type methods
       result = dothistimeout(command, 3, regex)
       break unless result =~ rt_regex
 
-      ELoot.wait_rt
+      EO.settle
     end
 
     return result
@@ -2709,8 +2402,7 @@ module ELoot # Script utility type methods
   def self.get_script_version
     return @room_scope[:version] if room_scope?
 
-    data = Script.list.find { |x| x.name == Script.current.name }.inspect
-    return data[/version: (\d+\.\d+\.\d+)/i, 1]
+    Script.version(Script.current.name).to_s
   end
 
   def self.help
@@ -2858,7 +2550,7 @@ module ELoot # Script utility type methods
     rows << ["Parameter", { value: "Value", colspan: 6 }]
     rows << :separator
     ELoot.data.settings.each do |item|
-      setting_value = item[0].to_s =~ /gem_horde_inv|alchemy_horde_inv/ ? item[1].join("\n") : ELoot.word_wrap(item[1].to_s)
+      setting_value = item[0].to_s =~ /gem_horde_inv|alchemy_horde_inv/ ? item[1].join("\n") : EO.word_wrap(item[1].to_s)
       rows << [item[0], { value: setting_value, colspan: 6 }]
     end
 
@@ -2901,7 +2593,7 @@ module ELoot # Script utility type methods
       Inventory.open_single_container(sack)
 
       sack.contents.each do |thing|
-        rows << [sack.noun.capitalize, ELoot.word_wrap(thing.name, 25), thing.type.split(',').join("\n"), { value: thing.sellable, colspan: 4 }]
+        rows << [sack.noun.capitalize, EO.word_wrap(thing.name, 25), thing.type.split(',').join("\n"), { value: thing.sellable, colspan: 4 }]
       end
     end
 
@@ -2933,7 +2625,7 @@ module ELoot # Script utility type methods
     rows << :separator
     rows << [{ value: " *** GameObj Types ***", colspan: 7 }]
     rows << :separator
-    rows << [{ value: "#{ELoot.word_wrap(GameObj.type_data.map { |k, _v| k }.sort.join(', '), 100)}", colspan: 7 }]
+    rows << [{ value: "#{EO.word_wrap(GameObj.type_data.map { |k, _v| k }.sort.join(', '), 100)}", colspan: 7 }]
 
     table = Terminal::Table.new :title => "#{Script.current.name.capitalize} v#{ELoot.get_script_version}", :rows => rows
 
@@ -2969,27 +2661,135 @@ module ELoot # Script utility type methods
     ELoot.data.settings[:unlootable].push(item.name)
     ELoot.save_profile()
   end
-
-  def self.word_wrap(text, width = 60)
-    text.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").strip
-  end
-
-  def self.wait_rt
-    sleep 0.2
-    waitcastrt?
-    waitrt?
-    sleep 0.2
-  end
 end
 
-module ELoot # Game utility type methods
+module ELoot # Game utility type methods, over libeo
+  def self.fwi?(room) = EO::Town.fwi?(room)
+
+  def self.shop_unavailable_in_town?(shop)
+    return false if ELoot.data.settings[:sell_fwi]
+    EO::Town.shop_elsewhere?(shop)
+  end
+
+  # Where to sell, or nil when the shop is not in this town and going would
+  # leave the area; every shop walk comes through here.
+  def self.nearest_shop(shop) = EO::Town.nearest_shop(shop, far_is_fine: ELoot.data.settings[:sell_fwi])
+
+  def self.fwi_return
+    return unless EO::Town.fwi_return(trinket: UserVars.mapdb_fwi_trinket, return_room: UserVars.mapdb_fwi_return_room) == :no_trinket
+    ELoot.msg(type: "yellow", text: "  Please set your FWI trinket in go2 setup. \n")
+    exit
+  end
+
+  def self.find_trash = EO::Town.trash_can
+
+  def self.find_worker
+    worker = EO::Town.pool_worker
+    if worker.nil?
+      ELoot.msg(type: "info", text: " Failed to find the locksmith pool NPC")
+      ELoot.msg(type: "info", text: " GameObj.npcs: #{GameObj.npcs}")
+      ELoot.msg(type: "info", text: " Update your map db; ;repository download-mapdb")
+      ELoot.msg(type: "info", text: " If the error persists then report this to Elanthia-Online")
+      exit
+    end
+    ELoot.msg(type: "debug", text: "worker: #{worker}")
+    worker
+  end
+
+  def self.in_hand?(obj) = EO::Hands.holding?(obj)
+
+  def self.marked_unsellable?(obj)
+    marked = EO::Items.marked?(obj)
+    ELoot.msg(type: "info", text: " #{obj.name} is marked as unsellable, keeping it.") if marked
+    marked
+  end
+
+  # Trash or drop obj; true when it left the hand, false when it is marked
+  # or every attempt failed (the caller stows it back).
+  def self.toss(obj, toss_cmd, attempts: 1, poll: false, notify_on_keep: false)
+    case EO::Items.toss(obj, toss_cmd, attempts: attempts, poll: poll)
+    when :tossed then true
+    when :marked
+      ELoot.msg(type: "info", text: " #{obj.name} is marked as unsellable, keeping it.")
+      false
+    else
+      ELoot.msg(type: "info", text: " #{obj.name} isn't trashed so maybe its special...keeping it.") if notify_on_keep
+      false
+    end
+  end
+
   def self.box_phase(box)
     return unless ELoot.data.settings[:loot_phase]
-
     EO::Items.phase(box)
   end
 
   def self.box_unphase(box) = EO::Items.unphase(box)
+
+  def self.decurse(obj)
+    return true unless obj.type =~ /cursed/
+    return false unless ELoot.data.settings[:loot_types].include?("cursed")
+    case EO::Items.decurse(obj, gauntlet: ELoot.data.gauntlet)
+    when :clean, :cast, :gauntlet then true
+    when :no_mana
+      ELoot.msg(type: "info", text: "** #{obj.name} is cursed and you don't have enough mana to cast 315.", space: true)
+      false
+    else false
+    end
+  end
+
+  def self.disk_usage
+    return unless ELoot.data.settings[:use_disk]
+    # The hook persists between script runs, but ELoot.data does not.
+    ELoot.data.disk = EO::Items::Disk.mine
+    return if ELoot.respond_to?(:room_scope?) && ELoot.room_scope?
+    EO::Items::Disk.watch(->(disk) { ELoot.data.disk = disk if ELoot.data }, current: -> { ELoot.data&.disk })
+  end
+
+  def self.wait_for_disk
+    ELoot.msg(type: "debug")
+    return unless ELoot.data.settings[:use_disk]
+    return unless ELoot.data.disk
+    ELoot.msg(type: "info", text: " Waiting for your disk to arrive") if ELoot.data.disk.status&.include?("gone") || Disk.mine.nil?
+    ELoot.data.disk = EO::Items::Disk.wait
+  end
+
+  def self.fresh_contents(container) = EO::Containers.fresh_contents(container)
+
+  def self.disk_contents
+    ELoot.wait_for_disk
+    EO::Containers.fresh_contents(ELoot.data.disk)
+  end
+
+  def self.silver_check = Lich::Gemstone::Currency.silver(refresh: true).to_i
+
+  # Deposit a note in hand at the nearest bank off Four Winds Isle, and come back.
+  def self.deposit_note
+    note = Lich::Gemstone::Bank.note_in_hand or return
+    current_room = Room.current.id
+    _previous, distance = Room.current.dijkstra
+    banks = Room.list.select { |room| room.tags.include?('bank') && !ELoot.fwi?(room) }.map(&:id)
+    local_bank = banks.select { |id| distance[id] }.min_by { |id| distance[id] }
+    ELoot.go2(local_bank)
+    Lich::Gemstone::Bank.deposit_note(note)
+    ELoot.go2(current_room)
+  end
+
+  def self.read_note = Lich::Gemstone::Bank.note_value.to_i
+
+  def self.silver_withdraw(amount)
+    return if ELoot.silver_check >= amount && Char.percent_encumbrance < 20
+    ELoot.go2('bank')
+    ELoot.silver_deposit
+    Lich::Gemstone::Bank.withdraw(amount)
+    return unless ELoot.silver_check < amount
+    ELoot.msg(type: "info", text: " Not enough silver in current area's bank.")
+    exit
+  end
+
+  def self.f2p?
+    return false if XMLData.game == 'GST'
+    Lich::Gemstone::Bank.f2p?
+  end
 
   def self.change_stance(stance)
     ELoot.msg(type: "debug", text: "stance: #{stance}")
@@ -2997,60 +2797,6 @@ module ELoot # Game utility type methods
     return if Effects::Debuffs.active?("Frenzy")
 
     Stance.change(stance)
-  end
-
-  def self.decurse(obj)
-    return true unless obj.type =~ /cursed/
-    return false unless ELoot.data.settings[:loot_types].include?("cursed")
-
-    if Spell[315].known? && !Spell[315].affordable?
-      mana_regex = Regexp.union(
-        /An invigorating rush of mana pulses through you/i,
-        /You are too mentally fatigued to attempt this ability/i,
-        /You're already at full mana./i,
-        /Your mana control skills are not yet advanced/i,
-      )
-      dothistimeout "mana pulse", 2, mana_regex
-    end
-
-    if Spell[315].known? && !Spell[315].affordable?
-      ELoot.msg(type: "info", text: "** #{obj.name} is cursed and you don't have enough mana to cast 315.", space: true)
-      return false
-    end
-
-    if Spell[315].known? && Spell[315].affordable?
-      Spell[315].cast("at ##{obj.id}")
-      return true
-    end
-
-    unless ELoot.data.gauntlet.nil?
-      lines = ELoot.get_command("look ##{ELoot.data.gauntlet.id}", /You are currently wearing the <a exist="[^"]+" noun="gauntlet">eonake gauntlet<\/a>/, silent: true, quiet: true)
-      if lines.any? { |l| l =~ /(right|left) hand/ }
-        gauntlet_hand = Regexp.last_match(1)
-      end
-
-      if GameObj.right_hand.name == 'Empty'
-        return true if gauntlet_hand == 'right'
-        if gauntlet_hand == 'left'
-          ELoot.get_res("remove ##{ELoot.data.gauntlet.id}", /You slip the gauntlet from/)
-          ELoot.get_res("swap", /You swap/) unless GameObj.right_hand.id == ELoot.data.gauntlet.id
-          ELoot.get_res("wear ##{ELoot.data.gauntlet.id}", /You slip the eonake gauntlet over/)
-          return true
-        end
-      end
-
-      if GameObj.left_hand.name == 'Empty'
-        return true if gauntlet_hand == 'left'
-        if gauntlet_hand == 'right'
-          ELoot.get_res("remove ##{ELoot.data.gauntlet.id}", /You slip the gauntlet from/)
-          ELoot.get_res("swap", /You swap/) unless GameObj.left_hand.id == ELoot.data.gauntlet.id
-          ELoot.get_res("wear ##{ELoot.data.gauntlet.id}", /You slip the eonake gauntlet over/)
-          return true
-        end
-      end
-    end
-
-    return false
   end
 
   def self.find_boxes
@@ -3072,7 +2818,7 @@ module ELoot # Game utility type methods
     }
 
     if ELoot.data.settings[:use_disk]
-      ELoot.wait_rt
+      EO.settle
       items += ELoot.disk_contents.find_all { |obj| obj.type =~ /box/ }
     end
 
@@ -3107,17 +2853,6 @@ module ELoot # Game utility type methods
     return box_list
   end
 
-  def self.find_trash = EO::Town.trash_can
-
-  def self.in_hand?(obj) = EO::Hands.holding?(obj)
-
-  def self.marked_unsellable?(obj)
-    marked = EO::Items.marked?(obj)
-    ELoot.msg(type: "info", text: " #{obj.name} is marked as unsellable, keeping it.") if marked
-
-    marked
-  end
-
   # Attempts to trash/drop obj via toss_cmd ("trash" or "drop"), retrying up to
   # `attempts` times while obj remains in hand. Checks mark status first and
   # refuses to toss anything marked as unsellable.
@@ -3128,49 +2863,6 @@ module ELoot # Game utility type methods
   #
   # Returns true if obj left hand (disposed), false if it's still in hand
   # (marked, or every attempt failed) - callers should stow it back in that case.
-  def self.toss(obj, toss_cmd, attempts: 1, poll: false, notify_on_keep: false)
-    marked = -> { ELoot.msg(type: "info", text: " #{obj.name} is marked as unsellable, keeping it.") }
-    result = EO::Items.toss(obj, toss_cmd, attempts: attempts, poll: poll, on_marked: marked)
-    return true if result == :tossed
-
-    ELoot.msg(type: "info", text: " #{obj.name} isn't trashed so maybe its special...keeping it.") if notify_on_keep && result == :kept
-
-    false
-  end
-
-  def self.find_worker
-    worker = nil
-    lines = nil
-    name = $1 if Room.current.tags.find { |w| w =~ /meta:boxpool:npc:(.*)/ }
-
-    unless name
-      name = ["worker", "trickster", "Jahck", "woman", "attendant", "gnome", "merchant", "dwarf"]
-    end
-
-    20.times {
-      worker = (GameObj.npcs).find { |obj| obj.name =~ Regexp.union(name) }
-      break if worker
-
-      lines = ELoot.get_command("look", /<resource picture/, silent: true, quiet: true)
-      sleep 0.1
-    }
-
-    if worker.nil?
-      ELoot.msg(type: "info", text: " Failed to find the locksmith pool NPC")
-      ELoot.msg(type: "info", text: " GameObj.npcs: #{GameObj.npcs}")
-      ELoot.msg(type: "info", text: " Lines: #{lines}")
-
-      ELoot.msg(type: "info", text: " Update your map db; ;repository download-mapdb")
-      ELoot.msg(type: "info", text: " If the error persists then report this to Elanthia-Online")
-      exit
-    end
-
-    ELoot.msg(type: "debug", text: "worker: #{worker}")
-    return worker
-  end
-
-  def self.fwi?(room) = EO::Town.fwi?(room)
-
   # The Hinterwilds town (Coldriver Village) has only a gemshop, a furrier and
   # the locksmith pool -- no pawnshop, collectibles, consignment or chronomage.
   # Any trip to one of those from here leaves the area entirely (the nearest
@@ -3179,10 +2871,6 @@ module ELoot # Game utility type methods
   # into travelling to sell. Shared by every shop-routing path so a new one
   # can't quietly reintroduce the cross-continent walk.
   HINTERWILDS_TOWN_UID ||= 7503205
-
-  def self.shop_unavailable_in_town?(shop)
-    EO::Town.shop_elsewhere?(shop, travels: ELoot.data.settings[:sell_fwi])
-  end
 
   # Single way to ask "where do I sell this, and should I even go?". Returns the
   # nearest room tagged for the shop, or nil when the shop doesn't exist in this
@@ -3197,22 +2885,6 @@ module ELoot # Game utility type methods
   # pawnshop retry ended up walking Hinterwilds hunters to Icemule Trace.
   # @param shop [String] shop tag, e.g. "pawnshop"
   # @return [Integer, nil] room id to travel to, or nil to skip this shop
-  def self.nearest_shop(shop)
-    EO::Town.nearest_shop(shop, travels: ELoot.data.settings[:sell_fwi])
-  end
-
-  def self.fwi_return
-    return unless EO::Town.leave_fwi(trinket: UserVars.mapdb_fwi_trinket, return_room: UserVars.mapdb_fwi_return_room) == :no_trinket
-
-    ELoot.msg(type: "yellow", text: "  Please set your FWI trinket in go2 setup. \n")
-    exit
-  end
-
-  def self.f2p?
-    return false if XMLData.game == 'GST'
-    ELoot.data.account_type =~ /F2P|Free/i
-  end
-
   def self.go2(place)
     ELoot.refuse_room_operation!('travel')
     ELoot.msg(type: "debug", text: "place: #{place}")
@@ -3225,9 +2897,9 @@ module ELoot # Game utility type methods
       place = fwi_place.id if fwi_place
     end
 
-    return if Room.current.id == place || Room.current.tags.include?(place)
+    return if EO.at?(place)
 
-    if Room.current.id.nil?
+    if Room.current&.id.nil?
       ELoot.msg(type: "error", text: ' unknown room location')
     end
 
@@ -3242,71 +2914,18 @@ module ELoot # Game utility type methods
         place = 'alchemy'
       end
 
-      Script.run('go2', "town --disable-confirm", { quiet: true }) if Room.current.tags.any?(/nexus/)
+      EO.go2('town') if Room.current.tags.any?(/nexus/)
 
       result = dothistimeout("urchin guide #{place}", 3, ELoot.data.urchin_msg)
       if result =~ /You currently have no access to the urchin/
         UserVars.mapdb_use_urchins = false
-        Script.run('go2', "#{place} --disable-confirm", { quiet: true })
+        EO.go2(place)
       elsif result.nil?
         ELoot.msg(type: "error", text: " Unknown result from urchin guide usage.")
       end
     else
-      Script.run('go2', "#{place} --disable-confirm", { quiet: true })
+      EO.go2(place)
     end
-  end
-
-  def self.deposit_note
-    return unless (note = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ /\b(?:note|scrip|chit)\b/ })
-
-    current_room = Room.current.id
-
-    _where_is_previous_var, shortest_distances = Room.current.dijkstra
-
-    bank_rooms = Room.list.find_all { |room| room.tags.include?('bank') && !ELoot.fwi?(room) }.map(&:id)
-
-    # Filter out rooms that have no path (distance is nil)
-    reachable_banks = bank_rooms.select { |room_id| shortest_distances[room_id] }
-
-    # Pick the bank room with the shortest distance
-    local_bank = reachable_banks.min_by { |room_id| shortest_distances[room_id] }
-
-    ELoot.go2(local_bank)
-
-    fput("deposit note")
-
-    20.times do
-      break if !ELoot.in_hand?(note)
-      sleep 0.1
-    end
-
-    ELoot.go2(current_room)
-  end
-
-  def self.read_note
-    result = 0
-    note = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ /\b(?:note|scrip|chit)\b/ }
-    return unless note
-
-    line = ELoot.get_res("read ##{note.id}", /Hold in right hand to use/)
-
-    if line =~ /has a value of (.*?) silver and reads/
-      result = $1.delete(",").to_i
-    end
-
-    return result
-  end
-
-  def self.silver_check
-    wealth_pattern = /^You have (no|[,\d]+|but one) silver with you/
-    wealth = ELoot.get_command("wealth quiet", wealth_pattern, silent: true, quiet: true).join(" ")
-    coins = 0
-    if wealth.gsub('but one', '1') =~ wealth_pattern
-      coins = $1.gsub(',', '').to_i
-    end
-
-    ELoot.msg(type: "debug", text: "coins: #{coins}")
-    return coins
   end
 
   def self.silver_deposit(deposit_bag = false)
@@ -3323,7 +2942,7 @@ module ELoot # Game utility type methods
 
       if ELoot.data.coin_bag.nil? && ELoot.data.gambling_kit.nil?
         fput "open ##{ELoot.data.coin_hand.id}"
-        ELoot.wait_rt
+        EO.settle
       else
         begin
           lines = ELoot.get_command("look in ##{ELoot.data.coin_hand.id}", /Inside the|There is nothing|That is closed/i, silent: true, quiet: true)
@@ -3336,11 +2955,11 @@ module ELoot # Game utility type methods
           if lines.any? { |l| l =~ /Inside the .* you see approximately [,\d]+ silver coins\.|Get a job/i }
             ELoot.get_res("get coins from ##{ELoot.data.coin_bag.id}", /You reach into your/)
             ELoot.data.coin_bag_full = false
-            ELoot.wait_rt
+            EO.settle
           elsif lines.any? { |l| l =~ /There are [,\d]+ silvers scattered/ }
             ELoot.get_res("gather ##{ELoot.data.gambling_kit.id}", /You dig inside/)
             ELoot.data.gambling_kit_full = false
-            ELoot.wait_rt
+            EO.settle
           elsif lines.any? { |l| l =~ /There is nothing in there/ }
             ELoot.data.coin_bag_full = false
             ELoot.data.gambling_kit_full = false
@@ -3371,130 +2990,21 @@ module ELoot # Game utility type methods
     # Any notes on us?
     note = StowList.stow_list[:default].contents.find { |obj| obj.noun =~ /^(?:note|scrip|chit)$/ }
 
-    # Head over to the bank if something to do.
-    current_silvers = ELoot.silver_check
-    return unless (current_silvers != keep_silvers) || (note && !ELoot.f2p?)
-
-    ELoot.go2('bank')
-
-    unless ELoot.f2p?
-      if XMLData.room_title == '[Pinefar, Depository]'
-        dothistimeout "give banker #{current_silvers} silver", 2, ELoot.data.deposit_regex
-      else
-        dothistimeout "deposit all", 2, ELoot.data.deposit_regex
-      end
-    else
-      # F2P accounts have to be handled a little different due to bank capacity
-      loop do
-        lines = ELoot.get_command("bank account", /You currently have an account/, silent: true, quiet: true)
-
-        if lines.find { |line| line.match(/in the amount of (?<silver>[\d,]+) silver/) }
-          silver_balance = Regexp.last_match[:silver].gsub(',', '').to_i
-        end
-
-        if lines.find { |line| line.match(/a maximum of (?<silver>[\d,]+) silvers/) }
-          silver_max = Regexp.last_match[:silver].gsub(',', '').to_i
-        end
-
-        # Make sure we have the correct current silvers
-        current_silvers = ELoot.silver_check
-
-        # Do we have enough to deposit without taking out a note?
-        if (silver_balance + current_silvers) < silver_max
-          result = dothistimeout("deposit #{current_silvers}", 2, Regexp.union(ELoot.data.deposit_regex, /you don't have access/i)) if current_silvers.positive?
-          if result =~ /you don't have access/i
-            ELoot.msg("info", " You don't have a bank in this town. Exiting...")
-            exit
-          end
-          break
-        else
-          deposit_size = silver_max - silver_balance
-          dothistimeout("deposit #{deposit_size}", 2, ELoot.data.deposit_regex)
-
-          # Do we have enough to pull a full note and still have 10,000 buffer to deposit?
-          current_silvers = ELoot.silver_check
-
-          note_size = current_silvers >= 10000 ? silver_max : (silver_max - (10000 - current_silvers))
-          dothistimeout("withdraw #{note_size}", 2, /The teller/)
-          note = [GameObj.right_hand, GameObj.left_hand].find { |obj| obj.noun =~ /^(?:note|scrip|chit)$/ }
-          Inventory.single_drag(note)
-        end
-      end
-    end
-
-    # Finally withdraw any keeper silvers and stow note if given
-    if XMLData.room_title == '[Pinefar, Depository]'
-      dothistimeout("ask banker for #{keep_silvers} silvers", 2, ELoot.data.withdraw_regex) if keep_silvers.positive?
-    else
-      dothistimeout("withdraw #{keep_silvers}", 2, ELoot.data.withdraw_regex) if keep_silvers.positive?
-    end
-    note = [GameObj.right_hand, GameObj.left_hand].find { |obj| obj.noun =~ /^(?:note|scrip|chit)$/ }
-    Inventory.single_drag(note) if note
-    ELoot.wait_rt
-  end
-
-  def self.f2p_silver_withdraw(amount)
-    # f2p accounts have a max balance, and the silver_deposit() function will withdraw notes when the
-    # max balance is reached. sometimes eloot needs to withdraw sums such as 8k silvers to run errands,
-    # but a f2p bank account will frequently not have that much available. when that happens, this will
-    # deposit the note(s) on hand to make enough silver available for the desired withdrawal.
-
-    balance = 0
-    lines = ELoot.get_command("check balance", /(?:The|A prim) teller/, silent: true, quiet: true)
-    if lines.find { |line| line.match(/(?:Your balance is currently at |his temple for a moment.  ")(?<silver>[\d,]+)/) }
-      balance = Regexp.last_match[:silver].gsub(',', '').to_i
-    end
-
-    if balance >= amount
-      dothistimeout("withdraw #{amount} silver", 2, /The teller/)
-      return
-    end
-
-    bag = StowList.stow_list[:default]
-    5.times do
-      note = bag.contents.find { |obj| obj.noun =~ /^(?:note|scrip|chit)$/ }
-      break if note.nil?
-
-      # drain the account to make room for a note that could be as large as the f2p max balance
-      if balance > 0
-        dothistimeout("withdraw #{balance} silver", 2, /The teller/)
-        amount -= balance
-        balance = 0
-      end
-
-      # deposit the note and then attempt to withdraw the amount of silver needed
-      Inventory.drag(note)
-      lines = ELoot.get_command("deposit ##{note.id}", /You (?:deposit|hand your)|takes your/, silent: true, quiet: true)
-      break if lines.find { |line| line.match(/(?:worth|for) (?<silver>[\d,]+)/) }.nil?
-      note_amount = Regexp.last_match[:silver].gsub(',', '').to_i
-      withdraw_amount = note_amount >= amount ? amount : note_amount
-      dothistimeout("withdraw #{withdraw_amount} silver", 2, /The teller/)
-      amount -= withdraw_amount
-      break if amount <= 0
-    end
-  end
-
-  def self.silver_withdraw(amount)
-    if ELoot.silver_check >= amount && Char.percent_encumbrance < 20
-      return
-    end
-
-    ELoot.go2('bank')
-
-    ELoot.silver_deposit
-
-    if XMLData.room_title == '[Pinefar, Depository]'
-      fput("ask banker for #{amount} silvers")
-    elsif ELoot.f2p?
-      f2p_silver_withdraw(amount)
-    else
-      fput("withdraw #{amount} silvers")
-    end
-
-    if ELoot.silver_check < amount
-      ELoot.msg(type: "info", text: " Not enough silver in current area's bank.")
+    # Head over to the bank if something to do: deposit, take the keeper silvers back
+    case EO::Town.keep_silver(keep: keep_silvers, go: -> { ELoot.go2('bank') }, force: note && !ELoot.f2p?)
+    when :none then return
+    when :no_bank
+      ELoot.msg(type: "info", text: " You don't have a bank in this town. Exiting...")
       exit
+    when :not_there, :refused
+      # libeo said why; nothing was banked, so there is no note to put away
+      return
     end
+
+    # Stow a note if given
+    note = Lich::Gemstone::Bank.note_in_hand
+    Inventory.single_drag(note) if note
+    EO.settle
   end
 
   def self.use_coin_hand
@@ -3527,7 +3037,7 @@ module ELoot # Game utility type methods
 
         lines = Lich::Util.issue_command(get_coins, /You (?:place|toss)|There is only room|That might work better|needs to be open|cannot find room|coin .+ is already full!$/i)
 
-        ELoot.wait_rt if ELoot.data.gambling_kit
+        EO.settle if ELoot.data.gambling_kit
 
         if lines.any? { |l| l =~ /That might work better if you opened|needs to be open/i }
           ELoot.get_command("open ##{ELoot.data.coin_hand.id}", ELoot.data.silent_open)
@@ -3540,7 +3050,7 @@ module ELoot # Game utility type methods
           ELoot.data.coin_bag_full = true
         elsif lines.find { |line| line.match(/You cannot find room to store any more silver/) }
           ELoot.data.gambling_kit_full = true
-          ELoot.wait_rt
+          EO.settle
         end
       rescue => error
         ELoot.room_checkpoint!(error)
@@ -3553,56 +3063,120 @@ module ELoot # Game utility type methods
     end
   end
 
-  def self.wait_for_disk
-    ELoot.msg(type: "debug")
-
-    return unless ELoot.data.settings[:use_disk]
-    return unless ELoot.data.disk
-
-    if ELoot.data.disk.status&.include?("gone") || Disk.mine.nil?
-      ELoot.msg(type: "info", text: " Waiting for your disk to arrive")
-
-      50.times do
-        break if Disk.mine
-        sleep 0.1
-      end
-    end
-
-    if Disk.mine
-      ELoot.data.disk = GameObj[Disk.mine.id] # Make sure we have the correct disk object
-      Inventory.open_single_container(ELoot.data.disk)
-    else
-      ELoot.data.disk = nil
-    end
-  end
-
   # Lich only updates a container's contents when the game sends a refresh, and some
   # containers never get one (a disk, a skin sack emptied by the furrier), so the cached
   # contents can still list whatever has since been taken out. Look in fresh.
   # @param container [GameObj, nil]
   # @return [Array<GameObj>] the container's contents, or [] with no container
-  def self.fresh_contents(container) = EO::Containers.fresh_contents(container)
-
   # @return [Array<GameObj>] the disk's contents, or [] with no disk
-  def self.disk_contents
-    ELoot.wait_for_disk
-    ELoot.fresh_contents(ELoot.data.disk)
-  end
 end
 
-module ELoot # Inventory methods
+module ELoot # Inventory methods, over libeo's Hands and Containers
   module Inventory
     # READY-list key for a held item, or nil when it isn't on the original READY list.
-    def self.ready_item_key(item)
-      ReadyList.ready_list.find { |key, value| ELoot.data.original_readylist.include?(key) && value.id == item.id }&.first
-    end
+    def self.ready_item_key(item) = EO::Hands.ready_key(item, keys: ELoot.data.original_readylist)
 
     def self.container_contents(container, time: 3)
       ELoot.msg(type: "debug", text: "container: #{container.inspect}")
-
-      EO::Containers.contents_ready?(container, seconds: time, from: caller[0])
+      return true if EO::Containers.contents_ready?(container, seconds: time)
+      ELoot.msg(type: "info", text: " Unable to determine the contents of  #{container.name}.")
+      false
     end
 
+    # Put away what is in a hand: a readied weapon to its sheath, else a sack.
+    def self.put_away(hand)
+      return if hand.nil? || hand.id.nil?
+      key = Inventory.ready_item_key(hand)
+      return if key && Inventory.stow_ready_list(key, hand)
+      Inventory.single_drag(hand) if ELoot.in_hand?(hand)
+    end
+
+    def self.drag(item, to = "hand") # drags things from inventory to a hand
+      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
+      return if item.nil? || item.empty? || item.name == "Empty"
+      case EO::Hands.take(item, to: to.to_sym, stow: ->(hand) { Inventory.put_away(hand) }, favor_left: ELoot.data.settings[:favor_left])
+      when :held then true
+      when :crippled
+        ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
+        exit
+      when :overloaded
+        ELoot.msg(type: "yellow", text: " Unable to pick up the #{item.name}. Exiting...")
+        exit
+      when :missing
+        StowList.stow_list.each_value { |bag| Inventory.open_single_container(bag) }
+        lost = Sell.check_inventory.find { |obj| obj.id == item.id }
+        return Inventory.drag(lost, to) if lost
+        ELoot.msg(type: "info", text: " Can't find #{item.name}. Looked in all the bags in case it got misplaced.")
+        false
+      else false
+      end
+    end
+
+    def self.wear(item)
+      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
+      case EO::Hands.wear(item)
+      when :worn then true
+      when :cant then false
+      else
+        ELoot.msg(type: "warn", text: " Something is wrong. Unable to wear the #{item}. Exiting to avoid losing items.")
+        ELoot.msg(type: "warn", text: " Please grab a short log of what just happened and post it to the scripting discord for debugging")
+        exit
+      end
+    end
+
+    def self.free_hand
+      return unless EO::Hands.free_hand(stow: ->(hand) { Inventory.put_away(hand) }, favor_left: ELoot.data.settings[:favor_left]) == :crippled
+      ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
+      exit
+    end
+
+    def self.free_hands(right: false, left: false, both: false)
+      Inventory.put_away(GameObj.right_hand) if (right || both) && checkright
+      Inventory.put_away(GameObj.left_hand) if (left || both) && checkleft
+    end
+
+    def self.open_single_container(sack)
+      ELoot.msg(type: "debug", text: "sack: #{sack}")
+      return if sack.nil? || sack.empty?
+      container = if sack.is_a?(GameObj)
+                    sack
+                  elsif StowList.stow_list[sack.to_sym]
+                    StowList.stow_list[sack.to_sym]
+                  elsif GameObj[sack]
+                    GameObj[sack]
+                  end
+      if container.nil?
+        ELoot.msg(type: "debug", text: "not able to determine proper GameObj lookup for #{sack.inspect}")
+        return
+      end
+      # contents known is not open under the inventory feed, which lists a closed bag's too
+      if EO::Containers.listed?(container) && EO::Containers.closed?(container) != true
+        ELoot.data.stow.opened(container)
+        return
+      end
+      state = EO::Containers.ensure_open(container)
+      ELoot.data.stow.opened(container) unless state == :unknown
+      return if state == :nothing
+      ELoot.data.sell_containers.push(container) unless ELoot.data.sell_containers.include?(container)
+    end
+
+    def self.store_item(bag, item, is_skinner = false)
+      ELoot.msg(type: "debug", text: "bag: #{bag.inspect} | item: #{item.inspect}")
+      return if item.nil? || item.name == "Empty"
+      pending_stow = ELoot.record_room_tool_stow(item, bag) if is_skinner
+
+      result = ELoot.data.stow.put(bag, item, loose: is_skinner)
+      ELoot.msg(type: "debug", text: "sacks_full(#{bag.name}) - item: #{item.inspect}") if result == :full
+      %i[stored unlootable crumbled].include?(result)
+    ensure
+      pending_stow[:settled] = true if pending_stow && !ELoot.in_hand?(item)
+    end
+
+    def self.stow_ready_list(ready_item, item) = EO::Hands.stow_ready(ready_item, item)
+
+    def self.return_ready_list(ready_item, item) = EO::Hands.ready(ready_item, item)
+
+    # READY-list key for a held item, or nil when it isn't on the original READY list.
     # Determines if an item is a transmog (allows transferring its appearance onto another worn item).
     # Only jewelry/clothing/armor/weapon/uncommon items with an after_name are candidates; for those we look at ANALYZE
     # output for the transmog descriptor line. Callers that already have ANALYZE output for the
@@ -3649,7 +3223,10 @@ module ELoot # Inventory methods
       end
     end
 
-    def self.close_container(bag) = EO::Containers.close(bag)
+    def self.close_container(bag)
+      ELoot.data.stow.closed(bag)
+      ELoot.get_res("close ##{bag.id}", ELoot.data.close_regex)
+    end
 
     def self.close_sell_containers
       return unless ELoot.data.settings[:keep_closed]
@@ -3660,92 +3237,6 @@ module ELoot # Inventory methods
 
         Inventory.close_container(sack)
       }
-    end
-
-    def self.drag(item, to = "hand") # drags things from inventory to a hand
-      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
-
-      return if item.nil? || item.empty? || item.name == "Empty"
-
-      # make sure the hand we want is free
-      case to
-      when "hand"
-        Inventory.free_hand
-        to = GameObj.right_hand.id.nil? ? 'right' : 'left'
-      when "right"
-        Inventory.free_hands(right: true)
-      when "left"
-        Inventory.free_hands(left: true)
-      end
-
-      result = EO::Hands.take(item, to)
-      return true if result == :held
-
-      if result == :overloaded
-        ELoot.msg(type: "yellow", text: " Unable to pick up the #{item.name}. Exiting...")
-        exit
-      end
-
-      if result == :missing
-        StowList.stow_list.each_value do |bag_obj|
-          Inventory.open_single_container(bag_obj)
-        end
-
-        lost_item = Sell.check_inventory.find { |obj| obj.id == item.id }
-        if lost_item
-          return Inventory.drag(lost_item, to)
-        else
-          ELoot.msg(type: "info", text: " Can't find #{item.name}. Looked in all the bags in case it got misplaced.")
-        end
-
-      end
-
-      return false
-    end
-
-    def self.wear(item)
-      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
-
-      return false if item.nil? || item.empty? || item.name == "Empty"
-
-      result = EO::Hands.wear(item)
-      return true if result == :worn
-
-      # Still in hand? Something is wrong, inform the player and exit.
-      if result == :stuck
-        ELoot.msg(type: "warn", text: " Something is wrong. Unable to wear the #{item}. Exiting to avoid losing items.")
-        ELoot.msg(type: "warn", text: " Please grab a short log of what just happened and post it to the scripting discord for debugging")
-        exit
-      end
-    end
-
-    def self.free_hand
-      empty = ->(side) { Inventory.free_hands(side => true) }
-      return unless EO::Hands.free_hand(favor_left: ELoot.data.settings[:favor_left], empty: empty) == :crippled
-
-      ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
-      exit
-    end
-
-    def self.free_hands(right: false, left: false, both: false)
-      if (right || both) && checkright
-        # Are we holding a ready_list weapon? If so put it into its sheath
-        if !GameObj.right_hand.id.nil? && (ready_item = Inventory.ready_item_key(GameObj.right_hand))
-          Inventory.stow_ready_list(ready_item, GameObj.right_hand)
-        end
-        if checkright
-          Inventory.single_drag(GameObj.right_hand) # drags single item into container
-        end
-      end
-
-      if (left || both) && checkleft
-        if !GameObj.left_hand.id.nil? && (ready_item = Inventory.ready_item_key(GameObj.left_hand))
-          Inventory.stow_ready_list(ready_item, GameObj.left_hand)
-        end
-        if checkleft
-          Inventory.single_drag(GameObj.left_hand) # drags single item into container
-        end
-      end
     end
 
     def self.open_loot_containers(item)
@@ -3760,48 +3251,7 @@ module ELoot # Inventory methods
       # Early return if not keeping closed since they all get opened on startup
       return unless ELoot.data.settings[:keep_closed]
 
-      Inventory.open_single_container(StowList.stow_list[:default])
-
-      # Dynamically open all overflow containers
-      overflow_keys = StowList.stow_list.keys.select { |k| k.to_s.start_with?('overflow_container') }
-      overflow_keys.each do |key|
-        Inventory.open_single_container(StowList.stow_list[key])
-      end
-
-      containers = Array.new
-      item.each { |loot|
-        loot_type = loot.type.to_sym
-        next if StowList.stow_list[loot_type].nil?
-
-        unless containers.include?(StowList.stow_list[loot_type].id)
-          Inventory.open_single_container(StowList.stow_list[loot_type])
-          containers.push(StowList.stow_list[loot_type].id)
-        end
-      }
-    end
-
-    def self.open_single_container(sack)
-      ELoot.msg(type: "debug", text: "sack: #{sack}")
-
-      return if sack.nil? || sack.empty?
-
-      container = sack.is_a?(GameObj) ? sack : StowList.stow_list[sack.to_sym]
-
-      if sack.is_a?(GameObj)
-        container = sack
-      elsif StowList.stow_list[sack.to_sym]
-        container = StowList.stow_list[sack.to_sym]
-      elsif GameObj[sack]
-        container = GameObj[sack]
-      else
-        ELoot.msg(type: "debug", text: "not able to determine proper GameObj lookup for #{sack.inspect}")
-        return
-      end
-
-      # Open it if it is closed; one this opened is kept to close again later
-      return unless EO::Containers.ensure_open(container) == :opened
-
-      ELoot.data.sell_containers.push(container) unless ELoot.data.sell_containers.include?(container)
+      ELoot.data.stow.bags_for(item).each { |bag| Inventory.open_single_container(bag) }
     end
 
     def self.return_hands
@@ -3827,9 +3277,7 @@ module ELoot # Inventory methods
       end
     end
 
-    def self.return_ready_list(ready_item, item) = EO::Hands.return_ready(ready_item, item)
-
-    def self.single_drag(item, phase_thing = true, on_full: :pause) # drags single item into container
+    def self.single_drag(item, phase_thing = true, on_full: :pause, room_made: false) # drags single item into container
       ELoot.msg(type: "debug", text: "item: #{item.inspect} | on_full: #{on_full}")
 
       stored = false
@@ -3837,24 +3285,14 @@ module ELoot # Inventory methods
       return if Inventory.single_drag_box(item)
 
       # Try sacks in order of priority: item-specific, default, overflow containers (in order)
-      containers = [
-        StowList.stow_list[item.type.to_sym],
-        StowList.stow_list[:default]
-      ]
-
-      # Dynamically add all overflow containers in order
-      overflow_keys = StowList.stow_list.keys.select { |k| k.to_s.start_with?('overflow_container') }.sort_by do |k|
-        # Sort by extracting number from key (overflow_container = 0, overflow_container_2 = 2, etc.)
-        k.to_s.match(/overflow_container_?(\d*)$/)[1].to_i
-      end
-      overflow_keys.each { |key| containers << StowList.stow_list[key] }
+      containers = ELoot.data.stow.route(item)
 
       containers.each_with_index do |bag, index|
         if stunned?
           ELoot.msg(type: "debug", text: "single_drag: character stunned, waiting for it to clear")
           wait_while { stunned? }
         end
-        next if bag && ELoot.data.sacks_full.keys.include?(bag.name)
+        next if ELoot.data.stow.full?(bag)
 
         if bag.nil?
           case index
@@ -3877,6 +3315,11 @@ module ELoot # Inventory methods
             break
           end
         end
+      end
+
+      # Nowhere had the room: move a box aside to make some, once, and try again
+      if !stored && !room_made && ELoot.in_hand?(item) && ELoot.data.stow.make_room(item)
+        return Inventory.single_drag(item, phase_thing, on_full: on_full, room_made: true)
       end
 
       # If item wasn't stored, pause and address
@@ -3904,6 +3347,8 @@ module ELoot # Inventory methods
           # this every later store skips those containers and pauses again immediately.
           ELoot.data.sacks_full = { "last cleared" => [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, Script.current.vars[0], "unpause"] }
           ELoot.reset_disk_full
+          # and so are the bag weights taken before the pause: every put is tried from here
+          ELoot.data.stow.observe(nil)
           return Inventory.single_drag(item, phase_thing) if ELoot.in_hand?(item)
         end
       end
@@ -3922,21 +3367,17 @@ module ELoot # Inventory methods
       # Only wait if the characters disk exists
       ELoot.wait_for_disk unless ELoot.data.disk.nil?
 
-      # sort to prioritize characters disk
-      disks = Group.disks
-      disks = disks.select { |d| d.name == Char.name } unless ELoot.data.settings[:use_disk_group]
-      disks.sort_by! { |d| d.name == Char.name ? 0 : 1 }
-      disks.each do |disk|
-        next if ELoot.data.disk_full[disk.name] # make sure its not full
-        next unless Disk.find_by_name(disk.name) # skip the disk unless its present
+      put = lambda do |disk, box|
+        # clearly full by its item count or 500 lbs: not tried
+        limit = disk.name.to_s.include?(Char.name) ? EO::Carry.disk_limit : 8
+        next false unless ELoot.data.stow.disk_room?(disk, box, limit: limit)
+        next true if Inventory.store_item(disk, box)
 
-        result = Inventory.store_item(GameObj[disk.id], item)
-        return true if result
-
-        # inform user it didn't fit if !result
-        ELoot.msg(type: "info", text: " The #{item} won't fit in the #{disk.name} disk. Trying a different disk.") if ELoot.data.disk_full.size > 1
-        ELoot.data.disk_full[disk.name] = true
+        # inform user it didn't fit
+        ELoot.msg(type: "info", text: " The #{box} won't fit in the #{disk.name} disk. Trying a different disk.") if ELoot.data.disk_full.size > 1
+        false
       end
+      return true if EO::Boxes.to_disk(item, full: ELoot.data.disk_full, put: put, group: ELoot.data.settings[:use_disk_group])
 
       ELoot.msg(type: "info", text: " The #{item} won't fit in any disk(s). Trying a different container.")
       return false
@@ -3948,9 +3389,9 @@ module ELoot # Inventory methods
 
       # loot item will fallback to the default sack but if both are full we need to loot manually
       bag = StowList.stow_list[item.type.to_sym]
-      bag = nil if bag.nil? || ELoot.data.sacks_full.keys.include?(bag.name)
+      bag = nil if ELoot.data.stow.full?(bag)
       bag ||= StowList.stow_list[:default]
-      bag = nil if bag.nil? || ELoot.data.sacks_full.keys.include?(bag.name)
+      bag = nil if ELoot.data.stow.full?(bag)
 
       unless bag
         Inventory.single_drag(item)
@@ -3962,12 +3403,9 @@ module ELoot # Inventory methods
       if lines.any? { |line| line =~ /<\/inv>You can't put your <a exist=".*?" noun=".*?">.*?<\/a> in the <a exist="(\d+)" noun=".*?">.*?<\/a>.  It's closed!/ }
         bag_id = $1
         bag = GameObj.inv.find { |i| i.id == bag_id }
-        # Must be an auto closer. Their ID and contents don't drop from GameObj.container when closed
-        if GameObj.containers.keys.include?(bag.id) && bag.contents.is_a?(Array)
-          ELoot.data.settings[:auto_close].push(bag.name)
+        if ELoot.data.stow.closes_itself?(bag)
+          ELoot.data.stow.learn(:auto_close, bag)
           Inventory.open_single_container(bag)
-          ELoot.msg(type: "info", text: " #{bag.name} must be an autocloser, adding to list.")
-          ELoot.save_profile()
         end
       end
 
@@ -3984,53 +3422,6 @@ module ELoot # Inventory methods
 
       # still here so just loot it manually
       Inventory.single_drag(item)
-    end
-
-    def self.store_item(bag, item, is_skinner = false)
-      ELoot.msg(type: "debug", text: "bag: #{bag.inspect} | item: #{item.inspect}")
-      return if item.nil? || item.name == "Empty"
-
-      pending_stow = ELoot.record_room_tool_stow(item, bag) if is_skinner
-
-      # A bag that answers closed while Lich still lists it and its contents is an auto closer:
-      # one closed by hand drops out of GameObj.containers. Under the inventory feed every
-      # carried bag stays listed, closed or not, so there this says nothing.
-      closed = lambda do |closed_bag|
-        next if EO::Containers.feed?
-        next unless GameObj.containers.keys.include?(closed_bag.id) && closed_bag.contents.is_a?(Array)
-
-        ELoot.data.settings[:auto_close].push(closed_bag.name)
-        ELoot.msg(type: "info", text: " #{closed_bag.name} must be an autocloser, adding to list.")
-        ELoot.save_profile()
-      end
-
-      case EO::Hands.store(bag, item, loose: is_skinner, on_closed: closed, ensure_open: ->(sack) { Inventory.open_single_container(sack) })
-      when :stored, :gone
-        true
-      when :unlootable
-        ELoot.unlootable(item)
-        true
-      when :crumbled
-        ELoot.msg(type: "info", text: " This item was crumbly, adding to list")
-        ELoot.data.settings[:crumbly].push(item.name)
-        ELoot.save_profile()
-        true
-      when :full
-        unless item.name =~ /gold ingot/
-          ELoot.msg(type: "debug", text: "sacks_full(#{bag.name}) - item: #{item.inspect}")
-          ELoot.data.sacks_full[bag.name] = [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, "#{item.name}(#{item.id})"]
-        end
-        false
-      else
-        # not ours to take, or five tries without seeing it arrive
-        false
-      end
-    ensure
-      pending_stow[:settled] = true if pending_stow && !ELoot.in_hand?(item)
-    end
-
-    def self.stow_ready_list(ready_item, item)
-      EO::Hands.stow_ready(ready_item, item, ensure_open: ->(sheath) { Inventory.open_single_container(sheath) })
     end
   end # End of Inventory
 end
@@ -4088,45 +3479,91 @@ module ELoot # Gem and Reagent hoarding
       return true
     end
 
-    def self.check_type(item) = EO::Hoard.kind?(item, ELoot.data.hoard_type)
+    def self.check_type(item) = EO::Hoard.kind?(item, ELoot.data.hoard_type == 'alchemy' ? 'reagent' : ELoot.data.hoard_type)
 
-    def self.normalize_name(name) = EO::Hoard.normalize(name)
+    def self.normalize_name(name)
+      ELoot.msg(type: "debug", text: "name: #{name}")
+      EO::Hoard.normalize(name)
+    end
 
-    LOCKER_MAX_PASSES = 6 unless defined?(LOCKER_MAX_PASSES)
-    LOCKER_PASS_WAIT = 10 unless defined?(LOCKER_PASS_WAIT)
-    LOCKER_ELSEWHERE = /your locker isn't here/i.freeze unless defined?(LOCKER_ELSEWHERE)
-    LOCKER_INFO = /Your locker is currently located in (.+?)\./i.freeze unless defined?(LOCKER_INFO)
+    LOCKER_MAX_PASSES = EO::Locker::MAX_PASSES unless defined?(LOCKER_MAX_PASSES)
+    LOCKER_PASS_WAIT = EO::Locker::PASS_WAIT unless defined?(LOCKER_PASS_WAIT)
+
+    # The locker rooms, the way in and out, and the booth are libeo's (EO::Locker).
+    def self.che_locker_rooms(rooms, che, town_id) = EO::Locker.che_rooms(rooms, che, town_id)
+    def self.town_name(name) = EO::Locker.town_name(name)
+    def self.che_town_id_for(rooms, che, town_name) = EO::Locker.che_town_id(rooms, che, town_name)
+    def self.nearest_first(rooms) = EO::Locker.nearest_first(rooms)
+    def self.in_locker_room? = EO::Locker.inside?
+
+    # Where a non-premium house member's single locker is, from LOCKER INFO; nil if unknown.
+    def self.locker_info_town
+      return @locker_info_town if defined?(@locker_info_town)
+      @locker_info_town = EO::Locker.info_town
+    end
+
+    # Gets inside a locker. True once in the booth; false if it was taken or
+    # otherwise unusable (the caller moves on to the next one). A debt at the
+    # door is paid off and the locker tried again.
+    def self.enter_locker(place)
+      way_in = ELoot.data.che_entry if Hoard.typed_locker_verbs?
+      entry = EO::Locker.enter(place, way_in: way_in)
+      case entry.outcome
+      when :entered then true
+      when :debt
+        ELoot.silver_withdraw(entry.debt)
+        ELoot.go2("debt")
+        EO.settle
+        fput("pay #{entry.debt}")
+        ELoot.silver_withdraw(2500)
+        Hoard.enter_locker(place)
+      when :elsewhere
+        @locker_elsewhere = true
+        ELoot.msg(text: " Your locker isn't in this town.")
+        false
+      when :no_way
+        ELoot.msg(text: " No way into the locker from room ##{place.id}, skipping it.")
+        false
+      when :unreachable
+        ELoot.msg(text: " Not able to reach the locker entrance for room ##{place.id}.")
+        false
+      when :in_use
+        ELoot.msg(text: " Locker at room ##{place.id} is in use.")
+        false
+      else
+        ELoot.msg(text: " Not able to get into the locker at room ##{place.id}.")
+        false
+      end
+    end
+
+    def self.open_locker(reset: false)
+      ELoot.data.stash = EO::Locker.open(ELoot.data.cache, already_open: reset)
+      return unless ELoot.data.stash.nil?
+      ELoot.msg(text: " Not able to find the container in your locker for #{ELoot.data.hoard_type} hoarding.")
+      ELoot.msg(text: " Please send the EO team the following on the discord scripting channel...")
+      ELoot.msg(text: " Room: #{Room.current.id} | container_name: #{ELoot.data.cache}")
+      Hoard.leave_locker
+    end
+
+    def self.leave_locker
+      EO::Locker.leave(way_out: Hoard.typed_locker_verbs? ? ELoot.data.che_exit : nil)
+    end
 
     # The character's own CHE lockers in a town, as go2's "locker" target finds them:
     # the locker rooms themselves, or if none are mapped, the entrances to them.
     # Returns [] for characters with no CHE so the manual room list can take over.
     # Tags are checked first so the (comparatively slow) town lookup only runs on the
     # handful of rooms that belong to this house.
-    def self.che_locker_rooms(rooms, che, town_id) = EO::Locker.che_rooms(rooms, che, town_id)
-
     # Names for the same place: "the town of Kraken's Fall" and "Kraken's Fall". The map also
     # calls Teras Isle "Kharam-Dzu" and puts the Isle of Four Winds lockers in "Mist Harbor"
     # (the pairs build_premium_locker_inventory translates), and puts the house lounge
     # lockers reached from Ta'Illistim in a hidden area it calls "the Lost Home".
-    def self.town_name(name) = EO::Locker.town_name(name)
-
     # The town room id of the house's lockers in the named town (as LOCKER INFO reports it),
     # or nil if the house has no mapped lockers there.
-    def self.che_town_id_for(rooms, che, town_name) = EO::Locker.che_town_id(rooms, che, town_name)
-
     # Where a non-premium house member's single locker is, straight from LOCKER INFO
     # ("Your locker is currently located in the town of Kraken's Fall."). nil if unknown.
-    def self.locker_info_town
-      return @locker_info_town if defined?(@locker_info_town)
-
-      lines = ELoot.get_command('locker info', /Your locker is currently located in .+?\.|<prompt time=".*?">&gt;<\/prompt>/, silent: true, quiet: true)
-      @locker_info_town = lines.join(' ')[LOCKER_INFO, 1]
-    end
-
     # Lines that arrived after `before` was taken. reget returns the last N lines, so the
     # new ones are whatever follows the longest run of `before`'s tail that `after` starts with.
-    def self.lines_since(before, after) = EO::Locker.lines_since(before, after)
-
     def self.locker_elsewhere?
       @locker_elsewhere == true
     end
@@ -4134,25 +3571,11 @@ module ELoot # Gem and Reagent hoarding
     # Reachable rooms only, nearest to where we're standing first. Room#dijkstra is
     # deliberately called without a destination list: given an Array it stops at the
     # first listed room it reaches, which would drop every other candidate.
-    def self.nearest_first(rooms) = EO::Locker.nearest_first(rooms)
-
     # The typed CHE entry/exit verbs belong to the typed rooms; lockers picked from the
     # map tags are entered and left the way the map (or the room's opening) says.
     def self.typed_locker_verbs?
       ELoot.data.use_house_locker && @typed_locker_rooms != false
     end
-
-    def self.locker_way_in
-      return ELoot.data.che_entry if Hoard.typed_locker_verbs? && !ELoot.data.che_entry.to_s.strip.empty?
-
-      way_in_obj = (GameObj.loot.to_a + GameObj.room_desc.to_a).find { |obj| obj.noun =~ /^(?:opening|curtain|tapestry)$/ }
-      return nil if way_in_obj.nil?
-
-      way_in_obj.noun = "opening" if way_in_obj.noun == "tapestry"
-      "go #{way_in_obj.noun}"
-    end
-
-    def self.in_locker_room? = EO::Locker.inside?
 
     # Rooms to try, nearest first. House lockers come from Char.che's map tags in the
     # locker town (the town of the typed CHE rooms if any, otherwise where we are); the
@@ -4180,88 +3603,17 @@ module ELoot # Gem and Reagent hoarding
     end
 
     # A booth room itself (as opposed to the room outside it) picked from the map tags.
-    def self.booth_room?(place) = EO::Locker.booth?(place)
-
     # [room before the booth on our route, the map's move into the booth], or nil if the
     # route isn't a plain last step we can take ourselves. Integer destination, so
     # dijkstra stops as soon as it reaches the booth.
-    def self.approach_step(place) = EO::Locker.approach(place)
-
     # Takes a mapped move (a command string, or a proc for scripted moves). Returns true
     # if we ended up in the room; nil/false if the game refused us.
-    def self.take_step(way, place) = EO::Locker.step(way, place)
-
     # Gets inside a locker. Returns true once in the booth; false if it was occupied or
     # otherwise unusable (the caller moves on to the next one).
     #
     # For a booth room we go2 only as far as the room outside it and take the last step
     # ourselves. go2 treats a refused step as a broken route: it retries the same move,
     # disables the edge, then gives up, which is slow, noisy and hides why it failed.
-    def self.enter_locker(place)
-      step = Hoard.booth_room?(place) ? Hoard.approach_step(place) : nil
-
-      if step
-        outside, way = step
-        ELoot.go2(outside)
-        ELoot.wait_rt
-
-        return true if Room.current.id == place.id
-
-        unless Room.current.id == outside
-          ELoot.msg(text: " Not able to reach the locker entrance at room ##{outside}.")
-          return false
-        end
-
-        before = reget(30)
-        result = Hoard.take_step(way, place)
-      else
-        ELoot.go2(place.id)
-        ELoot.wait_rt
-
-        # some rooms go directly to the locker instead of just outside
-        return true if Hoard.in_locker_room?
-
-        way_in = Hoard.locker_way_in
-
-        if way_in.nil?
-          ELoot.msg(text: " No way into the locker from room ##{place.id}, skipping it.")
-          return false
-        end
-
-        before = reget(30)
-        result = move way_in
-      end
-
-      return true if result == true
-
-      # Only what this step produced; older lines may hold the same messages from an earlier attempt or run
-      fresh = Hoard.lines_since(before, reget(30))
-
-      if fresh.reverse.any? { |line| line =~ /pay off (your|that) debt/i }
-        wealth_pattern = /^You have (no|[,\d]+|but one) silver with you/
-        wealth_lines = ELoot.get_command("wealth quiet", wealth_pattern, silent: true, quiet: true).join(" ")
-        if wealth_lines.to_s =~ /In the back of your mind you remember you owe a debt of ([\d,]+) silver/
-          amount = $1.gsub(',', '').to_i
-          ELoot.silver_withdraw(amount)
-          ELoot.go2("debt")
-          ELoot.wait_rt
-          fput("pay #{amount}")
-          ELoot.silver_withdraw(2500)
-          return Hoard.enter_locker(place)
-        end
-      end
-
-      if fresh.any? { |line| line =~ LOCKER_ELSEWHERE }
-        @locker_elsewhere = true
-        ELoot.msg(text: " Your locker isn't in this town.")
-        return false
-      end
-
-      # move returns nil (not false) for "You'll have to wait, X is presently using that locker booth"
-      ELoot.msg(text: result.nil? ? " Locker at room ##{place.id} is in use." : " Not able to get into the locker at room ##{place.id}.")
-      false
-    end
-
     # Tries every locker in turn, nearest first, waiting between rounds. Returns true
     # once inside one, false after LOCKER_MAX_PASSES rounds with none available.
     def self.enter_any_locker(lockers)
@@ -4336,79 +3688,10 @@ module ELoot # Gem and Reagent hoarding
         return false
       end
 
-      ELoot.wait_rt
+      EO.settle
       Hoard.open_locker
 
       !ELoot.data.stash.nil?
-    end
-
-    def self.open_locker(reset: false)
-      ELoot.data.stash = nil
-      retries = 0
-      max_retries = 3
-      error_log = []
-
-      ELoot.wait_rt
-
-      begin
-        unless reset
-          open_result = ELoot.get_command('open locker', /exist=".*?" noun="(?:locker|chest)"|That is already open.|<prompt time=".*?">&gt;<\/prompt>/)
-        end
-
-        ELoot.wait_rt
-
-        ELoot.data.stash = GameObj.loot.find { |item| item.name =~ /#{ELoot.data.cache}/ }
-
-        # maybe its on a counter
-        if ELoot.data.stash.nil?
-          counter = GameObj.room_desc.find { |item| item.name =~ /counter/ }
-          ELoot.get_command("look on ##{counter.id}", /<container id='.*?' title=/, silent: true, quiet: true)
-          ELoot.data.stash = counter.contents.find { |item| item.name =~ /#{ELoot.data.cache}/ }
-        end
-
-        raise StandardError if ELoot.data.stash.nil?
-      rescue StandardError
-        if retries < max_retries
-          retries += 1
-          ELoot.msg(text: " Something went wrong. Retrying... (Retry #{retries} of #{max_retries}).", space: true)
-          error_log.push(open_result)
-          sleep 1
-          retry
-        else
-          ELoot.msg(text: " Not able to find the container in your locker for #{ELoot.data.hoard_type} hoarding.")
-          ELoot.msg(text: " Please send the EO team the following on the discord scripting channel...")
-          ELoot.msg(text: " Room: #{Room.current.id} | container_name: #{ELoot.data.cache}")
-          error_log.push("Type: #{ELoot.data.hoard_type}")
-          ELoot.msg(text: " Errors: #{error_log}")
-          Hoard.leave_locker
-        end
-      else
-        ELoot.get_command("look in ##{ELoot.data.stash.id}", /<container id='.*?' title=/, silent: true, quiet: true)
-      end
-    end
-
-    def self.leave_locker
-      locker_item = GameObj.loot.find { |item| item.name =~ /dark stained antique oak trunk|counter|locker/ }
-      is_locksmith_room = Room.current.tags.include?('locksmith')
-
-      return if locker_item.nil? || is_locksmith_room
-
-      ELoot.get_res('close locker', /^You/)
-
-      way_out = ELoot.data.che_exit if Hoard.typed_locker_verbs?
-
-      if way_out.to_s.strip.empty?
-        way_out_obj = (GameObj.loot.to_a + GameObj.room_desc.to_a).find { |obj| obj.noun =~ /^(?:opening|curtain|tapestry)$/ }
-
-        # A mapped house locker has no exit verb to send; the next go2 walks us out
-        return if way_out_obj.nil?
-
-        way_out_obj.noun = "opening" if way_out_obj.noun == "tapestry"
-        way_out = "go #{way_out_obj.noun}"
-      end
-
-      move "#{way_out}"
-      ELoot.wait_rt
     end
 
     def self.build_inventory(refresh = false)
@@ -4419,34 +3702,8 @@ module ELoot # Gem and Reagent hoarding
         return if result
       end
 
-      ELoot.data.inventory = []
-      percent_complete = 0
-
-      ELoot.get_command("look in ##{ELoot.data.stash.id}", /<container id='.*?' title=/, silent: true, quiet: true)
-      total_items = ELoot.data.stash.contents.count { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && !obj.after_name.nil? }
-      empty_jars = ELoot.data.stash.contents.count { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && obj.after_name.nil? }
-
-      if empty_jars.positive?
-        ELoot.data.inventory << { :item => '*** empty jars ***', :count => empty_jars, :full => '  -' }
-      end
-
-      ELoot.data.stash.contents.find_all { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && !obj.after_name.nil? }.each_with_index do |jar, index|
-        lines = ELoot.get_command("look in ##{jar.id} from ##{ELoot.data.stash.id}", /^Inside .*? you see [0-9]+ portion/, silent: true, quiet: true)
-
-        if (lines.find { |line| line =~ /^Inside .*? you see ([0-9]+) portion/ })
-          count = Regexp.last_match[1].to_i
-          item = Hoard.normalize_name(jar.after_name).strip
-          full = lines.any?(/It is full/)
-
-          if Hoard.check_type(item)
-            ELoot.data.inventory << { :item => item, :count => count, :full => full }
-          end
-        end
-
-        percent_complete = (((index + 1).to_f / total_items) * 100).round(2)
-        respond " percent complete: #{percent_complete}%"
-      end
-
+      kind = ELoot.data.hoard_type == 'alchemy' ? 'reagent' : ELoot.data.hoard_type
+      ELoot.data.inventory = EO::Hoard.inventory(ELoot.data.stash, kind, progress: ->(pct) { respond " percent complete: #{pct}%" })
       ELoot.save_hoard_profile
     end
 
@@ -4459,73 +3716,19 @@ module ELoot # Gem and Reagent hoarding
         ELoot.data.locker_city = Room[town_id].location.gsub(/the (town|city|village) of/, '').strip
       end
 
-      all_lockers = ["Wehnimer's Landing", "Teras Isle", "Solhaven", "River's Rest", "Icemule Trace", "Zul Logoth", "Ta'Illistim", "Ta'Vaalor", "Mist Harbor", "Cysaegir", "Kraken's Fall", "Family Vault"]
-      locker_town = "Family Vault" if ELoot.data.cache =~ /trunk/i
+      town = EO::Hoard.manifest_town(ELoot.data.locker_city, ELoot.data.cache)
+      return false if town.nil?
 
-      locker_town ||= {
-        'Kharam-Dzu'             => 'Teras Isle',
-        'the Isle of Four Winds' => 'Mist Harbor'
-      }[ELoot.data.locker_city] || ELoot.data.locker_city
-
-      return false unless all_lockers.include?(locker_town)
-      ELoot.data.inventory = []
-
-      case ELoot.data.cache
-      when /trunk/i
-        start_from = "bound in wrought iron"
-      when /chest/i
-        start_from = "deep chest"
-      when /rack/i
-        start_from = "weapon rack"
-      when /stand/i
-        start_from = "armor stand"
-      when /bin/i
-        start_from = "magical item bin"
-      when /wardrobe/i
-        start_from = "clothing wardrobe"
-      end
-
-      lines = ELoot.get_command("locker manifest #{locker_town}", /Thinking back, you recall the contents|Looking in front of you/, silent: true, quiet: true)
-
-      # Find the index of the line starting with the container name
-      start_index = lines.index { |line| line.include?(start_from) }
-
-      unless start_index # Return empty if not found
-        ELoot.data.inventory = []
-        return
-      end
-
-      end_index = lines[start_index + 1..-1].index { |line| line.strip.empty? }
-      end_index = end_index.nil? ? lines.size : end_index + start_index + 1
-
-      extracted_elements = lines[(start_index + 1)...end_index]
-
-      empty_jars = extracted_elements.count { |line| line.match?(/(?:jar|bottle|beaker)/) && !line.include?("containing") }
-
-      if empty_jars.positive?
-        ELoot.data.inventory << { :item => '*** empty jars ***', :count => empty_jars, :full => '  -' }
-      end
-
-      extracted_elements.each do |line|
-        match = line.match(/containing\s(?<item>.*?)\s+\((?<stored>\d+)\/(?<capacity>\d+)\)(?:\s+\(.*?\))?\z/)
-
-        if match
-          item = Hoard.normalize_name(match[:item]).strip
-          stored = match[:stored].strip.to_i
-          capacity = match[:capacity].strip.to_i
-          full = stored == capacity
-
-          if Hoard.check_type(item)
-            ELoot.data.inventory << { :item => item, :count => stored, :full => full }
-          end
-        end
-      end
-
-      return true
+      kind = ELoot.data.hoard_type == 'alchemy' ? 'reagent' : ELoot.data.hoard_type
+      found = EO::Hoard.parse_manifest(EO::Hoard.manifest(town), ELoot.data.cache, kind)
+      # no section for the container: empty, and let the caller look in the jars instead
+      ELoot.data.inventory = found || []
+      found.nil? ? nil : true
     end
 
     # Entries whose name contains the filter as a phrase, case-insensitively, so
     # "diamond" finds every diamond and "uncut diamond" only names with that exact phrase.
+    # Entries whose name contains the filter as a phrase, case-insensitively.
     def self.filter_inventory(entries, filter) = EO::Hoard.filter(entries, filter)
 
     def self.list_inventory(type, filter = nil)
@@ -4693,7 +3896,7 @@ module ELoot # Gem and Reagent hoarding
       # Refresh the cache because lockers are special
       ELoot.get_command("look in ##{ELoot.data.stash.id}", /<container id='.*?' title=/, silent: true, quiet: true)
 
-      jar = ELoot.data.stash.contents.find { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && Hoard.normalize_name(obj.after_name) =~ /^#{name}$/ }
+      jar = EO::Hoard.jar_for(ELoot.data.stash, name)
       ELoot.msg(type: "debug", text: "jar: #{jar.inspect}")
 
       return if jar.nil?
@@ -4708,10 +3911,9 @@ module ELoot # Gem and Reagent hoarding
       end
 
       number.times {
-        lines = ELoot.get_command("shake ##{jar.id}", /You give your <a exist=".*?"/)
-        item = [GameObj.right_hand, GameObj.left_hand].find { |i| i.id !~ /#{jar.id}/ }
+        item, last = EO::Hoard.shake(jar)
         Inventory.store_item(StowList.stow_list[:default], item)
-        if lines.any?(/That was the last/)
+        if last
           ELoot.data.inventory.delete_if { |obj| obj[:item] == name }
           ELoot.save_hoard_profile
           break
@@ -4734,35 +3936,27 @@ module ELoot # Gem and Reagent hoarding
     end
 
     def self.check_jar(item_name)
-      need_save = false
-      jar = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ /^(?:jar|bottle|beaker)$/ }
-
+      jar = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ EO::Hoard::JAR }
       return if jar.nil?
 
-      jar_lines = ELoot.get_command("look in ##{jar.id}", /^Inside .*? you see [0-9]+ portion|^The <a exist=".*?is empty/, silent: true, quiet: true)
-
-      if (jar_lines.find { |line| line =~ /^Inside .*? you see ([0-9]+) portion/ })
-        count = Regexp.last_match[1].to_i
-        full = jar_lines.any?(/It is full/)
-
+      state = EO::Hoard.read(jar)
+      if state.is_a?(Hash)
         index_to_update = ELoot.data.inventory.find_index { |item| item[:item] =~ /^#{item_name}$/ }
         if index_to_update
-          ELoot.data.inventory[index_to_update][:count] = count
-          ELoot.data.inventory[index_to_update][:full] = full
+          ELoot.data.inventory[index_to_update][:count] = state[:count]
+          ELoot.data.inventory[index_to_update][:full] = state[:full]
         end
-
-        need_save = true
-      elsif (jar_lines.find { |line| line =~ /^The <a exist=".*?is empty/ })
+      elsif state == :empty
         if (index_to_update = ELoot.data.inventory.find_index { |item| item[:item] =~ /empty jar/i })
           ELoot.data.inventory[index_to_update][:count] += 1
         else
-          ELoot.data.inventory << { :item => '*** empty jars ***', :count => 1, :full => '  -' }
+          ELoot.data.inventory << { :item => EO::Hoard::EMPTY_JARS, :count => 1, :full => '  -' }
         end
-
-        need_save = true
+      else
+        return
       end
 
-      ELoot.save_hoard_profile if need_save
+      ELoot.save_hoard_profile
     end
 
     def self.hoarding_list(single = nil)
@@ -4865,10 +4059,10 @@ module ELoot # Gem and Reagent hoarding
 
         next if items_to_hoard.length.zero?
 
-        bottle = ELoot.data.stash.contents.find { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && Hoard.normalize_name(obj.after_name) =~ /^#{item_name}$/ }
+        bottle = EO::Hoard.jar_for(ELoot.data.stash, item_name)
         ELoot.msg(type: "debug", text: "bottle: #{bottle.inspect}")
 
-        empty = ELoot.data.stash.contents.find { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && obj.after_name.nil? }
+        empty = EO::Hoard.empty_jars(ELoot.data.stash).first
 
         if bottle
           3.times do
@@ -4880,7 +4074,7 @@ module ELoot # Gem and Reagent hoarding
             end
           end
 
-          jar = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ /^(?:jar|bottle|beaker)$/ }
+          jar = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ EO::Hoard::JAR }
         elsif empty
           3.times do
             Inventory.drag(empty, 'left')
@@ -4891,10 +4085,10 @@ module ELoot # Gem and Reagent hoarding
             end
           end
 
-          jar = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ /^(?:jar|bottle|beaker)$/ }
+          jar = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun =~ EO::Hoard::JAR }
           index_to_update = ELoot.data.inventory.find_index { |obj| obj[:item] =~ /empty jar/ }
           if index_to_update
-            count = ELoot.data.stash.contents.count { |obj| obj.noun =~ /^(?:jar|bottle|beaker)$/ && obj.after_name.nil? }
+            count = EO::Hoard.empty_jars(ELoot.data.stash).size
             if count.zero?
               ELoot.data.inventory.delete_if { |obj| obj[:item] =~ /empty jar/ }
             else
@@ -4916,24 +4110,24 @@ module ELoot # Gem and Reagent hoarding
 
           Inventory.drag(thing, 'right')
 
-          result = ELoot.get_res("_drag ##{thing.id} ##{jar.id}", /You (add|put)|The.*?is full|does not appear to be a suitable/)
+          result = EO::Hoard.put(thing, jar)
 
           case result
-          when /does not appear to be a suitable/
+          when :unsuitable
             ELoot.msg(text: "Something went wrong. Not able to jar #{thing.name}.", space: true)
             $sell_ignore.push(thing.id)
             Inventory.single_drag(thing)
-            ELoot.wait_rt
+            EO.settle
             next
-          when /into your empty (?:jar|bottle|beaker)/
+          when :started
             ELoot.data.inventory << { item: thing_name, count: 1, full: false }
             ELoot.data.inventory.uniq!
-          when /is full/
+          when :full
             ELoot.msg(text: "Something went wrong. Need to rebaseline inventory.", space: true)
 
             Inventory.store_item(ELoot.data.stash, jar)
             Inventory.store_item(StowList.stow_list[:default], thing)
-            ELoot.wait_rt
+            EO.settle
 
             Hoard.build_inventory(true)
             break
@@ -4941,7 +4135,7 @@ module ELoot # Gem and Reagent hoarding
 
           ELoot.data.hoard_deposit << { :item => thing_name, :type => ELoot.data.hoard_type }
 
-          break if result =~ /filling it/
+          break if result == :filled
         end
 
         Hoard.check_jar(thing_name)
@@ -5062,38 +4256,30 @@ module ELoot # Room looting
       ELoot.refuse_room_operation!('open locksmith boxes')
       ELoot.msg(type: "debug", text: "box_loot: box=#{box.respond_to?(:name) ? box.name : box.inspect} location=#{location.inspect} sell_recovered=#{sell_recovered}")
       if box.type == "box"
-        line = ELoot.get_res("open ##{box.id}", /open|locked/)
-        return Inventory.single_drag(box) if line =~ /locked/
+        case EO::Boxes.open(box, quiet: !ELoot.data.settings[:display_box_contents])
+        when :locked then return Inventory.single_drag(box)
+        when :unknown
+          ELoot.msg(type: "info", text: " Unable to determine the contents of  #{box.name}.")
+          return Inventory.single_drag(box)
+        end
 
-        quiet_msg = ELoot.data.settings[:display_box_contents] ? false : true
-        ELoot.get_command("look in ##{box.id}", ELoot.data.look_regex, silent: quiet_msg, quiet: quiet_msg)
-
-        # Makes sure the item's contents are available
-        return Inventory.single_drag(box) if !Inventory.container_contents(box)
-
-        start_silvers = ELoot.silver_check
-        while box.contents.any? { |obj| obj.name =~ /silver coins/ }
-          unless ELoot.data.charm.nil?
-            res = ELoot.get_res("point ##{ELoot.data.charm.id} at ##{box.id}", /You summon/)
-            data[location] += ELoot.silver_check - start_silvers
-          else
-            res = ELoot.get_res("get coins from ##{box.id}", /You gather the remaining|Get what|You can only collect|You cannot hold any more silvers/)
-            if res =~ /You gather the remaining/
-              data[location] += ELoot.silver_check - start_silvers
-              ELoot.wait_rt
-              break
-            elsif res =~ /You can only collect|You cannot hold any more silvers/
-              data[location] += ELoot.silver_check - start_silvers
-              ELoot.wait_rt
-              room = Room.current.id
-              ELoot.silver_deposit
-              start_silvers = ELoot.silver_check
-              ELoot.go2(room)
-            else
-              ELoot.msg(type: "info", text: " Unknown get coin result...Exiting!")
-              exit
-            end
-          end
+        deposit = lambda do
+          room = Room.current.id
+          held = ELoot.silver_check
+          ELoot.silver_deposit
+          ELoot.go2(room)
+          # go on only when the trip put silver away
+          ELoot.silver_check < held
+        end
+        outcome, silvers = EO::Boxes.coins(box, charm: ELoot.data.charm, full: deposit)
+        data[location] += silvers if data && location
+        if outcome == :unknown
+          ELoot.msg(type: "info", text: " Unknown get coin result...Exiting!")
+          exit
+        elsif outcome == :full
+          # coins are still inside and the deposit made no room: keep the box as it is
+          ELoot.msg(type: "info", text: " Can't hold the coins in the #{box.name} and couldn't deposit. Keeping the box.")
+          return Inventory.single_drag(box)
         end
 
         objs = box.contents
@@ -5123,32 +4309,23 @@ module ELoot # Room looting
       box_list = GameObj.loot.find_all { |x| x.type == "box" }
 
       box_list.each do |box|
-        line = ELoot.get_res("open ##{box.id}", /open|locked/)
-        next if line&.match?(/It appears to be locked/)
-
-        quiet_msg = ELoot.data.settings[:display_box_contents] ? false : true
-        ELoot.get_command("look in ##{box.id}", ELoot.data.look_regex, silent: quiet_msg, quiet: quiet_msg)
-
-        # Makes sure the item's contents are available
-        next unless Inventory.container_contents(box)
+        opened = EO::Boxes.open(box, quiet: !ELoot.data.settings[:display_box_contents])
+        next if opened == :locked
+        if opened == :unknown
+          ELoot.msg(type: "info", text: " Unable to determine the contents of  #{box.name}.")
+          next
+        end
 
         # Drag the box to our hand
         Inventory.drag(box)
 
         # Get the coins
-        while box.contents.any? { |obj| obj.name =~ /silver coins/ }
-          unless ELoot.data.charm.nil?
-            res = ELoot.get_res("point ##{ELoot.data.charm.id} at ##{box.id}", /You summon/)
-          else
-            res = ELoot.get_res("get coins from ##{box.id}", /You gather the remaining|Get what|You can only collect|You cannot hold any more silvers/)
-            if res =~ /You gather the remaining/
-              ELoot.wait_rt
-            elsif res =~ /You can only collect|You cannot hold any more silvers/
-              ELoot.wait_rt
-              ELoot.msg(type: "info", text: " Can't hold any more coins...Exiting!")
-              exit
-            end
-          end
+        case EO::Boxes.coins(box, charm: ELoot.data.charm).first
+        when :full
+          ELoot.msg(type: "info", text: " Can't hold any more coins...Exiting!")
+          exit
+        when :unknown
+          ELoot.msg(type: "info", text: " Unknown get coin result, leaving the coins.")
         end
 
         # Loot the rest of the stuff
@@ -5167,10 +4344,10 @@ module ELoot # Room looting
         end
 
         save_box = ELoot.data.settings[:sell_loot_types].include?("box")
-        valuable_box = /gold|mithril|silver/
+        valuable_box = EO::Boxes::VALUABLE
 
         # If it's a save box and empty, just store it immediately also don't toss Reliquaries
-        if (save_box && box.contents.empty? && box.name =~ valuable_box) || box.name =~ /reliquary/i
+        if EO::Boxes.keep?(box, sell: save_box)
           Inventory.single_drag(box, false)
           next
         end
@@ -5210,7 +4387,7 @@ module ELoot # Room looting
         items_opened = Array.new
         items.each { |item|
           item_type = item.type.to_sym
-          if StowList.stow_list[item_type] && !ELoot.data.sacks_full.keys.include?(StowList.stow_list[item_type].name)
+          if StowList.stow_list[item_type] && !ELoot.data.stow.full?(StowList.stow_list[item_type])
             bag = StowList.stow_list[item_type]
           else
             bag = StowList.stow_list[:default]
@@ -5220,16 +4397,10 @@ module ELoot # Room looting
 
           items_opened.push(bag.name)
 
-          if GameObj.containers.keys.include?(bag.id) && bag.contents.is_a?(Array)
+          if ELoot.data.stow.closes_itself?(bag)
             # check if open
             lines = ELoot.get_command("look in ##{bag.id}", ELoot.data.look_regex, silent: true, quiet: true)
-
-            if lines.any? { |l| l =~ /That is closed./ }
-              # This must be our lousy autocloser
-              ELoot.data.settings[:auto_close].push(bag.name)
-              ELoot.msg(type: "info", text: " #{bag.name} must be an autocloser, adding to list.")
-              ELoot.save_profile()
-            end
+            ELoot.data.stow.learn(:auto_close, bag) if lines.any? { |l| l =~ /That is closed./ }
           end
         }
 
@@ -5292,7 +4463,7 @@ module ELoot # Room looting
           Loot.loot_all(valid)
         elsif from_where == "Box"
           ELoot.get_command("loot ##{box.id}", /You search through|You can't.*?It's closed!|There is no loot|In an attempt/i, silent: false, quiet: false)
-          ELoot.wait_rt
+          EO.settle
 
           # If bag fills up it can leave an item in hand
           recovered = [GameObj.right_hand, GameObj.left_hand].any? do |item|
@@ -5626,49 +4797,15 @@ module ELoot # Room looting
       return objs
     end
 
-    def self.occassional_skinner(obj) = EO::Skinning.sometimes?(obj)
-
-    def self.reject_invalid_loot(objs) # rejects items from the GamObj.loot object
-      name_regex = Regexp.union(ELoot.data.reject_loot_names)
-      noun_regex = Regexp.union(ELoot.data.reject_loot_nouns)
-
-      objs.reject do |obj|
-        next if ELoot.data.settings[:loot_keep].length.positive? && obj.name =~ Regexp.union(ELoot.data.settings[:loot_keep])
-        next if Bounty.task.heirloom? && obj.name =~ /#{Bounty.task.requirements[:item]}/i
-
-        obj.name =~ /\b#{name_regex}\b/i ||
-          obj.name =~ /[A-Z][a-z]+ #{ELoot.data.disk_nouns_regex}\b/ ||
-          obj.noun =~ /\b#{noun_regex}\b/i ||
-          obj.id.to_i.negative? ||
-          (obj.type =~ /weapon|armor/i && obj.type !~ /uncommon|clothing/i) ||
-          (ELoot.data.settings[:unlootable].include?(obj.name) && ELoot.data.settings[:log_unlootables]) ||
-          ELoot.data.settings[:crumbly].index(obj.name) > -1
-      end
+    # The settings as libeo's loot policy; rebuilt each call so ;eloot load is honoured.
+    def self.policy
+      EO::Loot::Policy.from_settings(ELoot.data.settings, level: Stats.level,
+                                                          heirloom: Bounty.task.heirloom? ? Bounty.task.requirements[:item] : nil)
     end
 
-    def self.should_grab_item?(thing)
-      # If its on the exclude list return
-      return false if thing.name.match?(ELoot.data.loot_exclude_regex)
+    def self.reject_invalid_loot(objs) = EO::Loot.loot(objs, Loot.policy) # rejects room objects that are not loot
 
-      # oblivion quartz isn't cursed if you are level 100
-      return true if thing.name.eql?("shard of oblivion quartz") and Stats.level.eql?(100) && ELoot.data.settings[:loot_types].include?("gem")
-
-      # Cursed items need to be handled separate due to gems
-      return false if thing.type =~ /cursed/i && !ELoot.data.settings[:loot_types].include?("cursed")
-
-      # Keep it if it's a type we want
-      return true if thing.type =~ Regexp.union(ELoot.data.settings[:loot_types])
-
-      # Keep it if it's our current bounty heirloom assignment
-      return true if Bounty.task.heirloom? && thing.name =~ /#{Bounty.task.requirements[:item]}/i
-
-      # If the type is something we don't want return false
-      not_wanted = ELoot.data.all_loot_categories - ELoot.data.settings[:loot_types]
-      return false if thing.type =~ Regexp.union(not_wanted)
-
-      # Anything left lets take
-      return true
-    end
+    def self.should_grab_item?(thing) = EO::Loot.wanted?(thing, Loot.policy)
 
     def self.valid_objs(objs) # finds valid loot
       objs.select { |o| self.should_grab_item?(o) }
@@ -5680,6 +4817,7 @@ module ELoot # Room looting
 
     def self.room # method that loots the room
       objs = Loot.reject_invalid_loot(GameObj.loot.to_a)
+      Loot.weigh_room unless objs.empty?
 
       unless objs.empty?
         objs = loot_specials(objs)
@@ -5689,69 +4827,37 @@ module ELoot # Room looting
       unless objs.empty?
         Loot.loot_regular(objs, "Room")
       end
+    ensure
+      # the weights are this pass's; selling or hoarding empties bags after it
+      ELoot.data.stow.observe(nil)
+    end
+
+    # One inventory snapshot for the pass: every item's weight, the floor's
+    # too, and the room in each bag, so a bag too full for an item is passed
+    # over without trying; the encumbrance it shows teaches EO::Carry.
+    def self.weigh_room
+      ELoot.data.stow.observe(nil)
+      return if ELoot.respond_to?(:room_scope?) && ELoot.room_scope?
+
+      snapshot = Lich::Common::Inventory.refresh
+      ELoot.data.stow.observe(snapshot)
+      EO::Carry.observe(snapshot) if snapshot
+    rescue StandardError => e
+      ELoot.msg(type: "debug", text: "weigh_room: #{e.message}")
     end
 
     def self.search(objs = GameObj.dead.to_a) # searches dead critters
       return if objs.empty?
 
-      regex_at_feet = /^(?:<pushBold\/> \*\* (?:A glint of light catches your eye, and you notice|Among the remains, you find|Among the spoils, you find)|Among the remains, you find) an? <a exist="(?<id>[\d-]+)" noun="(?<noun>[\w-]+)">(?<name>[\w\s-]+)<\/a>.*?(?: at your feet! \*\*|! \*\*|, which falls alongside your feet\.)$/
-      frozen_bramble_critters = ['tumbleweed', 'plant', 'shrub', 'creeper', 'vine', 'bush']
-      inhand_critters = ['skayl', 'glacei', 'caedera', 'golem', 'elemental']
-      inhand_critters_all_reg = /\b#{Regexp.union(frozen_bramble_critters + inhand_critters)}\b/
-
+      free = ->(hand) { hand == :left ? Inventory.free_hands(left: true) : Inventory.free_hand }
+      stow = ->(item) { Inventory.single_drag(item) }
       objs.each do |thing|
-        next if thing.name.match?(ELoot.data.critter_exclude_regex)
-        next if thing.name =~ /child/
-        next if thing.status =~ /gone/
+        next unless EO::Loot.searchable?(thing, exclude: ELoot.data.critter_exclude_regex)
 
         ELoot.change_stance(ELoot.data.settings[:loot_stance])
-
-        if ELoot.data.settings[:use_bloodbands]
-          fput "raise ##{ELoot.data.blood_band.id} at ##{thing.id}"
-        end
-
-        if thing.name =~ inhand_critters_all_reg
-          frozen_bramble_critters.any?(thing.noun) ? Inventory.free_hands(left: true) : Inventory.free_hand
-          if GameObj.right_hand.id.nil? && GameObj.left_hand.id.nil?
-            free_hand = "left"
-          else
-            free_hand = GameObj.right_hand.id.nil? ? "right" : "left"
-          end
-        end
-
-        # Loot it
-        3.times do
-          waitrt?
-          results = ELoot.get_command("loot ##{thing.id}", /You (search|plunge|break|tentatively)|not in any condition|see well enough to search|You can only loot creatures|Geez!  It's still alive!  Not a good time for that\.|As you (?:move to )?search/, silent: false, quiet: false)
-          ELoot.msg(type: "debug", text: "Thing: #{thing.id}-#{thing.name}, Results: #{results.first}")
-
-          if results.any? { |line| line =~ /not in any condition/ } &&
-             ELoot.data.settings[:sigil_determination_on_fail] &&
-             Spell['Sigil of Determination'].affordable? &&
-             !Spell['Sigil of Determination'].active?
-            Spell['Sigil of Determination'].cast
-            next
-          end
-
-          if results.any? { |line| line =~ regex_at_feet }
-            results.each do |line|
-              if line =~ regex_at_feet
-                match = Regexp.last_match
-                Inventory.free_hand
-                Inventory.single_drag(GameObj.new(match[:id], match[:noun], match[:name]))
-              end
-            end
-          end
-
-          break if results.any? { |line| line =~ /You (search|plunge|break|tentatively)|not in any condition|see well enough to search|You can only loot creatures|Geez!  It's still alive!  Not a good time for that\./ } ||
-                   thing.nil? || thing.status =~ /gone/
-        end
-
-        # Some creatures put an item directly in your hand
-        if thing.name =~ inhand_critters_all_reg
-          check_hand = (free_hand == "right") ? GameObj.right_hand : GameObj.left_hand
-          Inventory.single_drag(check_hand) unless check_hand.name == "Empty"
-        end
+        fput "raise ##{ELoot.data.blood_band.id} at ##{thing.id}" if ELoot.data.settings[:use_bloodbands]
+        results = EO::Loot.search(thing, free: free, stow: stow, determination: ELoot.data.settings[:sigil_determination_on_fail])
+        ELoot.msg(type: "debug", text: "Thing: #{thing.id}-#{thing.name}, Results: #{results.first}")
       end
 
       # if the setting is on always end in the loot stance
@@ -5761,146 +4867,53 @@ module ELoot # Room looting
     def self.skin_obj_types(objs, type) # skins type (blunt/dagger) group of dead critters
       return if objs.empty?
 
-      dont_stow = false
-      waitrt?
+      blunt = type == :blunt
+      weapon_key = blunt ? 'skin_weapon_blunt' : 'skin_weapon'
+      sheath_key = blunt ? 'skin_sheath_blunt' : 'skin_sheath'
+      # Check skinner and sheath in case ReadyList/StowList got updated
+      ELoot.ensure_items(key: weapon_key, list: ReadyList.ready_list, inventory: ELoot.data.weapon_inv)
+      ELoot.ensure_items(key: sheath_key, list: ReadyList.ready_list, check_hidden: true)
 
-      if type == :blunt
-        # Check skinner and sheath in case ReadyList/StowList got updated
-        ELoot.ensure_items(key: 'skin_weapon_blunt', list: ReadyList.ready_list, inventory: ELoot.data.weapon_inv)
-        ELoot.ensure_items(key: 'skin_sheath_blunt', list: ReadyList.ready_list, check_hidden: true)
+      skinner = EO::Skinning.tool(ReadyList.ready_list, blunt: blunt)
+      if skinner.nil?
+        ELoot.msg(type: "info", text: " No blunt weapon found. Please run setup and make sure it's listed.")
+        return
+      elsif ReadyList.ready_list[weapon_key.to_sym].to_s.empty?
+        ELoot.msg(type: "info", text: " No edged skinning weapon found. Using your right hand.")
+      end
+      ELoot.msg(type: "debug", text: "#{blunt ? 'blunt' : 'edged'} skinner: #{skinner.inspect}")
 
-        skinner = ReadyList.ready_list[:skin_weapon_blunt]
-        ELoot.msg(type: "debug", text: "blunt skinner: #{skinner.inspect}")
-        unless skinner
-          ELoot.msg(type: "info", text: " No blunt weapon found. Please run setup and make sure it's listed.")
-          return
-        end
-        Inventory.free_hands(both: true)
-      else
-        # Check skinner and sheath in case ReadyList/StowList got update
-        ELoot.ensure_items(key: 'skin_weapon', list: ReadyList.ready_list, inventory: ELoot.data.weapon_inv)
-        ELoot.ensure_items(key: 'skin_sheath', list: ReadyList.ready_list, check_hidden: true)
-
-        if ReadyList.ready_list[:skin_weapon].to_s.empty? || ReadyList.ready_list[:skin_weapon].nil?
-          skinner = GameObj.right_hand
-          ELoot.msg(type: "info", text: " No edged skinning weapon found. Using your right hand.")
-        else
-          skinner = ReadyList.ready_list[:skin_weapon]
-        end
-
-        ELoot.msg(type: "debug", text: "edged skinner: #{skinner.inspect}")
-
-        dont_stow = true if ELoot.in_hand?(skinner)
-
-        unless dont_stow
-          Inventory.free_hand
-        end
+      free = ->(hands) { hands == :both ? Inventory.free_hands(both: true) : Inventory.free_hand }
+      put_away = lambda do |tool|
+        Inventory.store_item(EO::Skinning.sheath(ReadyList.ready_list, blunt: blunt) || StowList.stow_list[:default], tool, true)
+        Inventory.store_item(StowList.stow_list[:default], tool) if ELoot.in_hand?(tool)
       end
 
-      unless ELoot.in_hand?(skinner)
-        waitrt?
-        Inventory.drag(skinner)
-      end
-
-      skinner_hand = skinner.id == GameObj.left_hand.id ? 'left' : 'right'
-
-      # Safe to kneel?
-      while GameObj.targets.empty? && ELoot.data.settings[:skin_kneel] && !kneeling?
-        dothistimeout('kneel', 3, /You kneel down\.$|You move to|You are already kneeling\.$/)
-      end
-
-      # Sigil of Resolve?
-      if ELoot.data.settings[:skin_resolve] &&
-         Spell['Sigil of Resolve'].affordable? &&
-         !Spell['Sigil of Resolve'].active?
-        Spell['Sigil of Resolve'].cast
-      end
-
-      # 604 stuff
-      if ELoot.data.settings[:skin_604] && Spell[604].affordable? && (!Spell[604].active? || (Spell[604].timeleft * 60).truncate() <= 10)
-        until Spell[604].active? && (Spell[604].timeleft * 60).truncate() > 5
-          Spell[604].cast
-          sleep(0.1)
-        end
-      end
-
-      skin_match = Regexp.union(
-        /You skinned/i,
-        /You botched/i,
-        /already been/i,
-        /cannot skin/i,
-        /must be a member/i,
-        /can only skin/i,
-        /You are unable to break through/i,
-        /You break through the crust of the/i,
-        /You crack open a portion/i,
-        /Because your account is free/i,
-        /it's not possible to get a worthwhile/i,
-      )
-
-      break_match = Regexp.union(
-        /You break through the crust of the .+ and withdraw (.+)!/i,
-        /You crack open a portion of the .+ and uncover (.+)!/i,
-      )
-
-      # Skin em
-      objs.each do |obj|
-        res = dothistimeout("skin ##{obj.id} #{skinner_hand}", 2, skin_match)
-        # e.g. OSA ship captains: "The Krolvin Captain's skin has been ruined with alchemical components"
-        if res =~ /You cannot skin|ruined with alchemical components/
-          ELoot.data.settings[:unskinnable].push(obj.name)
+      EO::Skinning.with_tool(skinner, blunt: blunt, free: free, draw: ->(tool) { Inventory.drag(tool) }, put_away: put_away) do |hand|
+        EO::Skinning.prepare(kneel: ELoot.data.settings[:skin_kneel], resolve: ELoot.data.settings[:skin_resolve],
+                             nature: ELoot.data.settings[:skin_604])
+        learned = EO::Skinning.skin(objs, hand: hand)
+        unless learned.empty?
+          ELoot.data.settings[:unskinnable].push(*learned)
+          ELoot.data.settings[:unskinnable].uniq!
           ELoot.save_profile()
-        elsif res =~ break_match
-          fput "stow gem ##{GameObj.left_hand.id}"
         end
-      end
-
-      waitrt?
-
-      return if dont_stow
-
-      if type == :blunt
-        bag = ReadyList.ready_list[:skin_sheath_blunt].nil? ? StowList.stow_list[:default] : ReadyList.ready_list[:skin_sheath_blunt]
-      else
-        bag = ReadyList.ready_list[:skin_sheath].nil? ? StowList.stow_list[:default] : ReadyList.ready_list[:skin_sheath]
-      end
-
-      Inventory.store_item(bag, skinner, true)
-
-      if ELoot.in_hand?(skinner)
-        Inventory.store_item(StowList.stow_list[:default], skinner)
       end
     end
 
     def self.skin(objs = GameObj.dead.to_a) # determines what to skin
-      objs = objs.reject do |obj|
-        (ELoot.data.settings[:unskinnable].include?(obj.name) && !Loot.occassional_skinner(obj)) ||
-          obj.type =~ /bandit/ ||
-          obj.name =~ /(?:ethereal|ghostly|unwordly|Grimswarm|child)/ ||
-          ELoot.data.settings[:skin_exclude].length.positive? && obj.name =~ Regexp.union(ELoot.data.settings[:skin_exclude]) ||
-          obj.name.match?(ELoot.data.critter_exclude_regex)
-      end
-
+      creature = nil
       if ELoot.data.settings[:skin_bounty_only]
         return unless Bounty.task.skin?
-        bounty_creature = Bounty.task.creature.to_s.downcase
-        objs = objs.select { |obj| obj.name.to_s.downcase.include?(bounty_creature) }
+        creature = Bounty.task.creature.to_s
       end
 
-      return if objs.empty?
+      edged, blunt = EO::Skinning.choose(objs, unskinnable: ELoot.data.settings[:unskinnable], exclude: EO::Skinning.exclusions(ELoot.data.settings), creature: creature)
+      return if edged.empty? && blunt.empty?
 
-      blunts = objs.find_all { |obj| obj.name =~ /krynch|stone mastiff|krag dweller|cavern urchin|massive boulder/i }
-      normals = objs.reject { |obj| obj.name =~ /krynch|stone mastiff|krag dweller|cavern urchin|massive boulder/i }
-
-      skin_obj_types(normals, :normal)
-      skin_obj_types(blunts, :blunt)
-
-      unless standing?
-        prev_stance = Stance.current
-        ELoot.change_stance('offensive') if GameObj.targets.empty?
-        dothistimeout('stand', 3, /You stand|You quickly roll|You are already standing/) until standing?
-        ELoot.change_stance(prev_stance)
-      end
+      skin_obj_types(edged, :normal)
+      skin_obj_types(blunt, :blunt)
+      EO::Skinning.stand_up
     end
   end
 end
@@ -5911,32 +4924,25 @@ module ELoot # Sells the loot
     # "worth approximately X silvers" / "give you X" value and ignores any
     # lowball follow-up offer ("out of my price range, I will offer you Y").
     # Returns { raw: "356,400", amount: 356400 } or nil when no value is given.
-    def self.parse_appraisal(lines) = EO::Selling.worth(lines)
+    # Pure: the appraised value out of the merchant's lines (libeo's).
+    def self.parse_appraisal(lines) = EO::Appraisal.parse(lines)
 
     def self.appraise(item, location, _data = nil, skip_jewelry_guard: false, note: nil, stow: true)
       return if item.type =~ /jewelry/ && location == "Pawnshop" && !skip_jewelry_guard
 
-      amount = 0
-      raw = nil
-
       limit = location =~ /gemshop/i ? ELoot.data.settings[:sell_appraise_gemshop] : ELoot.data.settings[:sell_appraise_pawnshop]
 
-      lines = ELoot.get_command("appraise ##{item.id}", /^You ask .*to appraise/)
+      answer = EO::Appraisal.ask(item)
+      amount = answer.amount
+      raw = answer.raw
 
-      if (parsed = Sell.parse_appraisal(lines))
-        raw = parsed[:raw]
-        amount = parsed[:amount]
-      end
+      gemshop_refused = location =~ /gemshop/i && answer.too_valuable
 
-      gemshop_refused = location =~ /gemshop/i && lines.any? { |l| l =~ /not buying anything this valuable today/ }
+      # The jeweler doesn't consider this item real jewelry, as opposed to
+      # refusing it for being too valuable: the gemshop is the wrong shop for it.
+      wrong_specialty_refused = location =~ /gemshop/i && answer.wrong_shop
 
-      # The jeweler doesn't consider this item real jewelry ("That's not quite
-      # my field... I only deal in gems and jewelry"), as opposed to refusing
-      # it for being too valuable. Distinct case: the gemshop is simply the
-      # wrong shop for it.
-      wrong_specialty_refused = location =~ /gemshop/i && lines.any? { |l| l =~ /not quite my field|only deal in gems and jewelry/ }
-
-      if amount > limit.to_i || lines.any? { |l| l =~ /not buying anything this valuable today/ }
+      if amount > limit.to_i || answer.too_valuable
         message = amount > limit.to_i ? " The #{item} appraises for #{raw}. That's above your settings." : " The #{item} appraises as too valuable to sell."
         ELoot.msg(type: "info", text: message)
 
@@ -6280,11 +5286,11 @@ module ELoot # Sells the loot
       table = Terminal::Table.new :title => "Eloot Breakdown", :rows => rows # , :style => {:all_separators => true}
       table.align_column(1, :right)
 
-      ELoot.wait_rt
+      EO.settle
       respond
       respond table
       respond
-      ELoot.wait_rt
+      EO.settle
       return
     end
 
@@ -6661,7 +5667,7 @@ module ELoot # Sells the loot
         next if ELoot.shop_unavailable_in_town?(place)
 
         ELoot.go2(place)
-        ELoot.wait_rt
+        EO.settle
 
         items_to_sell.each do |item|
           next if ELoot.data.settings[:keep_transmogs] && Inventory.is_transmog?(item)
@@ -7218,110 +6224,61 @@ module ELoot # Sells the loot
       ELoot.msg(type: "debug", text: "boxes: #{boxes}")
       # if we're here, assume we emptied out the disk some
       ELoot.reset_disk_full
-
       ELoot.silver_withdraw(withdraw_amount)
-
-      ELoot.go2('locksmith')
-      move "east" if Room.current.uid.include?(7118381)
+      EO::Locksmith.go_to_town_locksmith(go: ->(place) { ELoot.go2(place) })
       ELoot.wait_for_disk
 
-      if (table = (GameObj.room_desc.to_a + GameObj.loot.to_a).find { |obj| obj.noun =~ /(?:table|counter)$/ })
-        ELoot.get_command("look on ##{table.id}", /On the/) if table.contents.nil?
+      activator = EO::Locksmith.town_activator
+      if activator.nil?
+        ELoot.msg(type: "error", text: " Failed to find the locksmith's table, or a bell, keys, or chime on it", space: true)
+        return
+      end
 
-        if table.contents.nil?
-          ELoot.msg(type: "error", text: " Failed to find table contents", space: true)
-        else
-          activator = nil
-          if table.contents.any? { |obj| obj.noun == 'bell' }
-            activator = 'ring bell'
-          elsif table.contents.any? { |obj| obj.noun == 'keys' }
-            activator = 'pull keys'
-          elsif table.contents.any? { |obj| obj.noun == 'chime' } || GameObj.loot.any? { |obj| obj.noun == 'chime' }
-            activator = 'ring chime'
-          end
+      boxes.each do |box|
+        # A refusal learned earlier in this run applies to the rest of it.
+        next unless Sell.town_openable?(box)
 
-          if activator # fixme - shouldn't stow both hands just not the box
-            boxes.each { |box|
-              # A refusal learned earlier in this run applies to the rest of it.
-              next unless Sell.town_openable?(box)
-
-              Inventory.free_hands(both: true) unless ELoot.in_hand?(box)
-              Sell.locksmith_open(box, activator, retries: retries)
-            }
-          else
-            ELoot.msg(type: "error", text: " Failed to find a bell, keys, or chime on the table", space: true)
-          end
-        end
-      else
-        ELoot.msg(type: "error", text: " Failed to find a table", space: true)
+        Inventory.free_hands(both: true) unless ELoot.in_hand?(box)
+        Sell.locksmith_open(box, activator, retries: retries)
       end
     end
 
     def self.locksmith_open(box, activator, retries: 0)
-      lines = ELoot.get_command("look in ##{box.id}", /<container|That is closed|You see the shifting form/, silent: true, quiet: true)
-      if lines.any? { |line| line =~ /That is closed|You see the shifting form/i }
+      if EO::Locksmith.shut?(box)
         Inventory.drag(box) unless ELoot.in_hand?(box)
         box = ELoot.box_unphase(box)
 
-        lines = ELoot.get_command("open ##{box.id}", /That is already open|You open|You throw back|It appears to be locked/, silent: true, quiet: true)
-
-        if lines.any?(/locked/)
-          res = dothistimeout(activator, 2, /Gimme ([\d,]+) silvers|ignores you/)
-
-          # Ignored while the box is verifiably in hand means the NPC will not work on this
-          # box at all, which is a different failure from a timeout. Remember it so we stop
-          # carrying this box here for the rest of the run.
-          if res =~ /ignores you/ && ELoot.in_hand?(box)
-            Sell.remember_town_refusal(box)
-            ELoot.msg(type: "yellow", space: true,
-                      text: " The town locksmith will not open #{box.name}." \
-                            " Use the locksmith pool or a player locksmith.")
-            Inventory.single_drag(box, false)
-            return
-          end
-
-          unless res
-            ELoot.msg(type: "error", text: ' Unknown locksmith response.')
-            Inventory.single_drag(box, false)
-            return
-          end
-
-          quoted_fee = res[/Gimme ([\d,]+) silvers/, 1]&.delete(",")&.to_i
-
-          result = dothistimeout('pay', 2, /accepts|have enough/)
-
-          # Record the fee only once payment actually succeeds -- a quote alone doesn't
-          # spend anything, and recording it here too would double-count both the silver
-          # and the open on a retry that succeeds the second time around.
-          if result =~ /accepts/ && quoted_fee
-            ELoot.data.silver_breakdown["Town Locksmith"] -= quoted_fee
+        result = EO::Locksmith.town_open(box, activator)
+        case result.outcome
+        when :refused
+          # Ignored with the box in hand: the NPC will not work on this box at all.
+          # Remember it so we stop carrying this box here for the rest of the run.
+          Sell.remember_town_refusal(box)
+          ELoot.msg(type: "yellow", space: true,
+                    text: " The town locksmith will not open #{box.name}. Use the locksmith pool or a player locksmith.")
+          Inventory.single_drag(box, false)
+          return
+        when :unknown
+          ELoot.msg(type: "error", text: ' Unknown locksmith response.')
+          Inventory.single_drag(box, false)
+          return
+        when :paid
+          # Recorded only once payment succeeds, so a retry does not count twice.
+          if result.fee
+            ELoot.data.silver_breakdown["Town Locksmith"] -= result.fee
             ELoot.data.silver_breakdown["Town Open"] += 1
           end
-
-          if result =~ /have enough/
-            Inventory.single_drag(box, false)
-
-            # Bound to a single retry -- a locksmith_withdraw_amount smaller than the
-            # quoted fee would otherwise withdraw-and-fail forever. Withdraw at least
-            # what was actually quoted rather than the configured amount so the retry
-            # has a real chance of succeeding.
-            if retries.positive?
-              ELoot.msg(type: "yellow", space: true,
-                        text: " Still couldn't afford to open #{box.name} after a second" \
-                              " withdrawal. Leaving it for the pool or a player locksmith.")
-              return
-            end
-
-            withdraw_amount = [quoted_fee, ELoot.data.settings[:locksmith_withdraw_amount]].compact.max
-
-            # Route back through Sell.locksmith rather than recursing into
-            # locksmith_open directly with the room/activator state captured before
-            # the bank trip. Sell.locksmith re-withdraws, re-navigates (including any
-            # town-specific room hop, e.g. Kraken's Fall's outer-wagon-to-Smithing-room
-            # step), and re-derives the table/activator fresh for whatever room and
-            # town we land in, instead of assuming that state is still valid.
-            return Sell.locksmith([box], withdraw_amount: withdraw_amount, retries: retries + 1)
+        when :short
+          Inventory.single_drag(box, false)
+          # Bound to a single retry, withdrawing at least the quoted fee.
+          if retries.positive?
+            ELoot.msg(type: "yellow", space: true,
+                      text: " Still couldn't afford to open #{box.name} after a second withdrawal. Leaving it for the pool or a player locksmith.")
+            return
           end
+          withdraw_amount = [result.fee, ELoot.data.settings[:locksmith_withdraw_amount]].compact.max
+          # Back through Sell.locksmith, which re-withdraws, re-walks and re-reads the table.
+          return Sell.locksmith([box], withdraw_amount: withdraw_amount, retries: retries + 1)
         end
       end
       Loot.box_loot(box, "Town Locksmith", ELoot.data.silver_breakdown)
@@ -7334,6 +6291,7 @@ module ELoot # Sells the loot
     # @param found [Array<GameObj>] boxes found in containers
     # @param passed [Array<GameObj>] boxes handed to locksmith_pool
     # @return [Array<GameObj>]
+    # Order boxes for a locksmith pool drop-off, one in hand first (libeo's).
     def self.pool_box_order(held:, found:, passed:) = EO::Locksmith::Pool.order(held: held, found: found, passed: passed)
 
     def self.locksmith_pool(boxes, deposit = false)
@@ -7348,10 +6306,9 @@ module ELoot # Sells the loot
         exit
       end
 
-      match = /You want a locksmith|You don't have|takes your|already holding as many boxes|already (unlocked|open)/
       percent = ELoot.data.settings[:sell_locksmith_pool_tip_percent] ? ' PERCENT' : ''
       pool_count = 0
-      result = nil
+      nil
 
       # if we're here, assume we will empty out the disk
       ELoot.reset_disk_full
@@ -7377,7 +6334,7 @@ module ELoot # Sells the loot
 
         unless GameObj.right_hand.id == box.id
           fput "swap"
-          ELoot.wait_rt
+          EO.settle
         end
 
         box = ELoot.box_unphase(box)
@@ -7390,29 +6347,19 @@ module ELoot # Sells the loot
         end
 
         redo_needed = false
-        2.times do |i|
-          confirm = i.zero? ? "" : " confirm"
-          result = dothistimeout("give ##{worker.id} #{tip_amount}#{confirm}", 3, match)
-
-          case result
-          when /totaling ([\d,]+) silvers?/
-            silver = $1.delete(",").to_i
-            ELoot.data.silver_breakdown["Locksmith Pool"] -= silver
-            pool_count += 1
-            ELoot.data.silver_breakdown["Pool Dropoff"] += 1
-
-            if pool_count > 99
-              pool_count = handle_full_pool(worker) { return true if deposit }
-            end
-          when /You don't have that much/
-            redo_needed = false
-          when /already holding as many boxes/
-            Inventory.single_drag(box) unless box_in_hand
-            pool_count = handle_full_pool(worker) { return true if deposit }
-            redo_needed = true
-          when /already (unlocked|open)/
-            Loot.box_loot(box, "Locksmith Pool", ELoot.data.silver_breakdown)
-          end
+        given = EO::Locksmith::Pool.give(worker, tip_amount)
+        case given.outcome
+        when :deposited
+          ELoot.data.silver_breakdown["Locksmith Pool"] -= given.silver
+          pool_count += 1
+          ELoot.data.silver_breakdown["Pool Dropoff"] += 1
+          pool_count = handle_full_pool(worker) { return true if deposit } if pool_count > 99
+        when :full
+          Inventory.single_drag(box) unless box_in_hand
+          pool_count = handle_full_pool(worker) { return true if deposit }
+          redo_needed = true
+        when :already_open
+          Loot.box_loot(box, "Locksmith Pool", ELoot.data.silver_breakdown)
         end
 
         break if pool_count > 99
@@ -7438,15 +6385,11 @@ module ELoot # Sells the loot
       end
 
       lighten_load = false
-
       loop do
-        match = /We don't have any boxes ready for you|We don't seem to have that box|Alright, here's your|You need to lighten your load first|You can't hold anymore items/
-        # long enough to outlast lag; a reply that comes after giving up hands back a box nothing opens
-        res = dothistimeout("ask ##{worker.id} for return", 15, match)
-
-        break if res !~ /Alright, here's your|You need to lighten your load first/
-
-        if res =~ /You need to lighten your load first/
+        box = EO::Locksmith::Pool.take_one(worker)
+        case box
+        when :none then break
+        when :heavy
           if lighten_load
             ELoot.msg(type: "info", text: " Too much weight! Breaking from locksmith pool return.")
             break
@@ -7456,75 +6399,46 @@ module ELoot # Sells the loot
           room = Room.current.id
           ELoot.silver_deposit
           ELoot.go2(room)
-        else
-          20.times {
-            break if [GameObj.right_hand, GameObj.left_hand].map(&:type).compact.join(",") =~ /box|plinite/
-            sleep 0.1
-          }
+        when :lost
+          ELoot.msg(type: "error", text: " Failed to find the box you were supposed to get; report this to Elanthia-Online")
+          ELoot.msg(type: "error", text: " GameObj.left_hand: #{GameObj.left_hand.inspect}")
+          ELoot.msg(type: "error", text: " GameObj.right_hand: #{GameObj.right_hand.inspect}")
           lighten_load = false
-          box = nil
-          if GameObj.right_hand.type =~ /box|plinite/
-            box = GameObj.right_hand
-          elsif GameObj.left_hand.type =~ /box|plinite/
-            box = GameObj.left_hand
-          else
-            ELoot.msg(type: "error", text: " Failed to find the box you were supposed to get; report this to Elanthia-Online")
-            ELoot.msg(type: "error", text: " GameObj.left_hand: #{GameObj.left_hand.inspect}")
-            ELoot.msg(type: "error", text: " GameObj.right_hand: #{GameObj.right_hand.inspect}")
-          end
-
+        else
+          lighten_load = false
           ELoot.data.silver_breakdown["Pool Return"] += 1
           Loot.box_loot(box, "Locksmith Pool", ELoot.data.silver_breakdown)
         end
-
-        ELoot.wait_rt
+        EO.settle
       end
 
       ELoot.data.silver_breakdown["Pool Depth"] = Sell.locksmith_pool_count(worker)
     end
 
-    POOL_LIST_HEADER = /here's the list of boxes we have for you\.|You haven't given us any boxes to be worked on\./.freeze unless defined?(POOL_LIST_HEADER)
+    POOL_LIST_HEADER = EO::Locksmith::Pool::LIST_HEADER unless defined?(POOL_LIST_HEADER)
 
     # Boxes in the pool that are not yet ready to return. The list comes from the
     # "ask about list" output; issue_command hands back what it has when it times out,
     # so a list cut short falls back to the whole server buffer (reget), as long as
     # this list's header was seen (otherwise the buffer's last list may be an old one).
+    # Boxes in the pool that are not yet ready to return.
     def self.locksmith_pool_count(worker)
-      list_match = Regexp.union(POOL_LIST_HEADER, /^(\d+)\./)
-      results = ELoot.get_command("ask ##{worker.id} about list", list_match, silent: true, quiet: true, timeout: 15)
-      total, returned = Sell.pool_list_counts(results)
-
-      unless results.last =~ /<prompt/
-        if results.any? { |line| line =~ POOL_LIST_HEADER }
-          buffered_total, buffered_returned = Sell.pool_list_counts(Array(reget))
-          # >=: Lich buffers each line before the script reads it, so the buffer is at least as
-          # complete; on a tie it may still hold the last box's status the results were cut before
-          total, returned = buffered_total, buffered_returned if buffered_total >= total
-        end
-        ELoot.msg(type: "info", text: " The locksmith pool list came back incomplete; pool depth may be off")
-      end
-
-      total - returned
+      depth, whole = EO::Locksmith::Pool.depth(worker)
+      ELoot.msg(type: "info", text: " The locksmith pool list came back incomplete; pool depth may be off") unless whole
+      depth
     end
 
     # Count the boxes and the ones ready to return in the last pool list in lines.
     # @param lines [Array<String>]
     # @return [Array(Integer, Integer)] [boxes, ready to return]
-    def self.pool_list_counts(lines) = EO::Locksmith::Pool.counts(lines)
+    def self.pool_list_counts(lines) = EO::Locksmith::Pool.list_counts(lines)
 
     def self.locksmith_determine_tip(pool_count, boxes_length)
-      tip_amount = 0
-      upper_limit = [pool_count + (boxes_length), 100].min
-      pool_count += 1
-
-      (pool_count..upper_limit).each do |items|
-        tip_amount += Sell.locksmith_tip(items, ELoot.data.settings[:base_tip], ELoot.data.settings[:max_tip], ELoot.data.settings[:alpha_rate])
-      end
-
-      return tip_amount.ceil
+      st = ELoot.data.settings
+      EO::Locksmith::Pool.tip_for(pool_count, boxes_length, base: st[:base_tip], max: st[:max_tip], alpha: st[:alpha_rate])
     end
 
-    def self.locksmith_tip(box_no, base_tip, max_tip, alpha) = EO::Locksmith::Pool.tip(box_no, base_tip, max_tip, alpha)
+    def self.locksmith_tip(box_no, base_tip, max_tip, alpha) = EO::Locksmith::Pool.tip(box_no, base: base_tip, max: max_tip, alpha: alpha)
 
     def self.pawnshop(type = nil)
       ELoot.go2("pawnshop")
@@ -7662,16 +6576,12 @@ module ELoot # Sells the loot
     # The town locksmith will not work on "case" boxes -- it ignores them even when the box
     # is held in hand, so it can only be opened by the locksmith pool or a player locksmith.
     # Carrying one to town costs a silver withdrawal and a wasted trip every sell run.
-    POOL_ONLY_NOUNS = /\Acase\z/i.freeze unless defined?(POOL_ONLY_NOUNS)
+    POOL_ONLY_NOUNS = EO::Locksmith::POOL_ONLY_NOUNS unless defined?(POOL_ONLY_NOUNS)
 
     # @param box [GameObj]
     # @return [Boolean] false when the town locksmith cannot open this box
-    def self.town_openable?(box)
-      return true unless box.respond_to?(:noun)
-      return false if POOL_ONLY_NOUNS.match?(box.noun.to_s)
-
-      !ELoot.data.town_refused.to_a.include?(box.name)
-    end
+    # @return [Boolean] false when the town locksmith cannot open this box
+    def self.town_openable?(box) = EO::Locksmith.town_openable?(box, refused: ELoot.data.town_refused.to_a)
 
     # Safety net for box types not covered by POOL_ONLY_NOUNS. Session-scoped on purpose:
     # a game update could change what the NPC accepts, so this is not persisted.
@@ -7868,23 +6778,13 @@ module ELoot # Sells the loot
       end
     end
 
+    # Sell one item; a note the sale paid in counts toward the shop's total.
     def self.sell_item(item, place = nil, data = nil)
       return if item.nil? || item.name == "Empty"
-
-      lines = ELoot.get_command("sell ##{item.id}", /You (offer to sell|ask)|What were you referring to\?/)
-
-      return if lines.any?(/What were you referring to\?|That's not quite my field|That's basically worthless here|Can't say I'm interested in that|This is a pawnshop, sir, not a junkshop|The company don't buy trash|as if you were a lunatic/)
-
-      20.times {
-        break if !ELoot.in_hand?(item)
-        sleep 0.1
-      }
+      return unless EO::Selling.sell(item) == :sold
 
       bulk_note = ELoot.read_note.to_i
-
-      if bulk_note > 0
-        data[place] += bulk_note
-      end
+      data[place] += bulk_note if bulk_note.positive? && data
     end
   end
 end
@@ -7893,6 +6793,12 @@ module ELoot
   extend RoomScopedWait
   Inventory.extend(RoomScopedWait)
   Loot.extend(RoomScopedWait)
+  # libeo's waits too: the loops that moved there are still part of a room
+  # cleanup, and outside one RoomScopedWait sleeps as usual
+  [EO, EO::Hands, EO::Containers, EO::Items, EO::Items::Disk, EO::Boxes, EO::Skinning, EO::Loot, EO::Carry].each do |library|
+    library.extend(RoomScopedWait)
+  end
+  EO::Stow.include(RoomScopedWait)
   @room_api_versions ||= {}
   @room_api_versions[Script.current.name] = ELoot.get_script_version
 end
@@ -8032,7 +6938,7 @@ module ELoot # Starts the script
     ELoot.go2(ELoot.data.start_room)
   when /^sell/
     ELoot.data.debug_logger = ELoot::DebugLogger.new if ELoot.data.settings[:debug_file]
-    ELoot.wait_rt
+    EO.settle
 
     # Set bags as empty to avoid false full status
     ELoot.data.sacks_full = { "last cleared" => [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, Script.current.vars[0]] }

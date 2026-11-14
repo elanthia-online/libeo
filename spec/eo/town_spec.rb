@@ -1,171 +1,150 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
+require_relative '../../scripts/eo/travel'
+require_relative '../../scripts/eo/command'
+require_relative '../../scripts/eo/containers'
+require_relative '../../scripts/eo/hands'
 require_relative '../../scripts/eo/town'
 
 RSpec.describe EO::Town do
-  include_context 'a script lending helpers'
+  include_context 'a fake map'
 
-  let(:room_type) do
-    Struct.new(:id, :location, :uid, :tags, :nearest, :paths, keyword_init: true) do
-      def find_nearest_by_tag(tag) = nearest[tag]
-      def path_to(room) = paths[room.id]
-    end
-  end
-  let(:rooms) { {} }
-  let(:here) { room(1, 'the town of Wehnimer\'s Landing') }
-
-  def room(id, location = nil, uid: [id], tags: [], nearest: {}, paths: {})
-    rooms[id] = room_type.new(id: id, location: location, uid: uid, tags: tags, nearest: nearest, paths: paths)
+  # Coldriver Village (Hinterwilds) at 1, its gemshop at 2; Icemule's square
+  # at 10 with a pawnshop at 11, reachable only through the transport at 5.
+  let(:rooms) do
+    [EOSpec::FakeRoom.new(id: 1, uid: [7503205], tags: %w[town], location: 'the Hinterwilds', wayto: { '2' => 'e', '5' => 'n' }),
+     EOSpec::FakeRoom.new(id: 2, tags: %w[gemshop], location: 'the Hinterwilds', wayto: { '1' => 'w' }),
+     EOSpec::FakeRoom.new(id: 5, uid: [4132054], location: 'the Hinterwilds', wayto: { '1' => 's', '10' => 'n' }),
+     EOSpec::FakeRoom.new(id: 10, uid: [4042150], tags: %w[town], location: 'Icemule Trace', wayto: { '5' => 's', '11' => 'e' }),
+     EOSpec::FakeRoom.new(id: 11, tags: %w[pawnshop], location: 'Icemule Trace', wayto: { '10' => 'w' }),
+     EOSpec::FakeRoom.new(id: 20, location: 'Mist Harbor, Four Winds Isle', wayto: {})]
   end
 
   before do
-    all = rooms
-    current = here
-    stub_const('Room', Class.new do
-      define_singleton_method(:current) { current }
-      define_singleton_method(:[]) { |id| all[id] }
+    fake = map
+    fake.list.each do |room|
+      room.define_singleton_method(:find_nearest_by_tag) do |tag|
+        dist = fake.distances(self)
+        fake.list.select { |r| r.tags.include?(tag) && dist.key?(r.id) }.min_by { |r| dist[r.id] }&.id
+      end
+      room.define_singleton_method(:path_to) do |other|
+        # the rooms on the way, by walking the parents back
+        dist = fake.distances(self)
+        return nil unless dist.key?(other.id)
+        path = []
+        here = other.id
+        until here == id
+          path.unshift(here)
+          here = fake.list.find { |r| dist[r.id] == dist[here] - 1 && r.wayto.key?(here.to_s) }.id
+        end
+        path
+      end
+    end
+    stub_const('Map', Class.new do
+      define_singleton_method(:list) { fake.list }
+      define_singleton_method(:ids_from_uid) { |uid| fake.list.select { |r| r.uid.include?(uid) }.map(&:id) }
     end)
-    allow(described_class).to receive(:sleep)
   end
 
-  it 'knows Four Winds Isle by its three locations' do
-    expect(described_class.fwi?(room(2, 'Mist Harbor'))).to be(true)
-    expect(described_class.fwi?(room(3, 'the Isle of Four Winds'))).to be(true)
-    expect(described_class.fwi?(here)).to be(false)
+  it 'knows Four Winds Isle by the room location' do
+    expect(described_class.fwi?(map[20])).to be(true)
+    expect(described_class.fwi?(map[1])).to be(false)
+    expect(described_class.fwi?(nil)).to be(false)
   end
 
-  describe '.nearest_shop' do
-    before do
-      here.nearest.merge!('town' => 10, 'pawnshop' => 44, 'gemshop' => 45)
-      room(10, 'the Hinterwilds', uid: [described_class::HINTERWILDS_TOWN_UID])
-    end
-
-    it 'skips the shops the Hinterwilds town does not have' do
-      expect(described_class.nearest_shop('pawnshop')).to be_nil
-      expect(described_class.nearest_shop('gemshop')).to eq(45)
-    end
-
-    it 'goes anyway for a character who travels to sell' do
-      expect(described_class.nearest_shop('pawnshop', travels: true)).to eq(44)
-    end
-
-    it 'goes when the town is another, or not known' do
-      rooms[10].uid = [228]
-      expect(described_class.nearest_shop('pawnshop')).to eq(44)
-      here.nearest.delete('town')
-      expect(described_class.nearest_shop('pawnshop')).to eq(44)
-    end
+  it 'refuses a trip out of the Hinterwilds for the shops it lacks, unless travelling is fine' do
+    map.current = map[1]
+    expect(described_class.shop_elsewhere?('pawnshop')).to be(true)
+    expect(described_class.shop_elsewhere?('gemshop')).to be(false)
+    expect(described_class.nearest_shop('pawnshop')).to be_nil
+    expect(described_class.nearest_shop('pawnshop', far_is_fine: true)).to eq(11)
+    expect(described_class.nearest_shop('gemshop')).to eq(2)
+    map.current = map[10]
+    expect(described_class.nearest_shop('pawnshop')).to eq(11)
   end
 
-  describe '.in_region' do
-    let(:towns) { [room(20, "the town of Wehnimer's Landing", nearest: { 'furrier' => 21 }), room(30, 'the Hinterwilds', nearest: { 'furrier' => 31 })] }
-    let(:ferry) { 99 }
+  it 'finds a shop in a named town and says whether it is in the region' do
+    map.current = map[1]
+    expect(described_class.in_town('pawnshop', 'icemule').id).to eq(11)
+    expect(described_class.in_town('pawnshop', 'atlantis')).to be_nil
+    expect(described_class.in_region('gemshop', 'Cold River')).to eq(2)
+    expect(described_class.in_region('pawnshop', 'Icemule Trace')).to be_nil
+    map.current = map[10]
+    expect(described_class.in_region('pawnshop', 'Icemule Trace')).to eq(11)
+  end
+end
 
-    before do
-      room(21)
-      room(31)
-      edge = ferry
-      stub_const('Map', Class.new { define_singleton_method(:ids_from_uid) { |uid| uid == 14_001_002 ? [edge] : [] } })
-    end
+RSpec.describe EO::Town, '.in_town' do
+  it 'knows no town for an empty name, where every location would match' do
+    stub_const('Map', Class.new { define_singleton_method(:list) { raise 'the map should not be searched' } })
+    expect(described_class.in_town('furrier', nil)).to be_nil
+    expect(described_class.in_town('furrier', '  ')).to be_nil
+  end
+end
 
-    it "finds the shop in the bounty's town when the path stays in the region" do
-      here.paths[21] = [1, 5, 21]
-      expect(described_class.in_region('furrier', town: "Wehnimer's Landing", towns: towns)).to eq(21)
-    end
+RSpec.describe EO::Town, '.keep_silver' do
+  let(:walks) { [] }
+  let(:bank) { double('bank', deposit: 500, withdraw: 100, f2p?: false, pinefar?: false, here?: true) }
 
-    it 'has none when the path crosses a ferry, a cart or a portmaster' do
-      here.paths[21] = [1, ferry, 21]
-      expect(described_class.in_region('furrier', town: "Wehnimer's Landing", towns: towns)).to be_nil
-    end
+  before { stub_const('Lich::Messaging', Module.new { define_singleton_method(:msg) { |*| nil } }) }
 
-    it 'reads Cold River as the Hinterwilds, and has none for a town it does not know' do
-      here.paths[31] = [1, 31]
-      expect(described_class.in_region('furrier', town: 'Cold River', towns: towns)).to eq(31)
-      expect(described_class.in_region('furrier', town: 'Zul Logoth', towns: towns)).to be_nil
-    end
+  def carrying(silver)
+    stub_const('Lich::Gemstone::Currency', Module.new { define_singleton_method(:silver) { |**| silver } })
+    stub_const('Lich::Gemstone::Bank', bank)
   end
 
-  describe '.leave_fwi' do
-    let(:fputs) { [] }
-
-    before do
-      log = fputs
-      described_class.define_singleton_method(:fput) { |cmd| log << cmd }
-      stub_const('GameObj', Class.new { define_singleton_method(:[]) { |_name| nil } })
-    end
-
-    after { described_class.singleton_class.remove_method(:fput) }
-
-    it 'does nothing off the isle, or on it with no trinket named' do
-      expect(described_class.leave_fwi(trinket: 'pendant', return_room: nil)).to eq(:elsewhere)
-      here.nearest['town'] = described_class::FWI_TOWN
-      expect(described_class.leave_fwi(trinket: nil, return_room: 228)).to eq(:no_trinket)
-      expect(went).to be_empty
-    end
-
-    it 'walks to the dock and on to the return room' do
-      here.nearest['town'] = described_class::FWI_TOWN
-      expect(described_class.leave_fwi(trinket: 'pendant', return_room: 228)).to eq(:left)
-      expect(went).to eq([described_class::FWI_DOCK, 228])
-      expect(fputs).to be_empty
-    end
-
-    it 'turns a worn trinket where it is when no return room is set' do
-      here.nearest['town'] = described_class::FWI_TOWN
-      stub_const('GameObj', Class.new { define_singleton_method(:[]) { |_name| Struct.new(:id).new('55') } })
-      described_class.leave_fwi(trinket: 'pendant', return_room: nil)
-      expect(fputs).to eq(['turn #55'])
-    end
+  it 'stays away from the bank when the silver is already right' do
+    carrying(100)
+    expect(described_class.keep_silver(keep: 100, go: -> { walks << :bank })).to eq(:none)
+    expect(walks).to be_empty
   end
 
-  describe '.trash_can' do
-    before { stub_const('GameObj', Struct.new(:id, :noun, :name)) }
-
-    it 'reads the receptacle TRASH names' do
-      answers['trash'] = ['You could discard items in a <a exist="-123" noun="barrel">large barrel</a>.']
-      expect(described_class.trash_can.to_a).to eq(['-123', 'barrel', 'large barrel'])
-    end
-
-    it 'has none where the game says so' do
-      answers['trash'] = ['You do not notice a trash receptacle here.']
-      expect(described_class.trash_can).to be_nil
-    end
-
-    it 'has none when TRASH names none either way' do
-      answers['trash'] = ['You could discard items somewhere.']
-      expect(described_class.trash_can).to be_nil
-    end
+  it 'deposits everything and takes the keeper silvers back' do
+    carrying(600)
+    expect(described_class.keep_silver(keep: 100, go: -> { walks << :bank })).to eq(:done)
+    expect(walks).to eq([:bank])
+    expect(bank).to have_received(:withdraw).with(100)
   end
 
-  describe '.pool_worker' do
-    let(:npcs) { [] }
+  it 'says so when the walk did not reach a bank, and banks nothing' do
+    carrying(600)
+    allow(bank).to receive(:here?).and_return(false)
+    expect(described_class.keep_silver(keep: 100, go: -> { walks << :bank })).to eq(:not_there)
+    expect(bank).not_to have_received(:deposit)
+  end
 
-    before do
-      list = npcs
-      stub_const('GameObj', Class.new { define_singleton_method(:npcs) { list } })
-    end
+  it 'says so when the deposit is refused, and takes nothing out' do
+    carrying(600)
+    allow(bank).to receive(:deposit).and_return(nil)
+    expect(described_class.keep_silver(keep: 100, go: -> { walks << :bank })).to eq(:refused)
+    expect(bank).not_to have_received(:withdraw)
+  end
 
-    it 'finds the worker by the usual names without looking' do
-      npcs << Struct.new(:name).new('scruffy dwarf')
-      worker, lines = described_class.pool_worker
-      expect(worker.name).to eq('scruffy dwarf')
-      expect(lines).to be_nil
-      expect(sent).to be_empty
-    end
+  it 'says so when the silver to keep does not come back out' do
+    carrying(600)
+    allow(bank).to receive(:withdraw).and_return(nil)
+    expect(described_class.keep_silver(keep: 100, go: -> { walks << :bank })).to eq(:short)
+  end
 
-    it "goes by the room's own name for the worker when it has one" do
-      here.tags << 'meta:boxpool:npc:Gertie'
-      npcs.push(Struct.new(:name).new('scruffy dwarf'), Struct.new(:name).new('Gertie'))
-      expect(described_class.pool_worker.first.name).to eq('Gertie')
-    end
+  it 'says so when only part of the silver to keep comes back out' do
+    carrying(600)
+    allow(bank).to receive(:withdraw).and_return(40)
+    expect(described_class.keep_silver(keep: 100, go: -> { walks << :bank })).to eq(:short)
+  end
 
-    it 'looks twenty times before giving up, and hands back the last look' do
-      answers['look'] = ['<resource picture="0"/>']
-      worker, lines = described_class.pool_worker
-      expect(worker).to be_nil
-      expect(lines).to eq(['<resource picture="0"/>'])
-      expect(sent).to eq(['look'] * 20)
-    end
+  it 'goes anyway when forced, and says when there is no bank to take it' do
+    carrying(0)
+    allow(bank).to receive_messages(deposit: nil, f2p?: true)
+    expect(described_class.keep_silver(go: -> { walks << :bank }, force: true)).to eq(:no_bank)
+    expect(walks).to eq([:bank])
+  end
+end
+
+RSpec.describe EO::Hands do
+  it 'names READY list keys the way READY and STORE want them' do
+    expect(described_class.ready_word(:secondary_weapon)).to eq('2weapon')
+    expect(described_class.ready_word('ranged_weapon')).to eq('ranged')
+    expect(described_class.ready_word(:weapon)).to eq('weapon')
   end
 end
