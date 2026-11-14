@@ -2,6 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/casting'
+require_relative '../../scripts/eo/wander'
 
 RSpec.describe EO::Casting do
   # A spell as Lich's Spell answers: what it costs, whether it can be
