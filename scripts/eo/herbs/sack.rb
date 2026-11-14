@@ -14,29 +14,6 @@ module EO
     module Sack
       module_function
 
-      # Every answer OPEN gets, including the ones that mean it was open already.
-      OPEN = Regexp.union(
-        /You throw back/i,
-        /You open/i,
-        /Oh no! It's already/i,
-        /You pick at the knot/i,
-        /already open/i,
-        /is open already/i,
-        /You unfasten/i,
-        /You glance around suspiciously/i,
-        /^What were you referring to\?/i,
-        /^I could not find what you were referring to\./i,
-        /You pull the long strips of leather/i,
-        /With a flick of your wrist/i,
-        /Sliding the lever on the side/i,
-        /You rub your hand/i,
-        /There doesn't seem to be any way/i,
-        /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i,
-        /crumbles? and decays? away/,
-        /Myriad spectral moths pull a cloakwing/,
-        /<exposeContainer|<container/i
-      )
-
       # An OPEN answer that means this opened it, so it wants closing after.
       NEEDS_CLOSED = Regexp.union(
         /You throw back/i,
@@ -49,23 +26,6 @@ module EO
         /Sliding the lever on the side/i,
         /You rub your hand/i,
         /Myriad spectral moths pull a cloakwing moth/
-      )
-
-      # Every answer LOOK IN gets.
-      LOOK = Regexp.union(
-        /Peering into the <a exist=.*? noun="toolkit">/i,
-        /That is closed/i,
-        /is shut too tightly to see its contents/i,
-        /In the(.*?)you see/i,
-        /In the(.*?):/i,
-        /There is nothing/i,
-        /You glance/i,
-        /^Attached to a.*keyring/i,
-        /.*?[.*?]:/i,
-        %r{The <a exist="\d+" noun="\w+">[^<]+</a> has (?:an? <a exist="\d+" noun="\w+">[^<]+</a> |nothing )?in.*scabbard and (?:an? <a exist="\d+" noun="\w+">[^<]+</a> |nothing )?in.*scabbard\.}i,
-        /^I could not find what you were referring to\./i,
-        /Hidden within the depths of a cloakwing moth greatcloak/,
-        /<exposeContainer|<dialogData|<container/i
       )
 
       CLOSE = Regexp.union(
@@ -143,12 +103,12 @@ module EO
         return if sack.nil? || sack.empty?
         return if GameObj.containers.keys.include?(sack.id) && sack.contents.is_a?(Array)
 
-        result = EO.lines("open ##{sack.id}", OPEN)
+        result = EO.lines("open ##{sack.id}", Containers::OPEN)
         yield if result.grep(NEEDS_CLOSED).any? && block_given?
 
         return :locked if result.grep(/It appears to be locked./).any?
 
-        lines = EO.lines("look in ##{sack.id}", LOOK)
+        lines = EO.lines("look in ##{sack.id}", Containers::LOOK)
         return if lines.grep(/You glance|There is nothing/i).any?
 
         20.times do

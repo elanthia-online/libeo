@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
+require_relative '../../scripts/eo/containers'
 require_relative '../../scripts/eo/herbs/table'
 require_relative '../../scripts/eo/herbs/doses'
 require_relative '../../scripts/eo/herbs/sack'
