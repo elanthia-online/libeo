@@ -25,6 +25,26 @@ module EO
 
       attr_accessor(*STATE, *READS)
 
+      # The item types that need handling of their own, when they are chosen.
+      SPECIAL_TYPES = ['box', 'clothing', 'collectible', 'cursed', 'jewelry', 'food', 'breakable', 'lm trap'].freeze
+
+      # A context for a caller that has eloot's settings and nothing else: the
+      # patterns are built from them the way eloot builds its own. What a
+      # character has on it (the charm, the gauntlet, a blood band, the
+      # weapons) is for the caller to set.
+      #
+      # @param settings [Hash] eloot's settings
+      # @param options [Hash] anything the constructor takes, and original_readylist
+      #   (Lich's ReadyList::ORIGINAL_READY_LIST when not given)
+      # @return [Context]
+      def self.from_settings(settings, **options)
+        options[:original_readylist] ||= ReadyList.const_get(:ORIGINAL_READY_LIST)
+        new(settings: settings, put_regex: Hands::PUT, look_regex: Containers::LOOK,
+            loot_exclude_regex: Loot.words(settings[:loot_exclude]), critter_exclude_regex: Loot.words(settings[:critter_exclude]),
+            loot_keep_regex: Loot.words(settings[:loot_keep]),
+            allowed_special_types: Set.new(SPECIAL_TYPES) & Set.new(settings[:loot_types].to_a), **options)
+      end
+
       # @return [Hash] eloot's settings
       attr_reader :settings
 

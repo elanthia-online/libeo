@@ -110,3 +110,42 @@ RSpec.describe EO::Loot::Context do
     expect(described_class::STATE + described_class::READS - kept).to be_empty
   end
 end
+
+RSpec.describe EO::Loot::Context, '.from_settings' do
+  let(:settings) { { loot_types: %w[gem box jewelry], loot_exclude: %w[rock], critter_exclude: %w[child], loot_keep: ['blue ruby'] } }
+  let(:context) { described_class.from_settings(settings, original_readylist: %i[weapon]) }
+
+  before do
+    stub_const('EO::Hands::PUT', /put/)
+    stub_const('EO::Containers::LOOK', /look/)
+  end
+
+  it 'builds the patterns eloot builds, as whole words' do
+    expect(context.loot_exclude_regex).to match('grey rock')
+    expect(context.loot_exclude_regex).not_to match('rockslide')
+    expect(context.critter_exclude_regex).to match('wolf child')
+    expect(context.loot_keep_regex).to match('a blue ruby')
+  end
+
+  it 'allows the special types that are chosen, and no others' do
+    expect(context.allowed_special_types).to eq(Set.new(%w[box jewelry]))
+  end
+
+  it 'takes the game\'s put and look patterns and the original READY list' do
+    expect(context.put_regex).to eq(/put/)
+    expect(context.look_regex).to eq(/look/)
+    expect(context.original_readylist).to eq(%i[weapon])
+  end
+
+  it 'takes the Lich READY list when none is given' do
+    stub_const('ReadyList', Module.new { const_set(:ORIGINAL_READY_LIST, %i[shield]) })
+    expect(described_class.from_settings(settings).original_readylist).to eq(%i[shield])
+  end
+
+  it 'passes the rest to the constructor' do
+    said = []
+    ctx = described_class.from_settings(settings, original_readylist: [], say: ->(type:, text:) { said << [type, text] })
+    ctx.say(type: 'info', text: 'hi')
+    expect(said).to eq([%w[info hi]])
+  end
+end

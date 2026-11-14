@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.58.0')
-    EO.require('0.58.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.59.0')
+    EO.require('0.59.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,14 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.58.0
+       version: 0.59.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.59.0 (2026-11-14)
+    - feature: EO::Loot::Context.from_settings builds a context from eloot's settings alone: the whole-word patterns,
+      the special types that are chosen, the put and look patterns and the original READY list. docs/looting-library.md
+      says how a script other than eloot drives a looting pass
   v0.58.0 (2026-11-14)
     - feature: EO::Loot::Handler, what a looting pass does with the hands and the bags: put_away, drag, free_hand,
       free_hands, open_single_container, store_item, open_loot_containers, return_hands, and single_drag, single_loot and
