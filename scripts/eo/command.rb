@@ -67,4 +67,17 @@ module EO
     end
     standing?
   end
+
+  # KNEEL until kneeling, a few tries at most, for the same reason.
+  #
+  # @param tries [Integer]
+  # @return [Boolean] whether the character is kneeling
+  def self.kneel(tries: 5)
+    tries.times do
+      return true if kneeling?
+      fput 'kneel'
+      settle
+    end
+    kneeling?
+  end
 end

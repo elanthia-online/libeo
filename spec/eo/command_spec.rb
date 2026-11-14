@@ -76,3 +76,33 @@ RSpec.describe 'EO.stand' do
     expect(sent.size).to eq(3)
   end
 end
+
+RSpec.describe 'EO.kneel' do
+  def stub_kneel(kneels_after)
+    sent = []
+    EO.define_singleton_method(:fput) { |cmd| sent << cmd }
+    EO.define_singleton_method(:kneeling?) { sent.size >= kneels_after }
+    allow(EO).to receive(:settle)
+    sent
+  end
+
+  after { %i[fput kneeling?].each { |m| EO.singleton_class.remove_method(m) } }
+
+  it 'sends nothing when already kneeling' do
+    sent = stub_kneel(0)
+    expect(EO.kneel).to be(true)
+    expect(sent).to be_empty
+  end
+
+  it 'kneels and stops once kneeling' do
+    sent = stub_kneel(2)
+    expect(EO.kneel).to be(true)
+    expect(sent).to eq(%w[kneel kneel])
+  end
+
+  it 'gives up after five tries when something keeps the character up' do
+    sent = stub_kneel(99)
+    expect(EO.kneel).to be(false)
+    expect(sent.size).to eq(5)
+  end
+end
