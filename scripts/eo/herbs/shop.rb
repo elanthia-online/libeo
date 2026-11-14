@@ -7,6 +7,9 @@ module EO
     module Shop
       module_function
 
+      # Pours into one bundle before giving up on it.
+      BUNDLE_POURS = 10
+
       # ORDER, as a map of item name to menu number.
       #
       # @return [Hash{String => String}]
@@ -75,6 +78,21 @@ module EO
       # Combine like herbs in the sack into bundles, and like potions by
       # pouring, so they take less room.
       #
+      # Pour a potion into the bundle until the bundle takes no more, giving
+      # up when the game stops answering or after BUNDLE_POURS tries.
+      #
+      # @param item [GameObj] the potion in hand
+      # @param bundle [GameObj] the bundle it goes into
+      # @return [String, nil] the last answer, nil when there was none
+      def pour_into(item, bundle)
+        result = nil
+        BUNDLE_POURS.times do
+          result = dothistimeout("pour ##{item.id} in ##{bundle.id}", 5, /You have|You only|You can|twinkling/)
+          break if result.nil? || result =~ /You can|twinkling/
+        end
+        result
+      end
+
       # @param sack [Sack]
       # @param herb [String, nil] one herb name, or every known one
       # @return [void]
@@ -99,8 +117,7 @@ module EO
             end
             sack.take(item)
             if item.name =~ /potion|tincture|elixir|barrel|flagon|tea|soup/
-              result = nil
-              result = dothis("pour ##{item.id} in ##{bundle.id}", /You have|You only|You can|twinkling/) until result =~ /You can|twinkling/
+              result = pour_into(item, bundle)
               full = true if result =~ /You can/
             else
               result = dothis('bundle', /Carefully|If you|Try as|You can't|That is not an herb you can bundle/i)

@@ -720,6 +720,7 @@ module EHerbs
       when :not_found then respond " #{Script.current.vars[1]} not found"
       when :done then respond " #{character}: Healdown finished. Exiting..."
       when :missing then respond ' Missing a needed potion to finish healing. Exiting...'
+      when :timeout then respond ' The potions were not taken or the wounds did not heal. Exiting...'
       end
       EHerbs.stow_used
       fill_right_hand
