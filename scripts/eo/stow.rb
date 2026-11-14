@@ -202,7 +202,11 @@ module EO
       weight = weight_of(item)
       return nil unless weight && @snapshot
 
-      route(item).compact.reject { |bag| full?(bag) }.each do |bag|
+      # boxes are shuffled between the box bag and the overflow bags only: one
+      # in any other bag was not put there by a looting pass, and moving it
+      # would use up room kept for boxes
+      shuffled = [bags[:box], *overflow].compact
+      route(item).compact.select { |bag| shuffled.any? { |s| s.id == bag.id } }.reject { |bag| full?(bag) }.each do |bag|
         short = weight - room_in(bag).to_f
         next unless short.positive?
 
@@ -211,9 +215,8 @@ module EO
         box = boxes.select { |c| c.type.to_s =~ /\bbox\b/ && c.total_weight >= short }.min_by(&:total_weight)
         next unless box
 
-        # only the box bag and the overflow bags: a container kept for
-        # something else (always-at-hand things, the default bag) is never filled
-        allowed = [bags[:box], *overflow].compact.map { |c| c.id.to_s }
+        # and a container kept for something else is never filled
+        allowed = shuffled.map { |c| c.id.to_s }
         target = containers.select { |c| allowed.include?(c.id.to_s) && c.id != bag.id }
                            .select { |c| room_in(c).to_f >= box.total_weight }.max_by { |c| room_in(c) }
         # the live objects: a snapshot's contents never change, so a put into one is never seen

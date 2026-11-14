@@ -216,7 +216,7 @@ These recur; the script tables do not repeat the detail.
 | 64 | With no skinning weapon listed and an empty right hand, eloot says so; it said it was using the right hand and skinned nothing | fix | #63 |
 | 65 | A LOCKER INFO that got no answer is asked again (upstream kept the nothing for the run) | fix | #64 |
 | 66 | Taking an item into "a hand" picks the right hand when it is free and usable, else the left; upstream picked the right whenever it was empty, so a crippled right arm made the drag fail after a five second wait | fix | #63 |
-| 67 | A box moved aside to make room goes only to the box bag or an overflow bag; upstream put it in any worn container with room, including one kept for things always at hand | fix | #64 |
+| 67 | A box moved aside to make room is taken from the box bag or an overflow bag and goes to the box bag or another overflow bag; upstream took it from any bag on the item's route and put it in any worn container with room, including one kept for things always at hand | fix | #64 |
 
 The command-line dispatch is the same text apart from row 61, which moves one
 branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
