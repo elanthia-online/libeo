@@ -27,9 +27,17 @@ contributors: Drafix
         game: Gemstone
         tags: bounty
     required: Lich >= 5.22.0
-     version: 1.2.0
+     version: 1.3.0
 
   changelog:
+    1.3.0 (2026-11-13):
+      * the escort itself (the client, the road and its special edges, the room checks, the
+        ambush watch) is libeo's whole (EO::Guild::Escort); this script keeps its settings
+        and starts the walk. Needs libeo 0.48.0
+      * a map edge that is a script is walked
+      * $ego2_travel_cost is a copy that can be changed
+      * in Platinum the portals are no longer deleted from the map; the walk turns go2's
+        portals setting off while it lays its path and puts it back after
     1.2.0 (2026-11-13):
       * settings live in the character's escortgo2.yaml profile, so other scripts can read
         them (EO::Settings.read(:escortgo2)); the first run copies them from CharSettings
@@ -75,15 +83,14 @@ contributors: Drafix
 
 =end
 
-# Script.loadlib loads libeo once a session; a copy older than this script
-# needs is run again.
+# A libeo loaded earlier in this Lich session may be older than this script
+# needs; load it again unless the one loaded is new enough.
+# Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.43.0')
-EO.require('0.43.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.48.0')
+EO.require('0.48.0')
 
-# This character's settings, in its escortgo2.yaml profile (copied from CharSettings once).
-# The two lists of creature names grow as the walk learns them, and are saved when the
-# script exits.
+# This character's settings, in its escortgo2.yaml profile (copied from CharSettings once)
 char_settings = EO::Settings.store('escortgo2', migrate: %w[attack-script poach hide haste useherbs targetable untargetable])
 
 fix_setting = { 'on' => true, 'off' => false, 'true' => true, 'false' => false, 'yes' => true, 'no' => false }
@@ -132,9 +139,6 @@ attack_script = char_settings['attack-script']
 hide          = char_settings['hide']
 haste         = char_settings['haste']
 useherbs      = char_settings['useherbs']
-fell_off_rope = false
-lost_escort   = 0
-wait_num      = 45
 
 options = script.vars.find_all { |var| var =~ /^\-\-/ }
 script.vars.delete_if { |var| var =~ /^\-\-/ }
@@ -193,78 +197,11 @@ end
 char_settings['targetable']   ||= Array.new
 char_settings['untargetable'] ||= Array.new
 
-destination_room = nil
-escort_id        = nil
-
-# Travel costs defined here are for returning to your starting room.
-# It's a global variable so that a controlling script that knows where
-# you'll be going after the escort can override the travel cost.
-
+# A controlling script may override the silver carried per trip through
+# $ego2_travel_cost; the library's table is the default.
+# A copy: the library's table is frozen, and a script that changes an amount
+# should not change it for everyone.
 $ego2_travel_cost ||= EO::Guild::Escort::TRAVEL_COST.transform_values(&:dup)
-
-walk = EO::Guild::Escort::Walk.new(hide: hide, haste: haste, poach: poach, attack_script: attack_script,
-                                   targetable: char_settings['targetable'], untargetable: char_settings['untargetable'])
-
-$ego2_my_ambush = false
-$ego2_staggered_ambush = false
-start_exec_script(EO::Guild::Escort.ambush_watch(script.name), { :quiet => true })
-
-use_herbs = proc {
-  if useherbs
-    if !Script.exists?("eherbs")
-      echo("-------------------")
-      echo("--- ALERT ALERT ---")
-      echo("-------------------")
-      echo("You've enabled the useherbs option, but you do not have eherbs.lic downloaded.")
-      echo("Please install eherbs and try again.")
-      echo("To do this, download via ;repository download eherbs          ")
-      echo("-------------------")
-      echo("--- ALERT ALERT ---")
-      echo("-------------------")
-      useherbs = false
-    else
-      if EO::Guild::Escort.hurt?
-        Script.run("eherbs", "--buy=off")
-        if EO::Guild::Escort.hurt?
-          useherbs = false
-        end
-      end
-    end
-  end
-}
-
-# What the walk answers when it cannot go on: say why, and end.
-stop_unless_moved = proc { |answer|
-  case answer
-  when :unmapped
-    echo 'Current room is not in the map database.'
-    fput 'unhide' if hidden?
-    exit
-  when :unreachable
-    echo "You can't get there(#{destination_room.id}) from here(#{Room.current.id})."
-    fput 'unhide' if hidden?
-    exit
-  end
-}
-
-pickup_string, destination_town = EO::Guild::Escort.task(bounty?)
-if pickup_string
-  start_town, pickup_room = EO::Guild::Escort::PICKUPS[pickup_string]
-  unless pickup_room and start_town
-    echo "error: unmatched pickup location: #{pickup_string}"
-    fput 'unhide' if hidden?
-    exit
-  end
-  unless EO::Guild::Escort::DROPOFFS[destination_town]
-    echo "error: unmatched destination town: #{destination_town}"
-    fput 'unhide' if hidden?
-    exit
-  end
-else
-  echo "You don't have an escort task."
-  fput 'unhide' if hidden?
-  exit
-end
 
 unless Room.current
   echo 'error: current room was not found in the map database'
@@ -274,161 +211,28 @@ end
 
 Thread.new { wait_until { dead? }; Script.self.kill }
 
-#
-# see if our escort is already in the room
-#
-for npc in GameObj.npcs.to_a.find_all { |n| n.noun =~ EO::Guild::Escort::CLIENT_NOUN }
-  if EO::Guild::Escort.follow(npc)
-    escort_id = npc.id
-    before_dying { $ego2_escort_id = nil }
-    $ego2_escort_id = escort_id
-    break
-  end
-end
+# The library's view of the settings. The targetable lists are shared, so
+# names learned on the road are saved for next time.
+policy = EO::Guild::Escort::Policy.new(
+  attack_script: attack_script, poach: poach, hide: hide, haste: haste, useherbs: useherbs,
+  travel_cost:   travel_cost, targetable: char_settings['targetable'], untargetable: char_settings['untargetable']
+)
+before_dying {
+  $ego2_escort_id = nil
+  char_settings['targetable'] = policy.targetable.uniq
+  char_settings['untargetable'] = policy.untargetable.uniq
+}
 
-unless escort_id
-  #
-  # get monies for ferry and carts
-  #
-  travel_cost ||= $ego2_travel_cost[start_town][destination_town].to_i
-  silvers = Lich::Util.silver_count
-  if silvers < travel_cost
-    bank_id = Room[pickup_room].find_nearest_by_tag('bank')
-    start_script 'go2', [bank_id.to_s]
-    wait_while { running?('go2') }
-    fput 'unhide' if hidden? or invisible?
-    fput "withdraw #{travel_cost - silvers}"
+begin
+  trip = EO::Guild::Escort.trip_from(bounty?)
+  unless travel_cost
+    policy.travel_cost = $ego2_travel_cost.dig(trip.start_town, trip.destination).to_i
   end
-  #
-  # pick up escort
-  #
-  start_script 'go2', [pickup_room.to_s]
-  wait_while { running?('go2') }
-  dothistimeout 'wait', 20, /^Time drags on by\.\.\.$/
-  checked_npc_ids = Array.new
-  130.times {
-    sleep 0.1
-    if (npc = GameObj.npcs.to_a.find { |obj| (obj.noun =~ EO::Guild::Escort::CLIENT_NOUN) and not checked_npc_ids.include?(obj.id) })
-      checked_npc_ids.push(npc.id)
-      if EO::Guild::Escort.follow(npc)
-        escort_id = npc.id
-        before_dying { $ego2_escort_id = nil }
-        $ego2_escort_id = escort_id
-        break
-      end
-    end
-  }
-  checked_npc_ids = nil
-end
-
-unless escort_id
-  echo 'error: failed to find escort'
+  walk = EO::Guild::Escort::Walk.new(trip: trip, policy: policy)
+  Thread.new { wait_until { walk.client }; $ego2_escort_id = walk.client }
+  walk.run
+rescue EO::Guild::Error => e
+  echo "error: #{e.message}"
   fput 'unhide' if hidden?
   exit
 end
-
-unless (destination_room = Room[EO::Guild::Escort.nearest(EO::Guild::Escort::DROPOFFS[destination_town])])
-  echo 'error: failed to find destination room'
-  fput 'unhide' if hidden?
-  exit
-end
-
-walk.escort_id = escort_id
-walk.destination = destination_room
-
-Thread.new {
-  loop {
-    wait_while { standing? or stunned? or (checkrt > 0) }
-    put 'stand'
-    sleep 0.5
-  }
-}
-
-start_time = Time.now
-
-loop {
-  walk.haste
-
-  walk.check_room
-
-  use_herbs.call
-
-  walk.check_room
-
-  walk.hide
-
-  walk.check_room
-
-  use_herbs.call
-
-  walk.check_room
-
-  walk.hide
-
-  stop_unless_moved.call(walk.step)
-
-  10.times {
-    sleep 0.1
-    walk.check_room
-    sleep 0.1
-    walk.check_room
-    break if walk.escort_here?
-  }
-
-  if bounty? !~ EO::Guild::Escort::HELD
-    break
-  elsif walk.escort_here?
-    lost_escort = 0
-    fell_off_rope = false
-    end_time = Time.now.to_f + 1.0
-    until (Time.now.to_f > end_time)
-      sleep 0.1
-      walk.check_room
-    end
-    wait_num = 45
-  elsif (lost_escort += 1) > 10
-    echo 'error: lost escort'
-    break
-  elsif fell_off_rope
-    end_time = Time.now.to_f + 1.0
-    until (Time.now.to_f > end_time)
-      walk.check_room
-      sleep 0.1
-    end
-    wait_num = 45
-  elsif checkpcs
-    stop_unless_moved.call(walk.backtrack)
-    if walk.escort_here?
-      lost_escort = 0
-    end
-    (wait_num += 5).times { walk.check_room; sleep 0.2 }
-  else
-    stop_unless_moved.call(walk.backtrack)
-    if walk.escort_here?
-      lost_escort = 0
-    end
-    walk.check_room
-  end
-}
-
-echo "travel time: #{((Time.now - start_time) / 60.0).as_time}"
-
-fput 'unhide' if hidden?
-
-=begin
-
-  You manage to avoid being hit by the crystal as it shatters harmlessly nearby!
-
-  You finally reach the shore and you pull yourself to safety.  Your body aches all over and you can't seem to move again just yet.
-
-  A giantman traveller looks faint.
-  A giantman traveller mumbles, "I'm bleeding."
-  A half-elven rogue turns to a giantman traveller and exclaims, "I've got ya now!"
-  A half-elven rogue swings a backsword at a giantman traveller!
-  AS: +414 vs DS: +204 with AvD: +38 + d100 roll: +49 = +297
-  ... and hits for 117 points of damage!
-  The giantman traveller twists away but is caught with a hard slash!
-  The giantman traveller is knocked to the ground!
-  The giantman traveller is stunned!
-
-=end

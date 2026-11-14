@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.47.0')
-    EO.require('0.47.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.48.0')
+    EO.require('0.48.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,24 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.47.0
+       version: 0.48.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.48.0 (2026-11-13)
+    - EO::Guild is the one from Nisugi/libeo, each part holding the whole of what it is
+      about and sending through the library's own helpers: Taskmaster and Assignments (the
+      dialogue), Guards (the guard visit, new, out of Assignments), TaskPolicy (which tasks
+      are taken, new; EO::Guild::Vetting is gone), Completion::Rule and a bundle's tally,
+      Forage.gather, Heirloom.search, Escort.escort with its Walk, Rescue with its Walk, and
+      Disablers with a Policy
+    - EO::Guild::Error is raised where a task cannot go on, for the script to decide
+    - kept from this library: the misty trail is not gone down when three looks do not
+      show the way; JUSTICE STATUS is waited for five seconds and unanswered counts as
+      justice; a forced disabler is used though no other is known; kneeling for the
+      heirloom search and standing outside the Maaghara Labyrinth are tried five times
+    - in Platinum the escort no longer deletes portals from the map; it turns go2's
+      portals setting off while it lays its path
   v0.47.0 (2026-11-13)
     - EO::Casting is the one from Nisugi/libeo: Resources is built by the caller and passed
       to ready, ready_stamina, summon_bread, eat_bread and drop_bread; cast takes a recheck
@@ -330,9 +344,9 @@ parts = %w[
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
   cleanse/afflictions cleanse/recovery
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
-  guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
-  guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
-  guild/disablers guild/rescue wander brooch chain carry coordination/protocol coordination/discovery coordination/parser_projection
+  guild/tables guild/policy guild/npcs guild/location guild/forage
+  guild/taskmaster guild/assignments guild/guards guild/completion
+  guild/heirloom guild/escort_routes guild/escort guild/disablers guild/rescue wander brooch chain carry coordination/protocol coordination/discovery coordination/parser_projection
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
