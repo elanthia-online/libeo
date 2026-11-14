@@ -67,12 +67,12 @@ RSpec.describe EO::Brooch do
   end
 
   describe '.analyze' do
-    it 'captures from the first line to the prompt, the lines after SYNTAX too' do
+    it 'captures from the first line to the SYNTAX line, not to a prompt Lich strips' do
       expect(ANALYZE.first).to match(described_class::ANALYZE_START)
       expect(ANALYZE.last).to match(described_class::ANALYZE_END)
       util = class_double('Lich::Util').as_stubbed_const
       expect(util).to receive(:issue_command)
-        .with('analyze my brooch', described_class::ANALYZE_START, hash_including(usexml: false))
+        .with('analyze my brooch', described_class::ANALYZE_START, described_class::ANALYZE_END, hash_including(usexml: false))
         .and_return(ANALYZE)
       expect(described_class.parse(described_class.analyze).left(:spirit)).to eq(2)
     end

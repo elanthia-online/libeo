@@ -92,13 +92,15 @@ module EO
       Status.new(current: current, chaos_gives: gives, uses: uses)
     end
 
-    # ANALYZE MY BROOCH's lines, its first to the prompt: the weight and
-    # account lines come after the SYNTAX line.
+    # ANALYZE MY BROOCH's lines, from its first to the SYNTAX line. Lich
+    # strips the prompt from the text this reads, so no prompt ends the wait:
+    # without an end pattern it ran the full five seconds. The weight and
+    # account lines after SYNTAX are not read.
     #
     # @api private
     # @return [Array<String>]
     def analyze
-      Lich::Util.issue_command('analyze my brooch', ANALYZE_START, usexml: false, silent: true, quiet: true)
+      Lich::Util.issue_command('analyze my brooch', ANALYZE_START, ANALYZE_END, usexml: false, silent: true, quiet: true)
     end
 
     # @return [GameObj, nil] the brooch worn, held or in a container
