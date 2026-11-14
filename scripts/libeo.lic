@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.36.0')
-    EO.require('0.36.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.37.0')
+    EO.require('0.37.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.36.0
+       version: 0.37.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.37.0 (2026-11-13)
+    - EO::Brooch, new: the quintuple orb brooch. use(orb) rubs the orb while it has a rub
+      left today, else chaos when chaos will give it; use_chaos_if(orb); up?(orb);
+      status. Every rub is whispered for first, and the day's rubs are tallied so
+      ANALYZE is asked only when the tally cannot say
+    - EO.eastern_day: the game's day, by US Eastern time
   v0.36.0 (2026-11-13)
     - EO::Wander: a step in GSIV's Confluence is started over ten times at most, where it
       had no limit; after a failed move, a LOOK that shows no exits moves nowhere
@@ -261,7 +267,7 @@ parts = %w[
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
   guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
-  guild/disablers guild/rescue wander
+  guild/disablers guild/rescue wander brooch
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
