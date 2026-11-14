@@ -192,9 +192,11 @@ module EO
     # @param town [String] from manifest_town
     # @param cache [String] the stash container's name
     # @param type [String] 'gem' or 'alchemy'
-    # @return [Array<Hash>, nil] nil when the manifest has no part for the container
+    # @return [Array<Hash>, nil] nil when the manifest has no part for the
+    #   container, or the container is of no kind a manifest lists
     def manifest_inventory(town, cache, type)
       start_from = MANIFEST_SECTIONS.find { |pattern, _line| cache =~ pattern }&.last
+      return nil if start_from.nil?
 
       lines = EO.command("locker manifest #{town}", /Thinking back, you recall the contents|Looking in front of you/, silent: true, quiet: true)
 

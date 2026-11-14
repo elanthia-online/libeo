@@ -151,9 +151,8 @@ module EO
 
     # The room's trash receptacle, asked of TRASH.
     #
-    # @return [GameObj, Array<String>, nil] the receptacle; nil when the game
-    #   says there is none; the answer's lines when it named none either way,
-    #   which a caller testing for nil takes as one being there
+    # @return [GameObj, nil] the receptacle; nil when the game says there is
+    #   none, or names none
     def trash_can
       lines = EO.command('trash', /You could discard items|You do not notice/, silent: true, quiet: true)
       return nil if lines.any? { |line| line =~ /You do not notice a trash receptacle here/ }
@@ -163,6 +162,7 @@ module EO
           return GameObj.new(found[:exist], found[:noun], found[:name])
         end
       end
+      nil
     end
 
     # The locksmith pool's worker, by the name the room's tag gives or by

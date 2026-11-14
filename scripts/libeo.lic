@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.34.0')
-    EO.require('0.34.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.35.0')
+    EO.require('0.35.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.34.0
+       version: 0.35.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.35.0 (2026-11-13)
+    - EO::Town.trash_can answers nil when TRASH names no receptacle
+    - EO::Hoard.manifest_inventory answers nil for a stash container of no kind a manifest
+      lists, where it failed
+    - EO::Cleanse::Afflictions.break_web takes berserk:, and goes berserk only when allowed
   v0.34.0 (2026-11-13)
     - EO::Casting: with someone watching and nowhere to cast Sign of Wracking unseen, the
       mana is waited for (or the cast given up) where it tried again at once, without

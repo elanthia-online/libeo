@@ -110,14 +110,25 @@ RSpec.describe EO::Cleanse::Afflictions do
       expect(described_class.web_escape?(berserk: false, beseech: false)).to be(false)
       book[1040].known = true
       expect(described_class.web_escape?(berserk: false, beseech: false)).to be(true)
-      described_class.break_web(beseech: false)
+      described_class.break_web(berserk: false, beseech: false)
       expect(fputs).to eq(['shout 1040'])
+    end
+
+    it 'goes berserk only when allowed' do
+      allow(CMan).to receive(:available?).and_return(true)
+      allow(described_class).to receive(:berserk)
+      book[1635].known = true
+      described_class.break_web(berserk: false, beseech: true)
+      expect(described_class).not_to have_received(:berserk)
+      described_class.break_web(berserk: true, beseech: true)
+      expect(described_class).to have_received(:berserk).once
+      expect(fputs).to eq(['beseech'])
     end
 
     it 'beseeches only when allowed' do
       book[1635].known = true
-      described_class.break_web(beseech: false)
-      described_class.break_web(beseech: true)
+      described_class.break_web(berserk: false, beseech: false)
+      described_class.break_web(berserk: false, beseech: true)
       expect(fputs).to eq(['beseech'])
     end
   end
