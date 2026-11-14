@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.53.0')             the version the script was built against
+EO.require('0.54.0')             the version the script was built against
 ```
 
 ## What is in it
@@ -32,6 +32,7 @@ EO.require('0.53.0')             the version the script was built against
 | `eo/loot.rb` | `EO::Loot`: the room's non-loot (features, spell effects, disks), which loot a `Policy` wants (read from eloot's settings or built), and searching the dead: LOOT's answers, a find at your feet or in your hand |
 | `eo/loot/context.rb` | `EO::Loot::Context`: what a looting pass reads and keeps (the settings, the stow, hands, disk, coin and gambling-kit state, the loot patterns), where it says something and saves what it learned. Nothing uses it yet; the looting code in eloot moves onto it step by step |
 | `eo/skinning.rb` | `EO::Skinning`: who needs a blunt tool, which dead to skin and with which tool, the tool drawn and put back, getting ready, the skinning and what it learned, standing up after |
+| `eo/skinning/pass.rb` | `EO::Skinning::Pass`: the skinning of a looting pass a tool group at a time (start, step, finish, run): which dead take which tool, the tool drawn and put away, what the game said cannot be skinned; the hands are free between steps |
 | `eo/selling.rb` | `EO::Selling`: sell one item at a shop: sold, refused or kept |
 | `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (activator, open, fee) and the locksmith pool (box order, incremental tips, the give, the list and depth, taking boxes back) |
 | `eo/locker.rb` | `EO::Locker`: the character's locker rooms, getting into a booth (taken, elsewhere, a debt), opening it to a container, leaving |
@@ -81,7 +82,7 @@ left is its settings, its command line and its own flow.
 
 | Script | Version | What it asks of the library |
 |---|---|---|
-| `scripts/eloot.lic` | 2.18.2 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
+| `scripts/eloot.lic` | 2.18.3 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
 | `scripts/ebounty.lic` | 1.16.2 | `EO::Containers`, `EO::Guild`, `EO::Settings`, `EO::Town`, `EO::UnknownRoom` |
 | `scripts/echild.lic` | 1.23.2 | `EO::Guild::Disablers`, `EO::Guild::Rescue`, `EO::Settings` |
 | `scripts/escortgo2.lic` | 1.3.0 | `EO::Guild`, `EO::Guild::Escort`, `EO::Settings` |

@@ -15,10 +15,13 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.18.2
+           version: 2.18.3
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.3 (2026-11-14)
+    - eloot skins through libeo's EO::Skinning::Pass, the edged group and then the blunt one as
+      before. Needs libeo 0.54.0
   v2.18.2 (2026-11-14)
     - fix: a LOCKER INFO that got no answer is asked again; the locker was taken to be in the
       town you stood in for the rest of the run
@@ -383,8 +386,8 @@ before_dying { ELoot.release_room_lease(eloot_load_token) }
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
-EO.require('0.52.1')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.54.0')
+EO.require('0.54.0')
 Script.require_lich_version!
 
 require 'yaml'
@@ -535,6 +538,11 @@ module ELoot # Data
     def sacks_full=(full)
       stow.full = full
     end
+
+    # What libeo's looting code asks of its context (EO::Loot::Context).
+    def say(type: "info", text: "") = ELoot.msg(type: type, text: text)
+
+    def save = ELoot.save_profile
 
     def initialize(settings)
       @settings = settings
@@ -4878,57 +4886,9 @@ module ELoot # Room looting
       ELoot.change_stance(ELoot.data.settings[:loot_stance])
     end
 
-    def self.skin_obj_types(objs, type) # skins type (blunt/dagger) group of dead critters
-      return if objs.empty?
-
-      blunt = type == :blunt
-      weapon_key = blunt ? 'skin_weapon_blunt' : 'skin_weapon'
-      sheath_key = blunt ? 'skin_sheath_blunt' : 'skin_sheath'
-      # Check skinner and sheath in case ReadyList/StowList got updated
-      ELoot.ensure_items(key: weapon_key, list: ReadyList.ready_list, inventory: ELoot.data.weapon_inv)
-      ELoot.ensure_items(key: sheath_key, list: ReadyList.ready_list, check_hidden: true)
-
-      skinner = EO::Skinning.tool(ReadyList.ready_list, blunt: blunt)
-      if skinner.nil?
-        what = blunt ? "No blunt weapon found" : "No edged skinning weapon found and nothing in your right hand"
-        ELoot.msg(type: "info", text: " #{what}. Please run setup and make sure it's listed.")
-        return
-      elsif ReadyList.ready_list[weapon_key.to_sym].to_s.empty?
-        ELoot.msg(type: "info", text: " No edged skinning weapon found. Using your right hand.")
-      end
-      ELoot.msg(type: "debug", text: "#{blunt ? 'blunt' : 'edged'} skinner: #{skinner.inspect}")
-
-      free = ->(hands) { hands == :both ? Inventory.free_hands(both: true) : Inventory.free_hand }
-      put_away = lambda do |tool|
-        Inventory.store_item(EO::Skinning.sheath(ReadyList.ready_list, blunt: blunt) || StowList.stow_list[:default], tool, true)
-        Inventory.store_item(StowList.stow_list[:default], tool) if ELoot.in_hand?(tool)
-      end
-
-      EO::Skinning.with_tool(skinner, blunt: blunt, free: free, draw: ->(tool) { Inventory.drag(tool) }, put_away: put_away) do |hand|
-        EO::Skinning.prepare(kneel: ELoot.data.settings[:skin_kneel], resolve: ELoot.data.settings[:skin_resolve],
-                             nature: ELoot.data.settings[:skin_604])
-        learned = EO::Skinning.skin(objs, hand: hand)
-        unless learned.empty?
-          ELoot.data.settings[:unskinnable].push(*learned)
-          ELoot.data.settings[:unskinnable].uniq!
-          ELoot.save_profile()
-        end
-      end
-    end
-
-    def self.skin(objs = GameObj.dead.to_a) # determines what to skin
-      creature = nil
-      if ELoot.data.settings[:skin_bounty_only]
-        return unless Bounty.task.skin?
-        creature = Bounty.task.creature.to_s
-      end
-
-      edged, blunt = EO::Skinning.choose(objs, unskinnable: ELoot.data.settings[:unskinnable], exclude: EO::Skinning.exclusions(ELoot.data.settings), creature: creature)
-      return if edged.empty? && blunt.empty?
-
-      skin_obj_types(edged, :normal)
-      skin_obj_types(blunt, :blunt)
-      EO::Skinning.stand_up
+    # Skin the dead a tool group at a time (libeo's EO::Skinning::Pass).
+    def self.skin(objs = GameObj.dead.to_a)
+      EO::Skinning::Pass.new(ELoot.data, corpses: objs, hands: Inventory, ensure_items: ELoot.method(:ensure_items)).run
     end
   end
 end
