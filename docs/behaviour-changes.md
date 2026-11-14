@@ -52,8 +52,14 @@ nil when empty.
 Most rows trace back to one of eight things. They are worth reading first,
 because they are the design of the library and not accidents of the move.
 
-1. **libeo and the Lich floor.** Every script needs libeo and Lich 5.22.0.
-   ebounty asked for 5.19.0 and ewaggle for 5.9.0.
+1. **libeo and the Lich floor.** Every script, and libeo.lic, now says Lich 5.22.0 in its
+   header. Upstream's floors were 5.22.0 for eloot and ecleanse already, 5.19.0 for ebounty,
+   5.11.0 for ewander, 5.9.0 for ewaggle and eherbs (eherbs under the key `requires:`, which
+   Lich reads as it does `required:`), and none for echild and escortgo2. The header is read
+   by Lich's updater, which holds back a script whose floor is above the running Lich. Only
+   a script that calls `Script.require_lich_version!` stops itself at start: eloot, ebounty,
+   ewaggle and ecleanse do. eherbs, echild, escortgo2 and ewander do not, and libeo.lic
+   does not when it loads, so on an older Lich nothing stops those four at start.
 2. **One set of command helpers.** Each script had its own `get_command`,
    `get_res` and `wait_rt`, with its own retry rules. They are `EO.command`,
    `EO.result` and `EO.settle` now. A script's debug setting no longer shows or
@@ -103,7 +109,8 @@ These recur; the script tables do not repeat the detail.
 | Change | Kind |
 |---|---|
 | libeo is required; an older copy loaded earlier in the session is run again; `EO.require` raises on a mismatch; every e-script's profile is preloaded | feature |
-| The Lich check is `Script.require_lich_version!`: a prerelease passes, an unreadable header passes, the banner is reworded, and it runs after libeo loads | swap |
+| In eloot, ebounty, ewaggle and ecleanse the Lich check is `Script.require_lich_version!`: a prerelease passes, an unreadable header passes, the banner is reworded, and it runs after libeo loads | swap |
+| eherbs, echild, escortgo2 and ewander have no check at start; their header floor is read only by Lich's updater | rule |
 | The version string is `Script.version`: empty, with a "could not find script" line, when the file is not found by name | swap |
 | `EO.go2`: waits up to 30 s for another go2, runs up to three times until arrived, warns in an unmapped room | rule |
 | `EO.at?` also accepts "1234" and "u1234"; false, not an error, in an unknown room | rule |
@@ -326,6 +333,7 @@ The herb table is identical: all 247 entries match upstream by mechanical diff.
 | 41 | Deader on a living character prints "Healdown finished" and restores the hands | rule + message |
 | 42 | Deader and escort in-hand match by substring; free-hand messages reworded | message |
 | 43 | Healing a dead player ends on an unanswered pour or after 20 passes, saying so; bundling potions pours at most ten times and asks with a timeout (upstream repeated without end) | rule |
+| 44 | Lich minimum 5.9.0 -> 5.22.0; the old-Lich message is gone and nothing checks the version at start (see row 4) | rule |
 
 ## ecleanse
 
@@ -384,6 +392,7 @@ Every route of upstream's table is present with the same commands.
 | 13 | Settings in `escortgo2.yaml`; the targetable lists written on exit | rule |
 | 14 | Unhide and cleanup also run on kill or error | rule |
 | 15 | Messages reworded; the nine-line eherbs alert is one line | message |
+| 16 | Lich minimum none -> 5.22.0, in the header only: nothing checks the version at start | rule |
 
 ## echild
 
@@ -404,6 +413,7 @@ Every route of upstream's table is present with the same commands.
 | 13 | Messages; the hook renamed `_justice`; ties on mana cost by `min_by` | message |
 | 14 | A number inside an option (`--disabler=617`, `--test:owl2`) is not taken as the destination room | fix |
 | 15 | TARGET RANDOM waits five seconds for its answer, and learns only the hostile names the game refuses; upstream waited without end and learned every NPC in the room, the child included, and saved them | fix |
+| 16 | Lich minimum none -> 5.22.0, in the header only: nothing checks the version at start | rule |
 
 ## ewander
 
@@ -419,3 +429,4 @@ Every route of upstream's table is present with the same commands.
 | 8 | Unknown current room: sleeps the delay | fix |
 | 9 | `target_random!` takes its room snapshot later | rule |
 | 10 | An exit whose scripted travel time is nil (closed by the map) is not stepped to; upstream's `is_a?(Proc)` did not match a StringProc, so it could step into one | fix |
+| 11 | Lich minimum 5.11.0 -> 5.22.0, in the header only: nothing checks the version at start | rule |
