@@ -8,10 +8,14 @@
           game: gs
           tags: magic, utility, spell
       required: Lich >= 5.22.0
-       version: 2.3.0
+       version: 2.4.0
 
   Version Control:
     Major_change.feature_addition.bugfix
+  2.4.0 (2026-11-13)
+    - the profile file is read and written through libeo (EO::Settings), so other scripts
+      can read ewaggle's settings (EO::Settings.read(:ewaggle)); the settings table's
+      lookups are libeo's too
   2.3.0 (2026-11-13)
     - the cast, the making of mana (Sign of Wracking, Sigil of Power, Symbol of Mana), the
       multicast count, reading another character's active spells and the eating of manna
@@ -222,6 +226,8 @@ module Ewaggle
   # Save & Close writes the profile exactly as the GTK window's Close did;
   # Cancel or closing the window discards. Built on Lich::WebUI::SettingsForm.
   class Setup
+    extend EO::Settings::Registry
+
     attr_accessor :settings
 
     # Lich keeps this class between runs in a session. Drop the old constants so an
@@ -275,23 +281,7 @@ module Ewaggle
     }
 
     # True when Lich can open a WebUI window for this script.
-    def self.available?
-      defined?(Lich::WebUI) && Lich::WebUI.respond_to?(:presentation_enabled?) && Lich::WebUI.presentation_enabled? &&
-        defined?(Lich::WebUI::SettingsForm) ? true : false
-    end
-
-    def self.get_category(key)
-      @@categories.each { |category, data| return category unless data[key].nil? }
-      nil
-    end
-
-    def self.get_setting(key)
-      cat = Setup.get_category(key)
-      return nil if cat.nil?
-
-      @@categories[cat].each { |setting, data| return data if setting == key }
-      nil
-    end
+    def self.available? = EO::Settings.available?
 
     def initialize(settings)
       @owner = Script.current
@@ -749,15 +739,7 @@ module Ewaggle
   end
 
   def self.load_profile
-    filename = File.join(DATA_DIR, XMLData.game, Char.name, 'ewaggle.yaml')
-
-    if File.exist?(filename)
-      settings_hash = YAML.load_file(filename)
-    else
-      settings_hash = Ewaggle.load_defaults
-    end
-
-    settings_hash
+    EO::Settings.load_profile('ewaggle') || Ewaggle.load_defaults
   end
 
   def self.save_profile
@@ -766,8 +748,7 @@ module Ewaggle
       Lich::Messaging.msg('plain', " Nothing to save. No changes were made.")
       respond
     else
-      filename = File.join(DATA_DIR, XMLData.game, Char.name, 'ewaggle.yaml')
-      File.write(filename, Ewaggle.data.settings.to_yaml)
+      filename = EO::Settings.save_profile('ewaggle', Ewaggle.data.settings)
       respond
       Lich::Messaging.msg('plain', " Settings saved to file: #{filename}.")
       respond
