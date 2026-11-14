@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.35.0')
-    EO.require('0.35.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.36.0')
+    EO.require('0.36.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,13 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.35.0
+       version: 0.36.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.36.0 (2026-11-13)
+    - EO::Wander: a step in GSIV's Confluence is started over ten times at most, where it
+      had no limit; after a failed move, a LOOK that shows no exits moves nowhere
   v0.35.0 (2026-11-13)
     - EO::Town.trash_can answers nil when TRASH names no receptacle
     - EO::Hoard.manifest_inventory answers nil for a stash container of no kind a manifest
