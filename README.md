@@ -78,6 +78,7 @@ left is its settings, its command line and its own flow.
 | Script | Version | What it asks of the library |
 |---|---|---|
 | `scripts/ewander.lic` | 2.2.0 | `EO::Wander`, `EO::Settings` |
+| `scripts/escortgo2.lic` | 1.1.0 | `EO::Guild::Escort` |
 | `scripts/echild.lic` | 1.22.0 | `EO::Guild::Rescue`, `EO::Guild::Disablers`, `EO::Settings` |
 
 `spec/scripts_spec.rb` checks that every `EO` method a script names is
