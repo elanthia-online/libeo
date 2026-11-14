@@ -6,9 +6,12 @@
           game: Gemstone
           tags: dispel, unpoison, undisease, disarmed, effects
       required: Lich >= 5.22.0
-       version: 2.7.0
+       version: 2.7.1
 
   Improvements:
+  v2.7.1  (2026-11-14)
+    - fix: when the servant brings a disarmed weapon back, the songs cast for the disarm (213,
+      1011) are stopped; 1011 stayed up whatever SENSE showed
   v2.7.0  (2026-11-13)
     - ecleanse sends, waits, walks and speaks through libeo's own helpers and no longer lends
       its own; each cure is libeo's whole, the first way the settings allow (EO::Cleanse with

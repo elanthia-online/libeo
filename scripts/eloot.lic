@@ -25,7 +25,9 @@
     - fix: selling a bundle stops when the furrier leaves a skin in your hand; it
       offered the same skin without end
     - fix: an item the game says cannot be worn no longer ends the script with
-      "Something is wrong". Needs libeo 0.52.1
+      "Something is wrong"
+    - fix: with no skinning weapon listed and an empty right hand, eloot says so; it said it
+      was using the right hand and skinned nothing. Needs libeo 0.52.1
   v2.18.0 (2026-11-13)
     - eloot sends, waits, walks and speaks through libeo's own helpers and no longer lends
       its own; the flows it handed on step by step are libeo's whole: the locker (rooms,

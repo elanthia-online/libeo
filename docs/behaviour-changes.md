@@ -14,10 +14,10 @@ run in the game.**
 | Script | Upstream | Here |
 |---|---|---|
 | eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.1 |
-| ebounty | PR #2579 (1.13.0) | 1.16.0 |
+| ebounty | PR #2579 (1.13.0) | 1.16.1 |
 | ewaggle | PR #2580 (2.2.0) | 2.5.0 |
-| eherbs | PR #2587 (2.3.0) | 2.6.0 |
-| ecleanse | PR #2588 (2.4.0) | 2.7.0 |
+| eherbs | PR #2587 (2.3.0) | 2.6.1 |
+| ecleanse | PR #2588 (2.4.0) | 2.7.1 |
 | echild | main (1.20.4) | 1.23.1 |
 | escortgo2 | main (1.0.5) | 1.3.0 |
 | ewander | main (2.0.1) | 2.3.0 |
@@ -197,6 +197,7 @@ These recur; the script tables do not repeat the detail.
 | 61 | `;eloot settings <key> ...` is matched before `pool` and `debug`: a setting or value with those words is saved, not run as a pool trip or a debug toggle | fix |
 | 62 | Selling a bundle of skins stops when a skin is left in hand, or after three unanswered BUNDLE REMOVE commands (upstream repeated without end) | rule |
 | 63 | A wear refused with "You can't wear that" returns `:cant` and the script goes on (upstream exited) | rule |
+| 64 | With no skinning weapon listed and an empty right hand, eloot says so; it said it was using the right hand and skinned nothing | fix |
 
 The command-line dispatch is the same text apart from row 61, which moves one
 branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
@@ -246,6 +247,7 @@ now done in-process.
 | 34 | Garrote recovery and the Bard song stop on the "child already here" path | feature |
 | 35 | Location names regex-escaped; the boundary list de-duplicated | rule |
 | 36 | Removed from `EBounty`, `Task` and `EBounty.data`: about 40 methods and readers | removed |
+| 37 | A guard's rescue and lost-heirloom replies are answers; a guard who does not answer sends the visit to the next guard (upstream raised on nil, and its pattern matched neither reply, so each ask waited out its timeout) | fix |
 
 ## ewaggle
 
@@ -317,6 +319,7 @@ The herb table is identical: all 247 entries match upstream by mechanical diff.
 | 40 | An escort's limb wounds are read only from a line that names a leg, arm or hand (upstream's pattern matched any line with "arm" or "hand" in it) | fix |
 | 41 | Deader on a living character prints "Healdown finished" and restores the hands | rule + message |
 | 42 | Deader and escort in-hand match by substring; free-hand messages reworded | message |
+| 43 | Healing a dead player ends on an unanswered pour or after 20 passes, saying so; bundling potions pours at most ten times and asks with a timeout (upstream repeated without end) | rule |
 
 ## ecleanse
 
@@ -352,6 +355,7 @@ window are intact. The walks force go2, as upstream's did.
 | 25 | Vat room not on the map: a message, no pause (upstream ran go2 with no target) | fix |
 | 26 | Hive SEARCH answers `:exhausted` straight after the third try | rule |
 | 27 | Quiet commands are not sent again on "Roundtime" | rule |
+| 28 | The servant's recovery stops the songs cast for the disarm (upstream left 1011 up, and 213 unless SENSE showed peace) | fix |
 
 ## escortgo2
 

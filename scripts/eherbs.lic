@@ -14,7 +14,11 @@
               game: Gemstone
               tags: healing, herbs
           requires: Lich >= 5.22.0
-           version: 2.6.0
+           version: 2.6.1
+  2.6.1 (2026-11-14)
+    - fix: healing a dead player stops when a pour is not answered, and after 20 passes, and
+      says so; it poured again for ever. Bundling potions pours at most ten times and does
+      not wait without end. Needs libeo 0.52.1
   2.6.0 (2026-11-13)
     - eherbs sends, waits, walks and speaks through libeo's own helpers and no longer lends
       its own; healing, the hand-over to the dead and to an escort, the count of what is in
@@ -155,8 +159,8 @@
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.51.0')
-EO.require('0.51.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
+EO.require('0.52.1')
 
 module EHerbs
   @@data ||= nil
