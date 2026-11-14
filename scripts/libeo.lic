@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.55.0')
-    EO.require('0.55.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.56.0')
+    EO.require('0.56.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.55.0
+       version: 0.56.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.56.0 (2026-11-14)
+    - feature: EO::Loot::Floor, the looting of a room, its boxes and its bags: loot_specials (coins,
+      cursed items, orbs, keepers), loot_regular and loot_all, bag_loot, the boxes lying in a room
+      (box_loot_ground), room and weigh_room, and the policy that says what is loot; each item goes
+      through the caller's drag, so what to do about a full pack stays the caller's
   v0.55.0 (2026-11-14)
     - feature: EO::Loot::Pickup, picking up one item for a looting pass: drag (a box in a disk first,
       then the bags along its route, a box moved aside once when none has room; it answers :stored,
@@ -408,7 +413,7 @@
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
 parts = %w[
-  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context loot/pickup skinning skinning/pass selling locksmith locker hoard appraisal casting
+  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context loot/pickup loot/floor skinning skinning/pass selling locksmith locker hoard appraisal casting
   cleanse/tables cleanse/hazards cleanse/afflictions cleanse/disarms cleanse/traps
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/policy guild/npcs guild/location guild/forage
