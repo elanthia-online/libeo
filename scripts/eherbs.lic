@@ -14,7 +14,11 @@
               game: Gemstone
               tags: healing, herbs
           requires: Lich >= 5.22.0
-           version: 2.4.0
+           version: 2.5.0
+  2.5.0 (2026-11-13)
+    - settings live in the character's eherbs.yaml profile, so other scripts can read them
+      (EO::Settings.read(:eherbs)); the first run copies them from CharSettings and leaves
+      those as they were. The herb sack is still the herbsack user variable
   2.4.0 (2026-11-13)
     - the table of herbs, the reading of wounds, the dose counts, the handling of the herb sack,
       the eating and drinking, and the shop's menu, ORDER and BUY come from libeo (EO::Herbs);
@@ -183,6 +187,15 @@ module EHerbs
     @@data
   end
 
+  # This character's settings, in its eherbs.yaml profile (copied from
+  # CharSettings once), used the way CharSettings was.
+  def self.char_settings
+    # Lich keeps this module between runs; each run opens its own
+    @char_settings = nil unless @char_settings_run.equal?(Script.current)
+    @char_settings_run = Script.current
+    @char_settings ||= EO::Settings.store('eherbs', migrate: %w[buy_missing deposit_coins use_mending skip_scars blood_toggle use650 use1035 use_yaba split_blood use_potions stock distiller prices debug])
+  end
+
   # The table of herbs and what is asked of it are libeo's (EO::Herbs::Table).
   # These keep the names the rest of the script calls them by.
   def self.major_blood?(herb) = EO::Herbs::Table.major_blood?(herb)
@@ -207,19 +220,19 @@ module EHerbs
 
   def self.load_eherbs_settings
     settings_hash = {
-      :buy_missing     => CharSettings['buy_missing'],
-      :deposit_coins   => CharSettings['deposit_coins'],
-      :use_mending     => CharSettings['use_mending'],
-      :skip_scars      => CharSettings['skip_scars'],
-      :blood_toggle    => CharSettings['blood_toggle'],
-      :use650          => CharSettings['use650'],
-      :use1035         => CharSettings['use1035'],
-      :use_yaba        => CharSettings['use_yaba'],
-      :split_blood     => CharSettings['split_blood'],
-      :use_potions     => CharSettings['use_potions'],
-      :stock           => CharSettings['stock'],
-      :distiller       => CharSettings['distiller'],
-      :prices          => CharSettings['prices'],
+      :buy_missing     => EHerbs.char_settings['buy_missing'],
+      :deposit_coins   => EHerbs.char_settings['deposit_coins'],
+      :use_mending     => EHerbs.char_settings['use_mending'],
+      :skip_scars      => EHerbs.char_settings['skip_scars'],
+      :blood_toggle    => EHerbs.char_settings['blood_toggle'],
+      :use650          => EHerbs.char_settings['use650'],
+      :use1035         => EHerbs.char_settings['use1035'],
+      :use_yaba        => EHerbs.char_settings['use_yaba'],
+      :split_blood     => EHerbs.char_settings['split_blood'],
+      :use_potions     => EHerbs.char_settings['use_potions'],
+      :stock           => EHerbs.char_settings['stock'],
+      :distiller       => EHerbs.char_settings['distiller'],
+      :prices          => EHerbs.char_settings['prices'],
       :herb_container  => UserVars.herbsack,
       :drinkable       => EO::Herbs::Table::DRINKABLE,
       :skippable       => [],
@@ -242,7 +255,7 @@ module EHerbs
       :blood_only      => false,
       :need_deposit    => false,
       :need_return     => false,
-      :debug           => CharSettings['debug'],
+      :debug           => EHerbs.char_settings['debug'],
     }
 
     settings_hash[:note] = nil
@@ -288,20 +301,20 @@ module EHerbs
   end
 
   def self.save_eherbs_settings(settings)
-    CharSettings['buy_missing']   = settings[:buy_missing]
-    CharSettings['deposit_coins'] = settings[:deposit_coins]
-    CharSettings['use_mending']   = settings[:use_mending]
-    CharSettings['skip_scars']    = settings[:skip_scars]
-    CharSettings['blood_toggle']  = settings[:blood_toggle]
-    CharSettings['use650']        = settings[:use650]
-    CharSettings['use1035']       = settings[:use1035]
-    CharSettings['use_yaba']      = settings[:use_yaba]
-    CharSettings['split_blood']   = settings[:split_blood]
-    CharSettings['use_potions']   = settings[:use_potions]
-    CharSettings['stock']         = settings[:stock]
-    CharSettings['distiller']     = settings[:distiller]
-    CharSettings['prices']        = settings[:prices]
-    UserVars.herbsack             = settings[:herb_container]
+    EHerbs.char_settings['buy_missing']   = settings[:buy_missing]
+    EHerbs.char_settings['deposit_coins'] = settings[:deposit_coins]
+    EHerbs.char_settings['use_mending']   = settings[:use_mending]
+    EHerbs.char_settings['skip_scars']    = settings[:skip_scars]
+    EHerbs.char_settings['blood_toggle']  = settings[:blood_toggle]
+    EHerbs.char_settings['use650']        = settings[:use650]
+    EHerbs.char_settings['use1035']       = settings[:use1035]
+    EHerbs.char_settings['use_yaba']      = settings[:use_yaba]
+    EHerbs.char_settings['split_blood']   = settings[:split_blood]
+    EHerbs.char_settings['use_potions']   = settings[:use_potions]
+    EHerbs.char_settings['stock']         = settings[:stock]
+    EHerbs.char_settings['distiller']     = settings[:distiller]
+    EHerbs.char_settings['prices']        = settings[:prices]
+    UserVars.herbsack = settings[:herb_container]
   end
 
   # ;eherbs setup: a Lich WebUI settings form with the same options as the old
@@ -689,7 +702,7 @@ module EHerbs
           EHerbs.data[:prices][herbalist][info[:type]][:short_name] = info[:short_name]
         end
 
-        CharSettings['prices'] = EHerbs.data[:prices]
+        EHerbs.char_settings['prices'] = EHerbs.data[:prices]
       end
 
       Msg.debug_msg("check_prices | EHerbs.data[:prices][herbalist]: #{EHerbs.data[:prices][herbalist]} | called by #{caller[0]}")
@@ -2373,10 +2386,10 @@ module EHerbs
       EHerbs.data[name.to_sym] = value
       return if save == false
 
-      old_value = CharSettings[name]
+      old_value = EHerbs.char_settings[name]
       return unless value.inspect != old_value.inspect
 
-      CharSettings[name] = value
+      EHerbs.char_settings[name] = value
       _respond "#{Script.current.name} setting saved: #{Msg.monsterbold(var_name)} is now #{Msg.monsterbold(value.inspect)}. #{old_value.nil? ? '' : " (previous value: #{old_value})"}"
     end
 
@@ -2398,10 +2411,10 @@ module EHerbs
     def self.settings_stock(amount)
       amount = amount.gsub('%', '').to_i
 
-      if amount != CharSettings['stock'].to_i
-        value = CharSettings['stock'].to_s.empty? ? 'default' : CharSettings['stock'].to_i
+      if amount != EHerbs.char_settings['stock'].to_i
+        value = EHerbs.char_settings['stock'].to_s.empty? ? 'default' : EHerbs.char_settings['stock'].to_i
         _respond " #{Script.current.name} setting saved: #{Msg.monsterbold("You will now stock at #{amount}% of capacity")} (previous value: #{value})"
-        CharSettings['stock'] = amount
+        EHerbs.char_settings['stock'] = amount
       else
         _respond " #{Script.current.name} setting not saved: The new value (#{amount}) is the same as the old one."
       end
@@ -2458,9 +2471,9 @@ module EHerbs
     Msg.print_help
     exit
   elsif Script.current.vars[1] =~ /debug/
-    current_setting = CharSettings['debug'].nil? ? false : CharSettings['debug']
+    current_setting = EHerbs.char_settings['debug'].nil? ? false : EHerbs.char_settings['debug']
     _respond Msg.monsterbold("Debug settings changed from #{current_setting} to #{!current_setting}")
-    CharSettings['debug'] = !CharSettings['debug']
+    EHerbs.char_settings['debug'] = !EHerbs.char_settings['debug']
     exit
   elsif Script.current.vars[1] =~ /^list$/i
     Msg.print_herb_list(Script.current.vars[0])
