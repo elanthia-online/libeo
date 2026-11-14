@@ -795,6 +795,10 @@ module Ewaggle
 
   def self.get_target_info(target)
     info = EO::Casting.active_on(target)
+    if info.nil?
+      Lich::Messaging.msg('plain', "No answer to SPELL ACTIVE #{target.upcase}; skipping #{target.capitalize} (lag, or no such character?)")
+      return nil
+    end
     return info if info['sharing']
     return nil if Ewaggle.data.settings[:skip_not_sharing]
 

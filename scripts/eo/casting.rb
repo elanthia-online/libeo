@@ -238,10 +238,12 @@ module EO
     # SPELL ACTIVE. Indefinite reads as 599.
     #
     # @param target [String]
-    # @return [Hash] spell number (as a string) => minutes, plus 'sharing'
-    #   => false when the character keeps spell information private
+    # @return [Hash, nil] spell number (as a string) => minutes, plus 'sharing'
+    #   => false when the character keeps spell information private; nil when
+    #   the game gave no answer in time, which is not the same as no spells
     def active_on(target)
       lines = Lich::Util.quiet_command_xml("spell active #{target}", /currently has the following active effects|has spell sharing disabled\./)
+      return nil if lines.empty?
       return { 'sharing' => false } if lines.any? { |l| l =~ /has spell sharing disabled/ }
 
       found = { 'sharing' => true }
