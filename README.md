@@ -80,11 +80,11 @@ left is its settings, its command line and its own flow.
 
 | Script | Version | What it asks of the library |
 |---|---|---|
-| `scripts/eloot.lic` | 2.18.1 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
-| `scripts/ebounty.lic` | 1.16.1 | `EO::Containers`, `EO::Guild`, `EO::Settings`, `EO::Town`, `EO::UnknownRoom` |
-| `scripts/echild.lic` | 1.23.1 | `EO::Guild::Disablers`, `EO::Guild::Rescue`, `EO::Settings` |
+| `scripts/eloot.lic` | 2.18.2 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
+| `scripts/ebounty.lic` | 1.16.2 | `EO::Containers`, `EO::Guild`, `EO::Settings`, `EO::Town`, `EO::UnknownRoom` |
+| `scripts/echild.lic` | 1.23.2 | `EO::Guild::Disablers`, `EO::Guild::Rescue`, `EO::Settings` |
 | `scripts/escortgo2.lic` | 1.3.0 | `EO::Guild`, `EO::Guild::Escort`, `EO::Settings` |
-| `scripts/ewaggle.lic` | 2.5.0 | `EO::Casting`, `EO::Loot`, `EO::Settings` |
+| `scripts/ewaggle.lic` | 2.5.1 | `EO::Casting`, `EO::Loot`, `EO::Settings` |
 | `scripts/ecleanse.lic` | 2.7.1 | `EO::Cleanse`, `EO::Settings` |
 | `scripts/eherbs.lic` | 2.6.1 | `EO::Guild`, `EO::Herbs`, `EO::Settings`, `EO::Town` |
 | `scripts/ewander.lic` | 2.3.0 | `EO::Settings`, `EO::Wander` |

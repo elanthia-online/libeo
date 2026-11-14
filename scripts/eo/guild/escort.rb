@@ -177,8 +177,9 @@ module EO
           @useherbs = policy.useherbs
         end
 
-        # @return [Symbol] :delivered, :lost (the client fell behind for good),
-        #   or :no_task (the task ended on the way)
+        # @return [Symbol] :delivered (the task no longer names an escort: the
+        #   client arrived, or the task ended on the way), or :lost (the client
+        #   fell behind for good)
         # @raise [Error] when the client or the road cannot be found
         def run
           @client = client_here || fetch_client

@@ -29,8 +29,16 @@
       restricted to; it waited five seconds on every one for a prompt Lich strips
     - fix: EO::Brooch matches the whisper, rub and ANALYZE lines whole, as the game prints them,
       not by a few words of them
+    - fix: EO.command and EO.result send a command again only for "...wait N seconds.", the
+      game's answer while the character is in roundtime; a "Roundtime: N sec." line is what a
+      command that ran leaves, and is part of its answer, not a reason to send it again
+    - fix: EO::Guild::Disablers.target! waits five seconds for TARGET RANDOM's answer, clears
+      stale lines, and learns only the hostile names the game refuses
+    - fix: EO::Casting.active_on answers nil when SPELL ACTIVE got no answer in time
     - fix: EO::Hands.take chooses the hand that is free and usable; with the right arm crippled
       it dragged to the right hand and waited five seconds
+    - fix: EO::Stow#make_room moves a box only between the box bag and the overflow bags, not any
+      worn container with room
     - fix: EO::Skinning.tool answers nil when no weapon is listed and the right hand is empty
     - fix: a profile is written through a temporary file; one that cannot be read is moved
       to <name>.bad with a warning and the script starts on its defaults; one bad profile no

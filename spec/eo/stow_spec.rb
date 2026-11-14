@@ -137,6 +137,11 @@ RSpec.describe EO::Stow do
     let(:third) { obj.new(id: '3', name: 'patchwork backpack') }
     let(:big) { obj.new(id: '50', name: 'silver chest', type: 'box') }
 
+    # the sack holds boxes here; the gem pouch is the default bag
+    let(:stow) do
+      described_class.new(bags: { box: sack, default: gems, overflow_container: first, overflow_container_2: second })
+    end
+
     before { stow.observe(snapshot) }
 
     it 'passes over a bag without the room, and counts what went in' do
@@ -170,6 +175,58 @@ RSpec.describe EO::Stow do
       expect(stow.make_room(heavy)).to eq(sack)
       expect(EO::Hands).to have_received(:store).with(third, big, loose: false)
       expect(stow.room_in(sack)).to eq(97)
+    end
+
+    context 'with a worn container the STOW list does not name' do
+      let(:heavy) { obj.new(id: '9', name: 'gold ingot', type: 'box') }
+      let(:kept) { feed.new(id: '5', space_left: 500, children: [], container?: true) }
+      let(:moved) { [] }
+
+      before do
+        snapshot.items['5'] = kept
+        snapshot.worn << kept
+        allow(stow).to receive(:weight_of).and_call_original
+        allow(stow).to receive(:weight_of).with(heavy).and_return(60)
+        into = moved
+        allow(EO::Hands).to receive(:store) { |bag, _box, **| into << bag.id && :stored }
+        live = { '3' => third, '50' => big, '5' => obj.new(id: '5', name: 'belt pouch') }
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| live[id] } })
+      end
+
+      it 'does not put a box in it, though it has the most room' do
+        expect(stow.make_room(heavy)).to eq(sack)
+        expect(moved).to eq(['3'])
+      end
+
+      let(:live) { { '1' => gems, '2' => sack, '3' => third, '50' => big, '5' => obj.new(id: '5', name: 'belt pouch') } }
+
+      before do
+        table = live
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| table[id] } })
+      end
+
+      it 'does not put a box in the default bag, which has room, when no box or overflow bag does' do
+        snapshot.items['1'].space_left = 500
+        snapshot.items['2'].space_left = 0
+        snapshot.items['3'].space_left = 10
+        snapshot.items['3'].children = [feed.new(id: '50', total_weight: 57, type: 'box', children: [], opaque?: true)]
+        expect(stow.make_room(heavy)).to be_nil
+        expect(moved).to be_empty
+      end
+
+      it 'does not take a box out of the default bag, which eloot never put one in' do
+        snapshot.items['1'].space_left = 5
+        snapshot.items['1'].children = [feed.new(id: '50', total_weight: 57, type: 'box', children: [], opaque?: true)]
+        snapshot.items['2'].children = []
+        expect(stow.make_room(heavy)).to be_nil
+        expect(moved).to be_empty
+      end
+
+      it 'moves nothing when it is the only one with room' do
+        snapshot.items['3'].space_left = 10
+        expect(stow.make_room(heavy)).to be_nil
+        expect(moved).to be_empty
+      end
     end
 
     it 'moves another box the next time, not the one already moved' do

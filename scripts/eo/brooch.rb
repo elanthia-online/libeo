@@ -76,7 +76,8 @@ module EO
     # The game's lines, whole, as played (the tags Lich strips are not here).
     ATTUNED = /^\[Your quintuple orb brooch is now attuned to the (\w+) ring\.  You can see this change in LOOK\.\]$/
     CENTERED = /^You discreetly whisper your desire to have your brooch shift, but it is already centered on the (\w+) orb\.$/
-    # The answer to a word WHISPER does not take.
+    # The answer to a word WHISPER does not take (captured from the game; it is
+    # followed by a "[SYNTAX: WHISPER ..." line that nothing here reads).
     UNRESPONSIVE = /^You discreetly whisper your desire to have your brooch shift, but it is unresponsive\.$/
     # The brooch is on an orb: moved to that ring, or already on that colour.
     WHISPER_ON = Regexp.union(ATTUNED, CENTERED)

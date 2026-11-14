@@ -8,10 +8,14 @@
           game: gs
           tags: magic, utility, spell
       required: Lich >= 5.22.0
-       version: 2.5.0
+       version: 2.5.1
 
   Version Control:
     Major_change.feature_addition.bugfix
+  2.5.1 (2026-11-14)
+    - fix: a character the game does not answer SPELL ACTIVE for in time (lag, a wrong name)
+      is skipped with a message; every spell was cast at them as if they had none.
+      Needs libeo 0.52.1
   2.5.0 (2026-11-13)
     - making mana, waiting for stamina and the manna bread (summoning it, eating it, dropping
       what is left) are libeo's whole (EO::Casting); ewaggle keeps what to cast, on whom and
@@ -93,8 +97,8 @@
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.47.0')
-EO.require('0.47.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
+EO.require('0.52.1')
 Script.require_lich_version!
 
 =begin
@@ -772,8 +776,7 @@ module Ewaggle
     bonus_list.join(', ')
   end
 
-  # 203 food is whatever new item lands in hand after the cast, so custom food nouns just work
-  # 203 food is whatever new item lands in hand after the cast (libeo's)
+  # 203 food is whatever new item lands in hand after the cast, so custom food nouns just work (libeo's)
   def self.summon_bread = EO::Casting.summon_bread(Casting.resources, check: ->(spell) { Casting.check_mana(spell, 1) })
 
   def self.eat_bread(bypass_check: false)
@@ -796,6 +799,10 @@ module Ewaggle
 
   def self.get_target_info(target)
     info = EO::Casting.active_on(target)
+    if info.nil?
+      Lich::Messaging.msg('plain', "No answer to SPELL ACTIVE #{target.upcase}; skipping #{target.capitalize} (lag, or no such character?)")
+      return nil
+    end
     return info if info['sharing']
     return nil if Ewaggle.data.settings[:skip_not_sharing]
 
