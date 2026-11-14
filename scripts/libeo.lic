@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.41.0')
-    EO.require('0.41.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.42.0')
+    EO.require('0.42.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.41.0
+       version: 0.42.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.42.0 (2026-11-13)
+    - EO::Coordination, new: opt-in coordination between independent Lich sessions. A
+      bounded loopback transport, read-only observations, discovery of the other
+      sessions, operations a session explicitly grants, and a projection of what the
+      parser knows. Loading it starts nothing (docs/coordination-library.md)
   v0.41.0 (2026-11-13)
     - EO::Stow::Weights, new: a looting pass's knowledge by weight, from one snapshot of
       the inventory feed. fits?(bag, item) before a put; stored(bag, item) to count
@@ -293,7 +298,7 @@ parts = %w[
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
   guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
-  guild/disablers guild/rescue wander brooch chain carry
+  guild/disablers guild/rescue wander brooch chain carry coordination/protocol coordination/discovery coordination/parser_projection
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
