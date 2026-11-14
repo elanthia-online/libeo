@@ -13,12 +13,12 @@ run in the game.**
 
 | Script | Upstream | Here |
 |---|---|---|
-| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.1 |
+| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.2 |
 | ebounty | PR #2579 (1.13.0) | 1.16.2 |
-| ewaggle | PR #2580 (2.2.0) | 2.5.0 |
+| ewaggle | PR #2580 (2.2.0) | 2.5.1 |
 | eherbs | PR #2587 (2.3.0) | 2.6.1 |
 | ecleanse | PR #2588 (2.4.0) | 2.7.1 |
-| echild | main (1.20.4) | 1.23.1 |
+| echild | main (1.20.4) | 1.23.2 |
 | escortgo2 | main (1.0.5) | 1.3.0 |
 | ewander | main (2.0.1) | 2.3.0 |
 
@@ -198,6 +198,7 @@ These recur; the script tables do not repeat the detail.
 | 62 | Selling a bundle of skins stops when a skin is left in hand, or after three unanswered BUNDLE REMOVE commands (upstream repeated without end) | rule |
 | 63 | A wear refused with "You can't wear that" returns `:cant` and the script goes on (upstream exited) | rule |
 | 64 | With no skinning weapon listed and an empty right hand, eloot says so; it said it was using the right hand and skinned nothing | fix |
+| 65 | A LOCKER INFO that got no answer is asked again (upstream kept the nothing for the run) | fix |
 
 The command-line dispatch is the same text apart from row 61, which moves one
 branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
@@ -270,6 +271,7 @@ The setup window, command line, target handling and cast passes are unchanged.
 | 13 | The armor-buff stamina check answers ready for any zero-mana spell (no effect today) | unclear |
 | 14 | Removed: `word_wrap`, `check_mana_col`, `check_mana_gos`, `check_mana_voln`, `col_move`, `safe_to_wrack` | removed |
 | 15 | Debug line dropped from SPELL ACTIVE parsing | message |
+| 16 | A character the game does not answer SPELL ACTIVE for in time is skipped with a message (upstream cast every spell at them, as if they had none) | fix |
 
 ## eherbs
 
@@ -397,6 +399,7 @@ Every route of upstream's table is present with the same commands.
 | 12 | A bad room argument falls back to the nearest dropoff | fix |
 | 13 | Messages; the hook renamed `_justice`; ties on mana cost by `min_by` | message |
 | 14 | A number inside an option (`--disabler=617`, `--test:owl2`) is not taken as the destination room | fix |
+| 15 | TARGET RANDOM waits five seconds for its answer, and learns only the hostile names the game refuses; upstream waited without end and learned every NPC in the room, the child included, and saved them | fix |
 
 ## ewander
 

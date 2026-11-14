@@ -17,8 +17,12 @@
           game: Gemstone
           tags: escort, child, advguild, adventurer guild, guild
       required: Lich >= 5.22.0
-       version: 1.23.1
+       version: 1.23.2
 
+  2026-11-14 - 1.23.2
+    - fix: TARGET RANDOM waits five seconds for the answer and no longer leaves the walk blocked
+      when there is none; it learns only the hostile names the game refuses, not the child or
+      a guard (they were saved in the untargetable list for the next run). Needs libeo 0.52.1
   2026-11-14 - 1.23.1
     - fix: a number inside an option (--disabler=617) is not taken for the room to walk to
   2026-11-13 - 1.23.0
@@ -132,8 +136,8 @@ Old Changelog:
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.48.0')
-EO.require('0.48.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
+EO.require('0.52.1')
 
 module EChild
   #------------------------------------------------------------------------------#
