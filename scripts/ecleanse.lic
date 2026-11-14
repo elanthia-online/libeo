@@ -696,9 +696,8 @@ module Ecleanse
       stops = EO::Cleanse::Disarms.prepare(policy)
 
       if EO::Cleanse::Disarms.servant
-        lines = EO::Cleanse.command("sense", /You open your soul to the lesser/, silent: true, quiet: true)
-        fput "stop 213" if lines.any? { |l| l =~ /An obvious presence of peace saturates the area and a feeling of safety overwhelms you/ }
         EO::Cleanse::Disarms.remove(disarm_id)
+        EO::Cleanse::Disarms.stop(stops)
         return
       end
 
