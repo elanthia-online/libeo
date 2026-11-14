@@ -80,6 +80,7 @@ left is its settings, its command line and its own flow.
 | `scripts/ewander.lic` | 2.2.0 | `EO::Wander`, `EO::Settings` |
 | `scripts/escortgo2.lic` | 1.2.0 | `EO::Guild::Escort`, `EO::Settings` |
 | `scripts/ewaggle.lic` | 2.4.0 | `EO::Casting`, `EO::Settings` |
+| `scripts/ecleanse.lic` | 2.5.0 | `EO::Cleanse` |
 | `scripts/echild.lic` | 1.22.0 | `EO::Guild::Rescue`, `EO::Guild::Disablers`, `EO::Settings` |
 
 `spec/scripts_spec.rb` checks that every `EO` method a script names is
