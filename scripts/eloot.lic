@@ -22,6 +22,8 @@
   v2.18.2 (2026-11-14)
     - fix: a LOCKER INFO that got no answer is asked again; the locker was taken to be in the
       town you stood in for the rest of the run
+    - fix: a box moved aside to make room goes only to your box, default or overflow bags,
+      not a container you keep for something else. Needs libeo 0.52.1
   v2.18.1 (2026-11-14)
     - fix: ;eloot settings with a key or value that has "pool" or "debug" in it changes
       the setting; it started a pool trip or toggled debug instead
