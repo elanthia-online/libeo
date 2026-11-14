@@ -13,17 +13,17 @@ run in the game.**
 
 | Script | Upstream | Here |
 |---|---|---|
-| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.0 |
+| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.1 |
 | ebounty | PR #2579 (1.13.0) | 1.16.0 |
 | ewaggle | PR #2580 (2.2.0) | 2.5.0 |
 | eherbs | PR #2587 (2.3.0) | 2.6.0 |
 | ecleanse | PR #2588 (2.4.0) | 2.7.0 |
-| echild | main (1.20.4) | 1.23.0 |
+| echild | main (1.20.4) | 1.23.1 |
 | escortgo2 | main (1.0.5) | 1.3.0 |
 | ewander | main (2.0.1) | 2.3.0 |
 
 The upstream side of the first five is the open WebUI pull request for each,
-since that is the version these were built from. The library is libeo 0.52.0.
+since that is the version these were built from. The library is libeo 0.52.1.
 
 `EO::Brooch`, `EO::Chain`, `EO::Carry` and the coordination files are new and no
 script upstream had them; they are not listed here.

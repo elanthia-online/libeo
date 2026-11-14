@@ -15,10 +15,17 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.18.0
+           version: 2.18.1
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.1 (2026-11-14)
+    - fix: ;eloot settings with a key or value that has "pool" or "debug" in it changes
+      the setting; it started a pool trip or toggled debug instead
+    - fix: selling a bundle stops when the furrier leaves a skin in your hand; it
+      offered the same skin without end
+    - fix: an item the game says cannot be worn no longer ends the script with
+      "Something is wrong". Needs libeo 0.52.1
   v2.18.0 (2026-11-13)
     - eloot sends, waits, walks and speaks through libeo's own helpers and no longer lends
       its own; the flows it handed on step by step are libeo's whole: the locker (rooms,
@@ -369,8 +376,8 @@ before_dying { ELoot.release_room_lease(eloot_load_token) }
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.46.0')
-EO.require('0.46.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
+EO.require('0.52.1')
 Script.require_lich_version!
 
 require 'yaml'
