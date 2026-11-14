@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
-    EO.require('0.52.1')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.53.0')
+    EO.require('0.53.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,14 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.52.1
+       version: 0.53.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.53.0 (2026-11-14)
+    - feature: EO::Loot::Context, what a looting pass reads and keeps: the settings, the stow, the
+      hands and containers it works with and where to say something and to save what it learned;
+      it learns a crumbly item or a self-closing bag the way eloot does. Nothing uses it yet
   v0.52.1 (2026-11-14)
     - fix: EO::Hands.wear answers :cant when the game says the item cannot be worn; it
       answered :stuck, which a caller takes for a fault
@@ -396,7 +400,7 @@
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
 parts = %w[
-  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot skinning selling locksmith locker hoard appraisal casting
+  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context skinning selling locksmith locker hoard appraisal casting
   cleanse/tables cleanse/hazards cleanse/afflictions cleanse/disarms cleanse/traps
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/policy guild/npcs guild/location guild/forage

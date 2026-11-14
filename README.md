@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.52.1')             the version the script was built against
+EO.require('0.53.0')             the version the script was built against
 ```
 
 ## What is in it
@@ -30,6 +30,7 @@ EO.require('0.52.1')             the version the script was built against
 | `eo/boxes.rb` | `EO::Boxes`: opening a box, its coins by GET or a coin charm, which emptied box to keep, setting a box on a disk |
 | `eo/stow.rb` | `EO::Stow`: where an item goes by the STOW list (its type's bag, the default, the overflow bags in order), which bags are full or, by the inventory feed's weights, lack the room, moving a box to make room, the bags to open before looting, and what a put taught: a bag that closes itself, a crumbly or unlootable item |
 | `eo/loot.rb` | `EO::Loot`: the room's non-loot (features, spell effects, disks), which loot a `Policy` wants (read from eloot's settings or built), and searching the dead: LOOT's answers, a find at your feet or in your hand |
+| `eo/loot/context.rb` | `EO::Loot::Context`: what a looting pass reads and keeps (the settings, the stow, hands, disk, coin and gambling-kit state, the loot patterns), where it says something and saves what it learned. Nothing uses it yet; the looting code in eloot moves onto it step by step |
 | `eo/skinning.rb` | `EO::Skinning`: who needs a blunt tool, which dead to skin and with which tool, the tool drawn and put back, getting ready, the skinning and what it learned, standing up after |
 | `eo/selling.rb` | `EO::Selling`: sell one item at a shop: sold, refused or kept |
 | `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (activator, open, fee) and the locksmith pool (box order, incremental tips, the give, the list and depth, taking boxes back) |
