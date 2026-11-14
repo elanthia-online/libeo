@@ -37,46 +37,6 @@ RSpec.describe EO::Cleanse::Wounds do
     expect(described_class.allow_cast_with_sigil?(injuries(head: { wound: 2 }))).to be(true)
     expect(described_class.allow_cast_with_sigil?(injuries(head: { scar: 3 }))).to be(false)
   end
-
-  describe '.stance' do
-    let(:state) { { stance: 0, frenzy: false, perfection: false } }
-    let(:sent) { [] }
-
-    before do
-      now = state
-      log = sent
-      stub_const('Char', Class.new { define_singleton_method(:percent_stance) { now[:stance] } })
-      stub_const('Effects::Debuffs', Class.new { define_singleton_method(:active?) { |_name| now[:frenzy] } })
-      stub_const('CMan', Class.new { define_singleton_method(:available?) { |_name| now[:perfection] } })
-      described_class.define_singleton_method(:dead?) { false }
-      described_class.define_singleton_method(:dothistimeout) { |cmd, *_| log << cmd && 'You are now in a defensive stance.' }
-      allow(described_class).to receive(:sleep)
-    end
-
-    after { %i[dead? dothistimeout].each { |m| described_class.singleton_class.remove_method(m) } }
-
-    it 'sends the named stance once' do
-      described_class.stance(100)
-      described_class.stance(40)
-      expect(sent).to eq(['stance defensive', 'stance forward'])
-    end
-
-    it 'does nothing in a Frenzy, when there already, or guarded when asked for defensive' do
-      state[:stance] = 80
-      described_class.stance(100)
-      described_class.stance(80)
-      state.merge!(stance: 0, frenzy: true)
-      described_class.stance(100)
-      expect(sent).to be_empty
-    end
-
-    it 'uses Stance Perfection for a percentage between, and defensive without it' do
-      described_class.stance(55)
-      state[:perfection] = true
-      described_class.stance(55)
-      expect(sent).to eq(['stance defensive', 'cman stance 55'])
-    end
-  end
 end
 
 RSpec.describe EO::Cleanse::Afflictions do

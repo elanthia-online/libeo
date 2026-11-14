@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.21.0')
-    EO.require('0.21.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.22.0')
+    EO.require('0.22.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,13 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.21.0
+       version: 0.22.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.22.0 (2026-11-13)
+    - Stance changes are Lich's (Lich::Gemstone::Stance.change): EO::Cleanse::Wounds.stance
+      and STANCES are gone
   v0.21.0 (2026-11-13)
     - Mana pulses are Lich's (Lich::Gemstone::Mana.pulse): it waits out roundtime first
       and reads only an answer that starts its line. EO::Cleanse.mana_pulse and the two

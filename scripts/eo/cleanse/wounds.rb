@@ -2,15 +2,12 @@
 
 module EO
   module Cleanse
-    # Whether the character's wounds and scars allow a spell to be cast, and
-    # changing stance.
+    # Whether the character's wounds and scars allow a spell to be cast.
     module Wounds
       module_function
 
       # The places a wound or scar bears on casting.
       CASTING = /nsys|head|(left|right)(Eye|Arm|Hand)/
-
-      STANCES = { 0 => 'offensive', 20 => 'advanced', 40 => 'forward', 60 => 'neutral', 80 => 'guarded', 100 => 'defensive' }.freeze
 
       # Whether the injuries allow casting as they are. Rank 3 anywhere that
       # bears on casting stops it, as does rank 2 to the head or nerves, or
@@ -88,36 +85,6 @@ module EO
         end
 
         able
-      end
-
-      # Change stance to a percentage. Nothing is done in a Frenzy or when
-      # dead, when already there, or for the defensive when already guarded
-      # or better.
-      #
-      # @param new_stance [Integer] 0 to 100; a value that is not one of
-      #   the six named stances needs Stance Perfection, else it is defensive
-      # @return [void]
-      def stance(new_stance)
-        return if Effects::Debuffs.active?('Frenzy') || dead?
-        return if Char.percent_stance == new_stance
-        return if new_stance == 100 && Char.percent_stance >= 80
-
-        cmd = if CMan.available?('Stance Perfection') && !STANCES.key?(new_stance)
-                "cman stance #{new_stance}"
-              elsif STANCES[new_stance]
-                "stance #{STANCES[new_stance]}"
-              else
-                'stance defensive'
-              end
-
-        while Char.percent_stance != new_stance
-          res = dothistimeout(cmd, 2, /You are now|You move into|Roundtime|wait|Your rage causes you/i)
-          # only an answer with a wait in it is tried again
-          break unless res =~ /Roundtime: (\d+)|wait (\d+)/i
-
-          sleep((Regexp.last_match(1) || Regexp.last_match(2)).strip.to_f - 1)
-          sleep 0.5
-        end
       end
     end
   end
