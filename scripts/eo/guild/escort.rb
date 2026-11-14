@@ -166,8 +166,7 @@ module EO
       # One escort's walk: its settings, the client, the path, and what has
       # been learned of the rooms passed through.
       #
-      # The hard parts of the road are in ROUTES, each run as a part of
-      # this walk.
+      # The hard parts of the road are rows of ROUTES, which take_route runs.
       class Walk
         # @return [String, nil] the client's id
         attr_accessor :escort_id
@@ -358,8 +357,8 @@ module EO
             return found unless found == :found
           end
           next_id = @path[@path.index(current_room.id) + 1].to_s
-          if (miniscript = ROUTES["#{current_room.id},#{next_id}"])
-            instance_exec(&miniscript)
+          if (route = ROUTES["#{current_room.id},#{next_id}"])
+            take_route(*route)
           else
             way = current_room.wayto[next_id]
             if way.class == Proc

@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.24.0')
-    EO.require('0.24.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.25.0')
+    EO.require('0.25.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,13 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.24.0
+       version: 0.25.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.25.0 (2026-11-13)
+    - EO::Guild::Escort::ROUTES is a table of rows, a kind of route and what it needs,
+      where it was a proc for each pair of rooms; Walk#take_route runs a row
   v0.24.0 (2026-11-13)
     - Spell Cleave, Spell Thieve and Berserk are asked of and used through Lich's CMan
       (available?, use) in EO::Cleanse::Hazards and EO::Cleanse::Afflictions;

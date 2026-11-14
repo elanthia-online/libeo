@@ -125,7 +125,8 @@ RSpec.describe EO::Guild::Escort do
   it 'has a route for each hard part of the roads, keyed by the rooms it joins' do
     expect(described_class::ROUTES.size).to eq(87)
     expect(described_class::ROUTES.keys).to all(match(/^\d+,\d+$/))
-    expect(described_class::ROUTES.values).to all(be_a(Proc))
+    kinds = described_class::ROUTES.values.map(&:first).uniq
+    expect(kinds).to all(satisfy { |kind| described_class::Walk.private_method_defined?(:"route_#{kind}") })
   end
 
   describe EO::Guild::Escort::Walk do
@@ -238,6 +239,25 @@ RSpec.describe EO::Guild::Escort do
         bound_for(12).step
         expect(log.count([:move, 'north'])).to eq(6)
         expect(here.wayto).to be_empty
+      end
+
+      it 'sneaks through the caves until the room changes, standing first' do
+        w = walk
+        sent = log
+        state[:answers][/southwest/] = 'Trying to sneak over the rubble...'
+        w.define_singleton_method(:standing?) { false }
+        allow(XMLData).to receive(:room_count) { sent.count('southwest') < 2 ? 1 : 2 }
+        w.take_route(:sneak, 'southwest')
+        expect(log).to eq(%w[stand southwest stand southwest])
+      end
+
+      it 'catches the client up between the moves of a road in steps' do
+        w = walk
+        seen = 0
+        w.define_singleton_method(:escort_here?) { (seen += 1) > 2 }
+        w.take_route(:steps, 'south', 'west')
+        expect(log).to eq([[:move, 'south'], [:move, 'west']])
+        expect(seen).to eq(3)
       end
 
       it 'takes its own route where it has one' do
