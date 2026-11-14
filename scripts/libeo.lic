@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.27.0')
-    EO.require('0.27.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.28.0')
+    EO.require('0.28.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,14 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.27.0
+       version: 0.28.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.28.0 (2026-11-13)
+    - EO::Wander.next_room chooses the room to wander to, for EO::Wander.wander_standard!
+      and EO::Guild::Heirloom.wander both. A way closed for now is known by the class of
+      its time in the map, so ewander no longer tries one
   v0.27.0 (2026-11-13)
     - EO::Herbs::Sack reads the answers to OPEN and LOOK IN by EO::Containers' lists; its
       own OPEN and LOOK, shorter copies of them, are gone
