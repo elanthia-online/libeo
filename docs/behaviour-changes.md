@@ -109,6 +109,7 @@ These recur; the script tables do not repeat the detail.
 | `EO.at?` also accepts "1234" and "u1234"; false, not an error, in an unknown room | rule |
 | `EO::Settings.save_profile`: creates the directory, unwraps CharSettings proxies, keeps a frozen copy for other scripts | fix + feature |
 | An empty profile file falls back to defaults | fix |
+| A profile file that cannot be read (cut short, garbled) is moved to `<name>.bad` with a warning that names it, and the script starts on its defaults; a profile is written through a temporary file and renamed | feature |
 | `;<script> list` sorts a copy, not the live arrays | fix |
 | `;<script> settings`: errors reworded; a decimal value accepted | message + fix |
 | The setup class removes its old instance methods on each run | fix |
@@ -200,6 +201,7 @@ These recur; the script tables do not repeat the detail.
 | 63 | A wear refused with "You can't wear that" returns `:cant` and the script goes on (upstream exited) | rule |
 | 64 | With no skinning weapon listed and an empty right hand, eloot says so; it said it was using the right hand and skinned nothing | fix |
 | 65 | A LOCKER INFO that got no answer is asked again (upstream kept the nothing for the run) | fix |
+| 66 | Taking an item into "a hand" picks the right hand when it is free and usable, else the left; upstream picked the right whenever it was empty, so a crippled right arm made the drag fail after a five second wait | fix |
 
 The command-line dispatch is the same text apart from row 61, which moves one
 branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
@@ -250,6 +252,7 @@ now done in-process.
 | 35 | Location names regex-escaped; the boundary list de-duplicated | rule |
 | 36 | Removed from `EBounty`, `Task` and `EBounty.data`: about 40 methods and readers | removed |
 | 37 | A guard's rescue and lost-heirloom replies are answers; a guard who does not answer sends the visit to the next guard (upstream raised on nil, and its pattern matched neither reply, so each ask waited out its timeout) | fix |
+| 38 | The setup window's hint for the escort script says escortgo2, the default (upstream's window said ego) | message |
 
 ## ewaggle
 
