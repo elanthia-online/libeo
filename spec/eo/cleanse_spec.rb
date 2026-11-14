@@ -1,258 +1,223 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
+require_relative '../../scripts/eo/command'
 require_relative '../../scripts/eo/cleanse/tables'
 require_relative '../../scripts/eo/cleanse/hazards'
-require_relative '../../scripts/eo/cleanse/traps'
 require_relative '../../scripts/eo/cleanse/disarms'
+require_relative '../../scripts/eo/cleanse/traps'
 
 RSpec.describe EO::Cleanse do
-  include_context 'Lich mana'
+  let(:obj) { Struct.new(:id, :name, :noun, :type, keyword_init: true) }
 
-  let(:spell_type) do
-    Struct.new(:num, :known, :affordable, :casts, keyword_init: true) do
-      def known? = known
-      def affordable? = affordable
-      def cast(arg = nil) = casts << arg
-      def force_incant = casts << :incant
+  def spells(known)
+    stub_const('Spell', Class.new do
+      define_singleton_method(:[]) { |n| Struct.new(:num, :known?).new(n, known.include?(n)) }
+    end)
+  end
+
+  def loot(*items)
+    stub_const('GameObj', Class.new do
+      define_singleton_method(:loot) { items }
+    end)
+  end
+
+  describe EO::Cleanse::Policy do
+    it 'defaults every choice off and ignores settings it does not carry' do
+      policy = described_class.new(use_213: true, stop_scripts: 'bigshot', version: '2.5.0')
+      expect(policy.use_213).to be(true)
+      expect(policy.use_1011).to be(false)
+      expect(policy.determination).to be(false)
     end
   end
-  let(:book) { Hash.new { |h, num| h[num] = spell_type.new(num: num, known: false, affordable: true, casts: []) } }
-  let(:fputs) { [] }
-  let(:replies) { [] }
 
-  before do
-    spells = book
-    stub_const('Spell', Class.new { define_singleton_method(:[]) { |num| spells[num] } })
-    log = fputs
-    queue = replies
-    [EO::Cleanse, EO::Cleanse::Hazards].each do |mod|
-      mod.define_singleton_method(:fput) { |cmd| log << cmd }
-      mod.define_singleton_method(:dothistimeout) { |cmd, *_| log << cmd && queue.shift }
+  describe EO::Cleanse::BadTargets do
+    it 'remembers ids as strings and drops the oldest past its size' do
+      bad = described_class.new(2)
+      bad << 1 << '2' << 3
+      expect(bad.include?('1')).to be(false)
+      expect(bad.include?(2)).to be(true)
+      expect(bad.include?('3')).to be(true)
     end
-    allow(EO::Cleanse).to receive(:sleep)
   end
 
-  after do
-    [EO::Cleanse, EO::Cleanse::Hazards].each { |mod| %i[fput dothistimeout].each { |m| mod.singleton_class.remove_method(m) } }
-  end
-
-  it 'gives the first spell a character knows for a job' do
-    expect(described_class.spell(:dispel)).to be_nil
-    book[119].known = true
-    book[1218].known = true
+  it 'picks the first known spell for a job' do
+    spells([1218, 119])
     expect(described_class.spell(:dispel).num).to eq(1218)
     expect(described_class.spell(:webs).num).to eq(1218)
-  end
-
-  it 'targets a hazard only on the answer that turns attention to it' do
-    web = Struct.new(:id).new('7')
-    replies.push('Suspecting that a kobold is the origin of the web, you turn your attention towards it!', 'You are unable to discern the origin of the web.', nil)
-    expect([described_class.target(web), described_class.target(web), described_class.target(web)]).to eq([true, false, false])
-    expect(fputs).to eq(['target #7'] * 3)
-  end
-
-  it 'remembers the latest bad targets, up to its size' do
-    bad = described_class::BadTargets.new(2)
-    %w[1 2 3].each { |id| bad << id }
-    expect(%w[1 2 3].map { |id| bad.include?(id) }).to eq([false, true, true])
+    expect(described_class.spell(:breeze)).to be_nil
   end
 
   describe EO::Cleanse::Hazards do
-    let(:web) { Struct.new(:id).new('7') }
-    let(:skills) { { cleave: false, thieve: false } }
+    let(:bad) { EO::Cleanse::BadTargets.new }
 
-    before do
-      state = skills
-      log = fputs
-      stub_const('CMan', Class.new do
-        define_singleton_method(:available?) { |name| state[name == 'Spell Cleave' ? :cleave : :thieve] }
-        define_singleton_method(:use) { |name, target| log << [name, target] }
+    it 'finds a cloud to dispel, but not the fog, the mist, a gem or a refused one' do
+      spells([])
+      fog = obj.new(id: '1', name: 'cloud of thick ethereal fog', noun: 'fog', type: '')
+      gem = obj.new(id: '2', name: 'cloud agate', noun: 'agate', type: 'gem')
+      mist = obj.new(id: '3', name: 'cloud of acidic mist', noun: 'mist', type: '')
+      dark = obj.new(id: '4', name: 'dark cloud', noun: 'cloud', type: '')
+      loot(fog, gem, mist, dark)
+      expect(described_class.cloud(bad)).to eq(dark)
+      bad << '4'
+      expect(described_class.cloud(bad)).to be_nil
+    end
+
+    it 'takes the acidic mist when a breeze is known' do
+      spells([612])
+      mist = obj.new(id: '3', name: 'cloud of acidic mist', noun: 'mist', type: '')
+      loot(mist)
+      expect(described_class.cloud(bad)).to eq(mist)
+    end
+
+    it 'finds globes, runestones and webs' do
+      globe = obj.new(id: '5', name: 'chaotic spatial anomaly', noun: 'anomaly', type: '')
+      stone = obj.new(id: '6', name: 'pale hovering runestone', noun: 'runestone', type: '')
+      web = obj.new(id: '7', name: 'sticky web', noun: 'web', type: '')
+      loot(globe, stone, web)
+      expect(described_class.globe(bad)).to eq(globe)
+      expect(described_class.runestone(bad)).to eq(stone)
+      expect(described_class.web(bad)).to eq(web)
+    end
+
+    it 'reports a cleave or thieve only when it went into the wards' do
+      globe = obj.new(id: '5', name: 'chaotic spatial anomaly', noun: 'anomaly', type: '')
+      answers = {}
+      cman = Module.new do
+        define_singleton_method(:use) { |name, _target| answers[name] }
+      end
+      stub_const('Lich::Gemstone::CMan', cman)
+      hit = 'You hang back for a moment and concentrate on the magical wards surrounding a globe, before unleashing your attack upon them!'
+      answers['scleave'] = hit
+      expect(described_class.maneuver('scleave', globe, :cleaved)).to eq(:cleaved)
+      answers['scleave'] = 'You remain mentally drained from your last attempt to perceive the threads that connect a magical ward to its bearer.'
+      expect(described_class.maneuver('scleave', globe, :cleaved)).to eq(:failed)
+      answers['scleave'] = nil
+      expect(described_class.maneuver('scleave', globe, :cleaved)).to eq(:failed)
+      answers['sthieve'] = 'You hang back for a moment and concentrate on the magical wards surrounding a globe, before sneaking in an attack on them!'
+      expect(described_class.maneuver('sthieve', globe, :thieved)).to eq(:thieved)
+    end
+
+    it 'aims without TARGET at the mist and the two globes that cannot be targeted' do
+      allow(described_class).to receive(:target).and_return(false)
+      expect(described_class.aim(obj.new(id: '1', name: 'silvery blue globe'))).to be(true)
+      expect(described_class.aim(obj.new(id: '2', name: 'cloud of acidic mist'))).to be(true)
+      expect(described_class.aim(obj.new(id: '3', name: 'chaotic spatial anomaly'))).to be(false)
+    end
+  end
+
+  describe EO::Cleanse::Disarms do
+    let(:hand) { Struct.new(:id, :name, :noun, keyword_init: true) }
+    let(:vars) { Struct.new(:last_disarm).new(nil) }
+
+    before { stub_const('UserVars', vars) }
+
+    def hands(right, left)
+      stub_const('GameObj', Class.new do
+        define_singleton_method(:right_hand) { right }
+        define_singleton_method(:left_hand) { left }
       end)
     end
 
-    it 'casts the spell at the hazard when it can be afforded, asking for a mana pulse first' do
-      spell = book[417]
-      spell.known = true
-      described_class.clear(web, spell)
-      expect(spell.casts).to eq(['at #7'])
-      spell.affordable = false
-      described_class.clear(web, spell)
-      expect(pulses).to eq([417, 417])
-      expect(spell.casts.size).to eq(1)
+    it 'reads what RECOVER ITEM picked up, by noun or by its words' do
+      expect(described_class.spied_item(['You spy <a exist="1" noun="handaxe">a steel handaxe</a> and recover it!'])).to eq('handaxe')
+      expect(described_class.spied_item(['You spy a steel handaxe and recover it!'])).to eq('a steel handaxe')
+      expect(described_class.spied_item(['You find nothing recoverable.'])).to be_nil
+      expect(described_class.same_item?('a steel handaxe', 'handaxe')).to be(true)
+      expect(described_class.same_item?('a steel handaxe', 'axe')).to be(false)
     end
 
-    it 'cleaves without a spell, thieves without cleave, and does neither when Lich says it cannot' do
-      skills.merge!(cleave: true, thieve: true)
-      described_class.clear(web, nil)
-      skills[:cleave] = false
-      described_class.clear(web, nil)
-      skills[:thieve] = false
-      described_class.clear(web, nil)
-      expect(fputs).to eq([['Spell Cleave', '#7'], ['Spell Thieve', '#7']])
+    it 'counts a weapon recovered only when it was not already in hand' do
+      empty = hand.new(id: nil, name: 'Empty', noun: nil)
+      axe = hand.new(id: '10', name: 'a handaxe', noun: 'handaxe')
+      hands(axe, empty)
+      expect(described_class.recovered?(['10'], 'handaxe')).to be(false)
+      hands(axe, hand.new(id: '11', name: 'a handaxe', noun: 'handaxe'))
+      expect(described_class.recovered?(['10'], 'handaxe')).to be(true)
+      hands(axe, hand.new(id: '12', name: 'a dagger', noun: 'dagger'))
+      expect(described_class.recovered?(['10'], 'handaxe')).to be(false)
     end
 
-    it 'blows mist away by incanting 912, or casting 612 at it' do
-      described_class.blow_away(web, book[912])
-      described_class.blow_away(web, book[612])
-      expect(book[912].casts).to eq([:incant])
-      expect(book[612].casts).to eq(['at #7'])
+    it 'reads an old bare room number as no disarms' do
+      vars.last_disarm = 1234
+      expect(described_class.list).to eq([])
     end
 
-    it 'hits a runestone until it shatters, five swings at most' do
-      swings = [['You bash the runestone.'], ['You bash it.', 'It crashes to the ground and shatters into pale dust.']]
-      count = 0
-      stub_const('Lich::Util', Class.new { define_singleton_method(:issue_command) { |*_, **| (count += 1) && (swings.shift || ['You bash it.']) } })
-      stub_const('GameObj', Class.new { define_singleton_method(:loot) { [Struct.new(:id).new('7')] } })
-      described_class.define_singleton_method(:waitrt?) { nil }
-      described_class.shatter(web)
-      expect(count).to eq(2)
-      described_class.shatter(web)
-      expect(count).to eq(7)
-    ensure
-      described_class.singleton_class.remove_method(:waitrt?)
+    it 'forgets one disarm, a room, or an earlier disarm found instead' do
+      vars.last_disarm = [{ id: 'a', item: 'handaxe', room: 1 }, { id: 'b', item: 'mace', room: 1 },
+                          { id: 'c', item: 'sword', room: 2 }, { id: 'd', item: 'dagger', room: nil }]
+      described_class.remove_found('a heavy mace', 1)
+      expect(described_class.list.map { |e| e[:id] }).to eq(%w[a c d])
+      described_class.remove_room(1, 'c')
+      expect(described_class.list.map { |e| e[:id] }).to eq(%w[d])
+      described_class.remove_room(nil, 'x')
+      expect(described_class.tracked?('d')).to be(true)
+      described_class.remove('d')
+      expect(described_class.list).to eq([])
+    end
+
+    describe '.search' do
+      let(:room) { Struct.new(:id).new(5) }
+
+      before do
+        r = room
+        stub_const('Room', Class.new { define_singleton_method(:current) { r } })
+        hands(hand.new(id: '10', name: 'a shield', noun: 'shield'), hand.new(id: nil, name: 'Empty', noun: nil))
+        allow(described_class).to receive(:empty_hands)
+        allow(EO).to receive(:kneel).and_return(true)
+        allow(EO).to receive(:settle)
+        vars.last_disarm = [{ id: 'old', item: 'mace', room: 5 }, { id: 'new', item: 'handaxe', room: 5 }]
+      end
+
+      def answers(*replies)
+        allow(EO::Cleanse).to receive(:command).with('recover item', anything).and_return(*replies)
+      end
+
+      it 'keeps looking past an earlier disarm, then finds the one it wants' do
+        answers(['You spy a heavy mace and recover it!'], ['You spy a steel handaxe and recover it!'])
+        seen = []
+        result = described_class.search('handaxe', known_ids: ['10'], room_id: 5, id: 'new') { |e, f| seen << [e, f] }
+        expect(result.outcome).to eq(:recovered)
+        expect(seen).to eq([[:other, 'a heavy mace']])
+        expect(described_class.list).to eq([])
+      end
+
+      it 'stops when the room holds nothing, forgetting the room' do
+        answers(['You find nothing recoverable here.'])
+        expect(described_class.search('handaxe', known_ids: ['10'], room_id: 5, id: 'new').outcome).to eq(:nothing_here)
+        expect(described_class.list).to eq([])
+      end
+
+      it 'stops when too hurt to search, keeping the disarm' do
+        answers(["You're not in any condition to be searching around."])
+        expect(described_class.search('handaxe', known_ids: ['10'], room_id: 5, id: 'new').outcome).to eq(:cannot_search)
+        expect(described_class.tracked?('new')).to be(true)
+      end
+
+      it 'searches though it could not kneel, having tried a few times' do
+        allow(EO).to receive(:kneel).and_return(false)
+        answers(['You spy a steel handaxe and recover it!'])
+        expect(described_class.search('handaxe', known_ids: ['10'], room_id: 5, id: 'new').outcome).to eq(:recovered)
+        expect(EO).to have_received(:kneel).once
+      end
+
+      it 'counts each time the hands are emptied to search' do
+        answers(['In order to recover something, you need a free hand.'], ['You spy a steel handaxe and recover it!'])
+        expect(described_class.search('handaxe', known_ids: ['10'], room_id: 5, id: 'new').stashes).to eq(2)
+      end
     end
   end
-end
 
-RSpec.describe EO::Cleanse::Traps do
-  include_context 'a script lending helpers'
+  describe EO::Cleanse::Traps do
+    it 'leaves a trap to try again only when the search was cut short by something passing' do
+      expect(described_class.retry?(:moved)).to be(true)
+      expect(described_class.retry?(:muckled)).to be(true)
+      expect(described_class.retry?(:clear)).to be(false)
+    end
 
-  # a room is itself and no other, as a Room is: a Struct of the same id would be equal
-  let(:room) { Class.new { attr_reader :id; def initialize(id) = @id = id } }
-  let(:here) { [room.new(5)] }
-  let(:state) { { dead: false, muckled: false } }
-
-  before do
-    current = here
-    flags = state
-    stub_const('Room', Class.new { define_singleton_method(:current) { current.first } })
-    described_class.define_singleton_method(:dead?) { flags[:dead] }
-    described_class.define_singleton_method(:muckled?) { flags[:muckled] }
-  end
-
-  after { %i[dead? muckled?].each { |m| described_class.singleton_class.remove_method(m) } }
-
-  it 'knows the trap room by id, and never takes two unmapped rooms for one' do
-    expect(described_class.here?(room.new(5))).to be(true)
-    expect(described_class.here?(room.new(6))).to be(false)
-    expect(described_class.here?(nil)).to be(false)
-    here[0] = room.new(nil)
-    expect(described_class.here?(room.new(nil))).to be(false)
-    expect(described_class.here?(here.first)).to be(true)
-  end
-
-  it 'searches until the roll succeeds' do
-    answers['search'] = [['d100: 12  Failure!'], ['d100: 88  Success!']]
-    expect(described_class.search(room.new(5))).to eq(:found)
-    expect(sent).to eq([:wait, 'search', :wait, 'search'])
-  end
-
-  it 'says why a search ended without a find' do
-    answers['search'] = [["You don't find anything of interest here."], ["You can't see well enough to search around."]]
-    expect(described_class.search(room.new(5))).to eq(:clear)
-    expect(described_class.search(room.new(5))).to eq(:blind)
-    expect(described_class.search(room.new(6))).to eq(:moved)
-    state[:muckled] = true
-    expect(described_class.search(room.new(5))).to eq(:muckled)
-  end
-
-  it 'gives up a search after three tries' do
-    expect(described_class.search(room.new(5))).to eq(:exhausted)
-    expect(sent.count('search')).to eq(3)
-  end
-
-  it 'disarms until it succeeds or there is nothing to disarm, three tries at most' do
-    answers['disarm apparatus'] = [['d100: 3  Failure!'], ['You want to disarm what?']]
-    described_class.disarm(room.new(5))
-    expect(sent.count('disarm apparatus')).to eq(2)
-    sent.clear
-    described_class.disarm(room.new(5))
-    expect(sent.count('disarm apparatus')).to eq(3)
-  end
-
-  it 'picks the nearer of the nearest town and sanctuary to wait out the curse' do
-    place = Class.new do
-      def dijkstra = [{}, { 10 => 30, 20 => 12 }]
-      def find_nearest_by_tag(tag) = { 'town' => 10, 'sanctuary' => 20 }[tag]
-    end.new
-    stub_const('Room', Class.new { define_singleton_method(:current) { place } })
-    expect(described_class.safe_place).to eq(20)
-  end
-end
-
-RSpec.describe EO::Cleanse::Disarms do
-  let(:thing) { Struct.new(:id, :name, :noun) }
-  let(:hands) { { right: thing.new('1', 'broadsword', 'broadsword'), left: thing.new(nil, 'Empty', nil) } }
-  let(:saved) { [nil] }
-
-  before do
-    held = hands
-    store = saved
-    stub_const('GameObj', Class.new do
-      define_singleton_method(:right_hand) { held[:right] }
-      define_singleton_method(:left_hand) { held[:left] }
-    end)
-    stub_const('UserVars', Class.new do
-      define_singleton_method(:last_disarm) { store.first }
-      define_singleton_method(:last_disarm=) { |value| store[0] = value }
-    end)
-    stub_const('Room', Class.new { define_singleton_method(:current) { Struct.new(:id, :title).new(100, ['[Town Square]']) } })
-  end
-
-  it 'knows a weapon is back by a new thing in hand, of the noun lost when given' do
-    expect(described_class.recovered?(['1'])).to be(false)
-    hands[:left] = thing.new('9', 'steel dagger', 'dagger')
-    expect(described_class.recovered?(['1'])).to be(true)
-    expect(described_class.recovered?(['1'], 'Dagger')).to be(true)
-    expect(described_class.recovered?(['1'], 'falchion')).to be(false)
-    expect(described_class.held_ids).to eq(%w[1 9])
-  end
-
-  it 'reads anything but a list as no disarms' do
-    saved[0] = 4521
-    expect(described_class.list).to eq([])
-  end
-
-  it 'adds a disarm with where and when, keeping the latest twenty' do
-    id = described_class.add('falchion')
-    entry = described_class.list.first
-    expect(entry).to include(id: id, item: 'falchion', room: 100, title: '[Town Square]')
-    expect(described_class.tracked?(id)).to be(true)
-    25.times { described_class.add('dagger') }
-    expect(described_class.list.size).to eq(20)
-    expect(described_class.tracked?(id)).to be(false)
-  end
-
-  it 'removes one, or everything saved for a room the game says is empty' do
-    first = described_class.add('falchion')
-    second = described_class.add('dagger')
-    described_class.remove(first)
-    expect(described_class.list.map { |e| e[:id] }).to eq([second])
-    described_class.add('mace')
-    described_class.remove_room(100, second)
-    expect(described_class.list).to be_empty
-  end
-
-  it 'keeps the others when the room has no id' do
-    first = described_class.add('falchion')
-    saved[0].first[:room] = nil
-    second = described_class.add('dagger')
-    saved[0].last[:room] = nil
-    described_class.remove_room(nil, second)
-    expect(described_class.list.map { |e| e[:id] }).to eq([first])
-  end
-
-  it 'drops the entry for what a search turned up instead' do
-    described_class.add('falchion')
-    described_class.add('dagger')
-    described_class.remove_found('a steel dagger', 100)
-    expect(described_class.list.map { |e| e[:item] }).to eq(['falchion'])
-  end
-
-  it 'reads what RECOVER ITEM picked up, with or without XML' do
-    expect(described_class.spied_item(['You spy a <a exist="5" noun="falchion">vultite falchion</a> and recover it!'])).to eq('falchion')
-    expect(described_class.spied_item(['You spy a vultite falchion and recover it!'])).to eq('a vultite falchion')
-    expect(described_class.spied_item(['You search around.'])).to be_nil
+    it 'waits out the curse where the settings say' do
+      expect(described_class.safe_room('1234')).to eq(1234)
+      expect(described_class.safe_room('sanctuary')).to eq('sanctuary')
+    end
   end
 end

@@ -2,268 +2,263 @@
 
 module EO
   module Cleanse
-    # What is done to the character: disease and poison, magical debuffs, a
-    # root or press, a stun, a web or bind. Each method is the cure itself;
-    # whether to try it at all is the calling script's.
-    #
-    # Commands go through the running script's helpers (EO.use). The helpers
-    # this needs: wait(), and a lines helper, lines(text, pattern), answering
-    # the lines of a command sent quietly.
+    # What is wrong with the character, and the cure: poison and disease
+    # cast away, magical debuffs dispelled, a root or press retreated from,
+    # a stun or a web broken. Each answers what it did.
     module Afflictions
       module_function
 
-      # Debuffs Retreat gets the character out of.
-      GROUNDED = %w[Rooted Pressed].freeze
-      # Debuffs a dispel cast on oneself removes.
-      DISPELLABLE = ['Confusion', 'Vertigo', 'Sounds', 'Thought Lash', 'Mindwipe', 'Pious Trial', 'Powersink'].freeze
-      # Creatures that are a part of something else: Quake (709) is not for them.
-      APPENDAGE = /^(?:arm|appendage|claw|limb|pincer|tentacle)s?$|^(?:palpus|palpi)$/i
+      ESCAPE_ROOMS = ['The Belly of the Beast', 'Ooze, Innards'].freeze
 
-      # Cast Undisease (113) until the disease is gone or the mana is.
+      # @return [Boolean] poisoned, Wall of Thorns included
+      def poisoned? = checkpoison || Status.thorned? ? true : false
+
+      # @return [Boolean] a root or a press
+      def grounded? = Effects::Debuffs.to_h.keys.any? { |k| k.to_s =~ /Rooted|Pressed/ }
+
+      # @return [Boolean] a debuff a dispel clears
+      def magical? = Effects::Debuffs.to_h.keys.any? { |k| k.to_s =~ DEBUFFS }
+
+      # Whether a cast for +job+ can go out now: the spell known, the wounds
+      # allowing, and mana enough after a pulse.
       #
-      # @return [void]
-      def cure_disease
-        until !checkdisease || !Spell[113].affordable?
-          Spell[113].cast
-          EO.settle
-        end
+      # @param job [Symbol] :poison, :disease or :dispel
+      # @param determination [Boolean] see Cleanse.able_to_cast?
+      # @return [Boolean]
+      def curable?(job, determination: false)
+        spell = Cleanse.spell(job)
+        return false unless spell && Cleanse.able_to_cast?(determination: determination)
+
+        Lich::Gemstone::Mana.pulse(spell)
+        spell.affordable?
       end
 
-      # Cast Unpoison (114) until the poison is gone, a Wall of Thorns'
-      # too, or the mana is. The debuffs are read again after each cast
-      # while thorns poison lasts, as nothing else tells when it ends.
+      # Cast 114 or 113 until the poison or disease is gone or the spell is
+      # unaffordable.
       #
-      # @return [void]
-      def cure_poison
-        loop do
-          thorns_active = if Gem::Version.new(LICH_VERSION) >= Gem::Version.new('5.10.2')
-                            Status.thorned?
-                          else
-                            Effects::Debuffs.to_h.keys.any? { |key| key.to_s =~ /Wall of Thorns Poison/ }
-                          end
+      # @param kind [Symbol] :poison or :disease
+      # @param determination [Boolean] see Cleanse.able_to_cast?
+      # @return [Symbol] :cured, :still (out of mana with it still there),
+      #   :unaffordable, :cannot_cast or :no_spell
+      def cure(kind, determination: false)
+        spell = Cleanse.spell(kind)
+        return :no_spell if spell.nil?
+        return :cannot_cast unless Cleanse.able_to_cast?(determination: determination)
 
-          break if (!checkpoison && !thorns_active) || !Spell[114].affordable?
+        Lich::Gemstone::Mana.pulse(spell)
+        return :unaffordable unless spell.affordable?
 
-          Spell[114].cast
+        afflicted = kind == :poison ? -> { poisoned? } : -> { checkdisease }
+        while afflicted.call && spell.affordable?
+          spell.cast
           EO.settle
-
-          EO.lines('spell active debuff', /<dialogData id='Debuffs'/) if thorns_active
+          # the thorns poison leaves the debuff list only once it is read again
+          Lich::Util.issue_command('spell active debuff', /<dialogData id='Debuffs'/, silent: true, quiet: true) if kind == :poison && Status.thorned?
         end
+        afflicted.call ? :still : :cured
       end
 
-      # Retreat from what holds the character down, once for each of
-      # GROUNDED that is active while there is the stamina: stand, drop the
-      # target, retreat, and take the target up again.
+      # Channel the dispel open at oneself, once for each debuff it clears.
       #
-      # @param before [Proc, nil] called before each retreat
-      # @return [void]
-      def retreat(before: nil)
-        GROUNDED.each do |debuff|
-          next unless Effects::Debuffs.active?(debuff) && Char.stamina >= 11
+      # @param determination [Boolean]
+      # @return [Symbol] :dispelled, :unaffordable, :cannot_cast or :no_spell
+      def dispel(determination: false)
+        spell = Cleanse.spell(:dispel)
+        return :no_spell if spell.nil?
+        return :cannot_cast unless Cleanse.able_to_cast?(determination: determination)
 
-          before&.call
-          EO.settle
-          EO.stand
-          current_target = XMLData.current_target_id
-          fput 'target clear'
-          fput 'cman retreat'
-          fput "target ##{current_target}"
-        end
-      end
-
-      # Dispel the debuffs on the character, an open channel of the dispel
-      # for each of DISPELLABLE that is active.
-      #
-      # @param dispel [Spell]
-      # @param before [Proc, nil] called before each
-      # @return [void]
-      def dispel_debuffs(dispel, before: nil)
-        Lich::Gemstone::Mana.pulse(dispel.num)
-
+        cast = false
         DISPELLABLE.each do |debuff|
           next unless Effects::Debuffs.active?(debuff)
 
-          before&.call
-          Lich::Gemstone::Mana.pulse(dispel.num)
-
+          Lich::Gemstone::Mana.pulse(spell)
           EO.stand
-          dispel.force_incant('channel open') if dispel.affordable?
+          EO.settle
+          next unless spell.affordable?
+
+          spell.force_incant('channel open')
+          cast = true
         end
+        cast ? :dispelled : :unaffordable
       end
 
-      # The ways out of a stun the character has ready, of those allowed.
-      # The combat maneuvers are not used in the two rooms a creature has
-      # swallowed the character into.
+      # @return [Boolean] Retreat with the stamina, or Escape Artist for a root
+      def ungroundable?
+        return Char.stamina >= 11 if Lich::Gemstone::CMan.known?('Retreat')
+
+        Effects::Debuffs.active?('Rooted') && Lich::Gemstone::Feat.available?('escapeartist', min_rank: 5) && Char.stamina >= 15
+      end
+
+      # CMAN RETREAT out of a root or press, the target cleared and put
+      # back; else Escape Artist out of a root.
       #
-      # @param allow [Hash{Symbol => Boolean}] :stunned1040, :barkskin,
-      #   :beseech, :berserk, :stance1, :stance2, :flee, :hide
-      # @return [Hash{Symbol => Boolean}] the same keys, true for each ready
-      def stun_means(allow)
-        means = Hash.new(false)
-        swallowed = !(checkroom('The Belly of the Beast').nil? && checkroom('Ooze, Innards').nil?)
+      # @return [Symbol] :retreat, :escape or :no_means
+      def unground
+        if Lich::Gemstone::CMan.known?('Retreat')
+          done = false
+          %w[Rooted Pressed].each do |debuff|
+            next unless Effects::Debuffs.active?(debuff) && Char.stamina >= 11
 
-        if allow[:stunned1040] && Spell[1040].known?
-          Lich::Gemstone::Mana.pulse(1040)
-          means[:stunned1040] = Spell[1040].available?
+            EO.settle
+            EO.stand
+            EO.settle
+            target = XMLData.current_target_id
+            fput 'target clear'
+            fput 'cman retreat'
+            fput "target ##{target}" if target
+            done = true
+          end
+          return done ? :retreat : :no_means
         end
+        return :no_means unless ungroundable?
 
-        if allow[:barkskin] && Spell[605].known? && !Effects::Cooldowns.active?('Barkskin: Commune') && !Effects::Cooldowns.active?('Barkskin') && !Spell[605].active? && Skills.slblessings >= 15
+        Lich::Gemstone::Feat.use('escapeartist')
+        :escape
+      end
+
+      # The first way out of a stun the policy allows and the character has,
+      # in order. Berserk and the Stun Maneuvers are no use in the
+      # rooms that are a creature's insides.
+      #
+      # @param policy [Policy]
+      # @return [Symbol, nil] :barkskin, :berserk, :shout_1040, :beseech,
+      #   :stance1, :stance2, :flee, :hide; nil for none
+      def stun_means(policy)
+        if policy.use_stunned_barkskin && Spell[605].known? && !Effects::Cooldowns.active?('Barkskin: Commune') &&
+           !Effects::Cooldowns.active?('Barkskin') && !Spell[605].active? && Skills.slblessings >= 15
           Lich::Gemstone::Mana.pulse(605)
-          means[:barkskin] = Spell[605].available?
+          return :barkskin if Spell[605].available?
         end
-
-        if allow[:beseech] && Spell[1635].known?
+        escape_room = ESCAPE_ROOMS.any? { |title| checkroom(title) }
+        return :berserk if !escape_room && policy.use_berserk_stunned && Lich::Gemstone::CMan.available?('Berserk')
+        if policy.use_stunned1040 && Spell[1040].known?
+          Lich::Gemstone::Mana.pulse(1040)
+          return :shout_1040 if Spell[1040].available?
+        end
+        if policy.use_1635 && Spell[1635].known?
           Lich::Gemstone::Mana.pulse(1635)
-          means[:beseech] = Spell[1635].available?
+          return :beseech if Spell[1635].available?
         end
+        return nil if escape_room
 
-        unless swallowed
-          means[:berserk] = allow[:berserk] && CMan.available?('Berserk')
-          means[:stance1] = allow[:stance1] && CMan.available?('Stun Maneuvers', min_rank: 3)
-          means[:stance2] = allow[:stance2] && CMan.available?('Stun Maneuvers', min_rank: 4)
-          means[:flee] = allow[:flee] && CMan.available?('Stun Maneuvers', min_rank: 5)
-          means[:hide] = allow[:hide] && CMan.available?('Stun Maneuvers', min_rank: 5) && !checkhidden
+        stunman = ->(rank) { Lich::Gemstone::CMan.available?('Stun Maneuvers', min_rank: rank) }
+        return :stance1 if policy.use_stance1 && stunman.call(3)
+        return :stance2 if policy.use_stance2 && stunman.call(4)
+        return :flee if policy.use_flee && stunman.call(5)
+        return :hide if policy.use_hide && stunman.call(5) && !checkhidden
+
+        nil
+      end
+
+      # Break a stun the way stun_means picked, and wait it out.
+      #
+      # @param means [Symbol] from stun_means
+      # @return [Symbol] the means used
+      def unstun(means)
+        case means
+        when :barkskin
+          EO.settle
+          fput 'commune barkskin' if checkstunned
+          sleep 0.1 while checkstunned
+        when :berserk
+          Spell[9607].cast
+          sleep 1
+          sleep 0.2 while Spell[9607].active?
+        when :shout_1040 then fput 'shout 1040'
+        when :beseech then fput 'beseech'
+        else stunman(means.to_s)
         end
-
         means
       end
 
-      # Get out of a stun by the first of the means: barkskin, berserk,
-      # 1040, beseech, then the stun maneuvers.
+      # A Stun Maneuver: stand first, then the stance, or flee the room, or
+      # hide, until it takes or the stun is over.
       #
-      # @param means [Hash{Symbol => Boolean}] from stun_means
+      # @param type [String] stance1, stance2, flee or hide
       # @return [void]
-      def break_stun(means)
-        if means[:barkskin]
-          EO.settle
-          fput 'commune barkskin' if stunned?
-          sleep 0.1 while checkstunned
-        elsif means[:berserk]
-          berserk
-        elsif means[:stunned1040]
-          fput 'shout 1040'
-        elsif means[:beseech]
-          fput 'beseech'
-        elsif means[:stance1]
-          stun_maneuver('stance1')
-        elsif means[:stance2]
-          stun_maneuver('stance2')
-        elsif means[:flee]
-          stun_maneuver('flee')
-        elsif means[:hide]
-          stun_maneuver('hide')
-        end
-      end
-
-      # Go berserk and wait for it to end.
-      #
-      # @api private
-      def berserk
-        Spell[9607].cast
-        sleep 1
-        wait_until { !Spell[9607].active? }
-      end
-
-      # A stun maneuver, standing first: a stance; fleeing until the room
-      # changes, then the second stance; or hiding until hidden. Each goes on
-      # only while the stun lasts, and the stun is waited out after.
-      #
-      # @param type [String] 'stance1', 'stance2', 'flee' or 'hide'
-      # @return [void]
-      def stun_maneuver(type)
-        stun_stand
-
+      def stunman(type)
+        stunman_stand
         case type
-        when 'stance1', 'stance2'
-          CMan.use('stunman', type)
+        when 'stance1', 'stance2' then Lich::Gemstone::CMan.use('stunman', type)
         when 'flee'
-          current_room = Room.current.id
-          until Room.current.id != current_room || !checkstunned
-            stun_stand
-            CMan.use('stunman', 'flee')
+          room = Room.current.id
+          until Room.current.id != room || !checkstunned
+            stunman_stand
+            Lich::Gemstone::CMan.use('stunman', 'flee')
             sleep 0.5
           end
-          CMan.use('stunman', 'stance2')
+          Lich::Gemstone::CMan.use('stunman', 'stance2')
         when 'hide'
           until checkhidden || !checkstunned
-            stun_stand
-            CMan.use('stunman', 'hide')
+            stunman_stand
+            Lich::Gemstone::CMan.use('stunman', 'hide')
             EO.settle
           end
         end
-
         sleep 0.1 while checkstunned
       end
 
-      # Stand by stun maneuver while stunned and down.
-      #
-      # @return [void]
-      def stun_stand
+      # @api private
+      def stunman_stand
         until standing? || !checkstunned
-          CMan.use('stunman', 'stand')
+          Lich::Gemstone::CMan.use('stunman', 'stand')
           EO.settle
         end
       end
 
-      # Whether there is a way out of a web or bind: 1040, berserk, beseech
-      # or Escape Artist. A mana pulse is made for 1040 first.
+      # The first way out of a web or bind the character has: 1040, berserk
+      # (when the policy allows), 1635, Escape Artist.
       #
-      # @param berserk [Boolean] berserk is allowed for this
-      # @param beseech [Boolean] beseech (1635) is allowed
-      # @return [Boolean]
-      def web_escape?(berserk:, beseech:)
+      # @param policy [Policy]
+      # @return [Symbol, nil] :shout_1040, :berserk, :beseech, :escape; nil for none
+      def web_means(policy)
         Lich::Gemstone::Mana.pulse(1040) if Spell[1040].known?
+        return :shout_1040 if Spell[1040].known? && Spell[1040].affordable?
+        return :berserk if policy.use_berserk_webbed && Lich::Gemstone::CMan.known?('Berserk') && Char.stamina >= 21
+        return :beseech if policy.use_1635 && Spell[1635].known? && Spell[1635].affordable?
+        return :escape if Lich::Gemstone::Feat.available?('escapeartist', min_rank: 5) && Char.stamina >= 15
 
-        spell_1040_ready = Spell[1040].known? && Spell[1040].affordable?
-        berserk_ready = berserk && CMan.available?('Berserk')
-        beseech_ready = beseech && Spell[1635].known? && Spell[1635].affordable?
-        escape_ready = Feat.available?('escapeartist', min_rank: 5) && Char.stamina >= 15
-
-        spell_1040_ready || berserk_ready || beseech_ready || escape_ready ? true : false
+        nil
       end
 
-      # Get out of a web or bind by the first there is: 1040, berserk,
-      # beseech, Escape Artist.
+      # Break a web or bind the way web_means picked.
       #
-      # @param berserk [Boolean] berserk is allowed for this
-      # @param beseech [Boolean] beseech (1635) is allowed
-      # @return [void]
-      def break_web(berserk:, beseech:)
-        if Spell[1040].known? && Spell[1040].affordable?
-          fput 'shout 1040'
-        elsif berserk && CMan.available?('Berserk')
-          self.berserk
-        elsif beseech && Spell[1635].known? && Spell[1635].affordable?
-          fput 'beseech'
-        elsif Feat.available?('escapeartist', min_rank: 5) && Char.stamina >= 15
-          Feat.use('escapeartist')
+      # @param means [Symbol] from web_means
+      # @return [Symbol] the means used
+      def unweb(means)
+        case means
+        when :shout_1040 then fput 'shout 1040'
+        when :berserk
+          Spell[9607].cast
+          sleep 1
+          sleep 0.2 while Spell[9607].active?
+        when :beseech then fput 'beseech'
+        when :escape then Lich::Gemstone::Feat.use('escapeartist')
         end
+        means
       end
 
-      # Quiet a room with something in it to fight, by the first of the
-      # spells allowed that the character has: Wall of Force (140), Mass
-      # Calm (619), Quake (709), Wizard's Shield (919), Symbol of Sleep
-      # (9811).
+      # One spell to make a room with creatures in it safer before a
+      # recovery, the first the policy allows: Wall of Force (140), 619,
+      # 709 (not with tentacles about), Wizard's Shield (919), 9811.
       #
-      # @param use [Hash{Symbol => Boolean}] :use_140, :use_619, :use_709,
-      #   :use_919, :use_9811
-      # @return [void]
-      def settle_room(use)
-        if use[:use_140] && Spell[140].known? && !Effects::Buffs.active?('Wall of Force') && !Effects::Cooldowns.active?('Wall of Force')
-          Lich::Gemstone::Mana.pulse(140)
-          Spell[140].cast if Spell[140].affordable?
-        elsif use[:use_619] && Spell[619].known?
-          Lich::Gemstone::Mana.pulse(619)
-          Spell[619].cast if Spell[619].affordable?
-        elsif use[:use_709] && Spell[709].known? && !GameObj.npcs.any? { |c| c.name =~ APPENDAGE }
-          Lich::Gemstone::Mana.pulse(709)
-          Spell[709].cast if Spell[709].affordable?
-        elsif use[:use_919] && !Effects::Buffs.active?("Wizard's Shield") && !Effects::Cooldowns.active?("Wizard's Shield")
-          Lich::Gemstone::Mana.pulse(919)
-          Spell[919].cast if Spell[919].affordable?
-        elsif use[:use_9811] && Spell[9811].known?
-          Spell[9811].cast
-        end
+      # @param policy [Policy]
+      # @return [Symbol] :settled, :quiet (nothing to fight), :cannot_cast or :no_means
+      def settle_room(policy)
+        return :quiet if GameObj.targets.to_a.empty?
+        return :cannot_cast unless Cleanse.able_to_cast?(determination: policy.determination)
+
+        num = if policy.use_140 && Spell[140].known? && !Effects::Buffs.active?('Wall of Force') && !Effects::Cooldowns.active?('Wall of Force') then 140
+              elsif policy.use_619 && Spell[619].known? then 619
+              elsif policy.use_709 && Spell[709].known? && GameObj.npcs.to_a.none? { |c| c.noun =~ EO::Wander::APPENDAGE } then 709
+              elsif policy.use_919 && Spell[919].known? && !Effects::Buffs.active?("Wizard's Shield") && !Effects::Cooldowns.active?("Wizard's Shield") then 919
+              elsif policy.use_9811 && Spell[9811].known? then 9811
+              end
+        return :no_means if num.nil?
+
+        Lich::Gemstone::Mana.pulse(num) unless num == 9811
+        Spell[num].cast if Spell[num].affordable?
+        :settled
       end
     end
   end
