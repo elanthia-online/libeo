@@ -42,8 +42,9 @@ RSpec.describe EO::Hands do
       expect(described_class.holding?(bag)).to be(false)
     end
 
-    it 'reads an object with no id as held while a hand is empty' do
-      expect(described_class.holding?(thing.new(nil, 'a thing'))).to be(true)
+    it 'holds neither nothing nor an object with no id, though an empty hand has none either' do
+      expect(described_class.holding?(thing.new(nil, 'a thing'))).to be(false)
+      expect(described_class.holding?(nil)).to be(false)
     end
   end
 
@@ -77,9 +78,26 @@ RSpec.describe EO::Hands do
       described_class.free_hand(favor_left: false, empty: empty_it)
       expect(emptied).to eq([:left])
     end
+
+    it 'frees neither hand when both arms are beyond use' do
+      injuries[['Wounds', :rightArm]] = 3
+      injuries[['Scars', :leftHand]] = 3
+      expect(described_class.free_hand(favor_left: true, empty: empty_it)).to eq(:crippled)
+      expect(described_class.free_hand(favor_left: false, empty: empty_it)).to eq(:crippled)
+      expect(emptied).to be_empty
+    end
   end
 
   describe '.take' do
+    it "waits for the drag's own answer, a pickup from the ground among them" do
+      asked = nil
+      EO.use(result: ->(_text, pattern = nil) { (asked = pattern) && nil })
+      described_class.take(ruby, 'right')
+      expect('You pick up a ruby.').to match(asked)
+      expect('Get what?').to match(asked)
+      expect('A kobold arrives.').not_to match(asked)
+    end
+
     it 'drags to the hand named and sees the item arrive' do
       allow(described_class).to receive(:sleep) { hands[:right] = ruby }
       expect(described_class.take(ruby, 'right')).to eq(:held)
