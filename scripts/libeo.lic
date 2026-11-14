@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.18.0')
-    EO.require('0.18.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.19.0')
+    EO.require('0.19.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,18 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.18.0
+       version: 0.19.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.19.0 (2026-11-13)
+    - EO::Guild::Disablers, from echild 1.20.4: the disabling spells (table), being able
+      to cast (can_cast?), whether there is justice (justice?), the spell for what is
+      in the room (best), TARGET RANDOM (target_random) and the cast (cast)
+    - EO::Guild::Rescue, from echild 1.20.4: the child (child, await_child, here), where
+      it lives and the guards' rooms (ask_home, homes, dropoffs), a room that is a
+      danger to it (threat?), waiting for it (await), who to report to (reportee), and
+      the roots of the Maaghara Labyrinth (maaghara_exits, climb_root)
   v0.18.0 (2026-11-13)
     - EO::Guild::Escort, from escortgo2 1.0.5: the task and its towns (task, PICKUPS,
       DROPOFFS, TRAVEL_COST), having the client follow (follow), the nearest of a list
@@ -181,6 +189,7 @@ parts = %w[
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
   guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
+  guild/disablers guild/rescue
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
