@@ -113,7 +113,7 @@ module EO
       return nil if lines.empty?
 
       line = lines.find { |l| l =~ SIMU }
-      line ? Time.parse(Regexp.last_match(1).sub(/\s[A-Z]{2,4}\s/, ' ')) : 0
+      line ? EO.parse_eastern(Regexp.last_match(1).sub(/\s[A-Z]{2,4}\s/, ' ')) : 0
     rescue StandardError
       nil
     end

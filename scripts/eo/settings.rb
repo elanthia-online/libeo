@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'date'
 require 'fileutils'
 require 'yaml'
 
@@ -38,7 +39,13 @@ module EO
     #
     # @param scripts [Array<String>]
     # @return [void]
-    def self.preload(scripts = SCRIPTS) = scripts.each { |script| load_profile(script) }
+    def self.preload(scripts = SCRIPTS)
+      scripts.each do |script|
+        load_profile(script)
+      rescue StandardError => e
+        notify("could not read #{script}'s settings: #{e.class}: #{e.message}")
+      end
+    end
 
     # Another script's settings, as that script last loaded or saved them.
     # Frozen: only the script itself changes its settings, and its save
@@ -131,9 +138,69 @@ module EO
     # @return [Hash, nil] the saved settings, nil when there is no profile yet
     def self.load_profile(script, name: Char.name)
       path = profile_path(script, name: name)
-      settings = File.exist?(path) ? YAML.load_file(path) : nil
+      settings = File.exist?(path) ? read_file(path) : nil
       hold(script, settings) if name == Char.name
       settings
+    end
+
+    # What the settings may hold beyond YAML's plain values: what a script
+    # can put in a profile and save, so it can be read back.
+    PERMITTED = [Symbol, Date, Time, Range, Set].freeze
+
+    # A profile's contents. A file that cannot be read (cut short, garbage,
+    # not settings) is moved aside to <name>.bad with a warning that names
+    # it, and reads as no profile, so the script starts on its defaults and
+    # the player's old settings are kept in the .bad file.
+    #
+    # @api private
+    # @return [Hash, nil]
+    def self.read_file(path)
+      data = YAML.safe_load_file(path, permitted_classes: PERMITTED)
+      return data if data.nil? || data.is_a?(Hash)
+
+      set_aside(path, 'it does not hold settings')
+    rescue Psych::Exception => e
+      set_aside(path, e.message)
+    end
+
+    # @api private
+    # @return [nil]
+    def self.set_aside(path, why)
+      bad = "#{path}.bad"
+      begin
+        File.rename(path, bad)
+        notify("#{path} could not be read (#{why}); moved to #{bad}, starting on the defaults")
+      rescue SystemCallError
+        notify("#{path} could not be read (#{why}); starting on the defaults")
+      end
+      nil
+    end
+
+    # @api private
+    def self.notify(text)
+      Lich::Messaging.msg('warn', "libeo: #{text}") if defined?(Lich::Messaging)
+    end
+
+    # Write a file through a temporary one, so a crash leaves the old file
+    # whole. Windows refuses the rename while another handle has the target
+    # open, so it is tried again for a moment.
+    #
+    # @api private
+    def self.write_file(path, text)
+      temp = "#{path}.#{Process.pid}.tmp"
+      File.write(temp, text)
+      tries = 0
+      begin
+        File.rename(temp, path)
+      rescue Errno::EACCES
+        tries += 1
+        raise if tries >= 5
+
+        sleep(0.05 * tries)
+        retry
+      end
+    ensure
+      File.delete(temp) if temp && File.exist?(temp)
     end
 
     # Write the settings, making the character's directory when it is new.
@@ -145,7 +212,7 @@ module EO
       path = profile_path(script)
       FileUtils.mkdir_p(File.dirname(path))
       settings = plain(settings)
-      File.write(path, settings.to_yaml)
+      write_file(path, settings.to_yaml)
       hold(script, settings)
       path
     end

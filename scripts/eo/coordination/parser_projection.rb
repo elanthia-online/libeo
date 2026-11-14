@@ -7,7 +7,9 @@ module EO
     # Opt-in immutable projection built entirely outside Lich core from its
     # existing synchronous parser seams. SocketReadHook withdraws the preceding
     # cut before parsing; DownstreamHook publishes only after the parser catches
-    # up to that exact, newest input. Unknown or buffered provenance stays nil.
+    # up to that exact, newest input. Unknown provenance stays nil, buffered input
+    # too once the game instance reports it (input_was_buffered; Lich 5.24.1 has
+    # no such method).
     class ParserProjection
       # Namespace used to make every installed hook name unique.
       HOOK_PREFIX = 'EO::Coordination::ParserProjection'

@@ -21,6 +21,10 @@ module EO
         end
       end
 
+      # Appraise-and-pour passes on a dead player before giving up: one per
+      # kind of wound, with room to spare.
+      DEADER_PASSES = 20
+
       USE_RESULT = /^You (?:manage to )?take a (?:bite|drink)|You eat your|You must pick the|Why don't you leave some for others|Using your/
 
       # What came of a healing run: :healed (nothing left to do that the
@@ -188,11 +192,13 @@ module EO
       # @param sack [Sack]
       # @param full [Boolean] the non-bleeding wounds and scars too
       # @param used [Array<String>] ids taken out, grown here
-      # @return [Symbol] :done, :not_found, or :missing (a potion the sack lacks)
+      # @return [Symbol] :done, :not_found, :missing (a potion the sack lacks), or
+      #   :timeout (a pour went unanswered, or DEADER_PASSES passes left wounds)
       def deader(character, sack:, full: false, used: [])
         return :done unless character.status =~ /dead/i
         empty_right_hand
-        loop do
+        DEADER_PASSES.times do
+          poured = false
           lines = EO.command("appraise #{character}", /Usage|^\s*You take a quick appraisal|^You also notice that|^You glance at/, silent: true, quiet: true)
           return :not_found if lines.any? { |l| l =~ /Appraise what|Usage/ }
           injuries = Injuries.appraise(lines, full: full)
@@ -213,13 +219,15 @@ module EO
             end
             if herb
               item = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun == herb.noun }
-              dothistimeout("pour ##{item.id} in #{character}", 2, /you pour|and pour in a small amount/) if item
+              poured = true if item && dothistimeout("pour ##{item.id} in #{character}", 2, /you pour|and pour in a small amount/)
             else
               short = true
             end
           end
           return :missing if short
+          return :timeout unless poured
         end
+        :timeout
       end
 
       # Hand an escort client the herbs for what LOOK shows.

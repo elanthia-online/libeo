@@ -25,7 +25,9 @@
     - fix: selling a bundle stops when the furrier leaves a skin in your hand; it
       offered the same skin without end
     - fix: an item the game says cannot be worn no longer ends the script with
-      "Something is wrong". Needs libeo 0.52.1
+      "Something is wrong"
+    - fix: with no skinning weapon listed and an empty right hand, eloot says so; it said it
+      was using the right hand and skinned nothing. Needs libeo 0.52.1
   v2.18.0 (2026-11-13)
     - eloot sends, waits, walks and speaks through libeo's own helpers and no longer lends
       its own; the flows it handed on step by step are libeo's whole: the locker (rooms,
@@ -4883,7 +4885,8 @@ module ELoot # Room looting
 
       skinner = EO::Skinning.tool(ReadyList.ready_list, blunt: blunt)
       if skinner.nil?
-        ELoot.msg(type: "info", text: " No blunt weapon found. Please run setup and make sure it's listed.")
+        what = blunt ? "No blunt weapon found" : "No edged skinning weapon found and nothing in your right hand"
+        ELoot.msg(type: "info", text: " #{what}. Please run setup and make sure it's listed.")
         return
       elsif ReadyList.ready_list[weapon_key.to_sym].to_s.empty?
         ELoot.msg(type: "info", text: " No edged skinning weapon found. Using your right hand.")
