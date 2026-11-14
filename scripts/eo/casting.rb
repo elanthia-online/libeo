@@ -281,7 +281,8 @@ module EO
       nil
     end
 
-    # Eat manna bread unless Manna has more than ten seconds to run.
+    # Eat manna bread unless Manna has more than ten minutes to run
+    # (Effects::Spells.time_left counts in minutes).
     #
     # @param resources [Resources]
     # @param check [Proc, nil] see summon_bread

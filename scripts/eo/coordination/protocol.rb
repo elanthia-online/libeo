@@ -5,9 +5,11 @@ require_relative 'server'
 require_relative 'client'
 
 module EO
-  # Experimental, explicitly loaded read-only prototype. No runtime hooks or
-  # discovery registration occur on require or construction. The owner must
-  # publish a completed tick; transport workers only read that frozen copy.
+  # Experimental, explicitly loaded. The observation protocol below is
+  # read-only; operations.rb, required last, adds the owner-settled requests
+  # and receipts. No runtime hooks or discovery registration occur on require
+  # or construction. The owner must publish a completed tick; transport
+  # workers only read that frozen copy.
   module Coordination
     # Read-only observation protocol version.
     PROTOCOL_VERSION = 1

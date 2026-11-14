@@ -14,7 +14,7 @@ run in the game.**
 | Script | Upstream | Here |
 |---|---|---|
 | eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.1 |
-| ebounty | PR #2579 (1.13.0) | 1.16.1 |
+| ebounty | PR #2579 (1.13.0) | 1.16.2 |
 | ewaggle | PR #2580 (2.2.0) | 2.5.0 |
 | eherbs | PR #2587 (2.3.0) | 2.6.1 |
 | ecleanse | PR #2588 (2.4.0) | 2.7.1 |

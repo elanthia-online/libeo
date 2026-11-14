@@ -772,8 +772,7 @@ module Ewaggle
     bonus_list.join(', ')
   end
 
-  # 203 food is whatever new item lands in hand after the cast, so custom food nouns just work
-  # 203 food is whatever new item lands in hand after the cast (libeo's)
+  # 203 food is whatever new item lands in hand after the cast, so custom food nouns just work (libeo's)
   def self.summon_bread = EO::Casting.summon_bread(Casting.resources, check: ->(spell) { Casting.check_mana(spell, 1) })
 
   def self.eat_bread(bypass_check: false)
