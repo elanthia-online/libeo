@@ -47,7 +47,7 @@ module EO
           Spell[114].cast
           EO.settle
 
-          EO.helper(:lines).call('spell active debuff', /<dialogData id='Debuffs'/) if thorns_active
+          EO.lines('spell active debuff', /<dialogData id='Debuffs'/) if thorns_active
         end
       end
 
