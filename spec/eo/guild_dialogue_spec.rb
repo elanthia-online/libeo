@@ -55,6 +55,22 @@ RSpec.describe EO::Guild::Taskmaster do
     expect(asked).to eq(['ask Taskmaster about removal'] * 2)
   end
 
+  it 'asks again, without counting it, when nobody was there to hear' do
+    given
+    replies.push('Who are you trying to ask?', nil, nil)
+    after_ask[0] = -> { state.merge!(type: :none, bounty: 'none') if asked.size == 3 }
+    expect(described_class.ask('remove')).to eq(:done)
+    expect(asked.size).to eq(3)
+    expect(EO::Guild::NPCs).to have_received(:taskmaster).twice
+  end
+
+  it 'counts the ask after three that nobody heard, so a round ends' do
+    allow(described_class).to receive(:changed?).and_return(false)
+    replies.concat(['Who are you trying to ask?'] * 50)
+    expect(described_class.ask('get')).to eq(:gave_up)
+    expect(asked.size).to eq(5 * 4)
+  end
+
   it 'stops when a task is already held, or an expedite brings a new offer' do
     replies.push('You have already been assigned a task, Nisugi.', "I'm ready to assign you a new task.")
     expect(described_class.ask('get')).to eq(:already_assigned)
@@ -146,6 +162,25 @@ RSpec.describe EO::Guild::Assignments do
       answers['ask guard about bounty'] = ['Ah, so you have returned.']
       expect(visit).to be(true)
       expect(went).to eq([10])
+    end
+
+    it 'gives a guard two seconds to show in his room' do
+      shown = npcs.dup
+      npcs.clear
+      looks = 0
+      allow(described_class).to receive(:sleep) { npcs.replace(shown) if (looks += 1) == 3 }
+      answers['ask guard about bounty'] = ['Ah, so you have returned.']
+      expect(visit).to be(true)
+      expect(went).to eq([10])
+      expect(looks).to eq(3)
+    end
+
+    it 'moves on from a room no guard shows in, after eight looks' do
+      npcs.clear
+      allow(described_class).to receive(:sleep)
+      visit
+      expect(went).to eq([10, 11])
+      expect(described_class).to have_received(:sleep).with(0.25).exactly(14).times
     end
 
     it 'goes on to the next room when the guard has nothing' do

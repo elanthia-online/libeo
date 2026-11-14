@@ -26,6 +26,9 @@ module EO
       GUARD_NOTHING = /I don't have any tasks for you right now|Try bugging me later|Who are you trying to ask\?/
       # Who answers for the guard, town by town.
       GUARD_NAMES = /(?:guard|sergeant|guardsman|sentry|tavernkeeper|alchemist|Malovor)/i
+      # Looks for a guard on arriving in his room, a quarter second apart:
+      # the room's people can be a moment behind the walk.
+      GUARD_LOOKS = 8
       # The Hinterwilds tavernkeeper wanders: from his rooms the alchemist
       # is asked instead.
       TAVERNKEEPER_UIDS = /7503252|7503251/
@@ -80,6 +83,12 @@ module EO
       #   answering :stop ends the visit
       # @return [Boolean] whether the task's text changed; false when the
       #   visit was stopped
+      # @api private
+      # @return [Array<GameObj>] those in the room a task is reported to
+      def guards_here
+        (GameObj.room_desc.to_a + GameObj.npcs.to_a).find_all { |npc| npc.name =~ GUARD_NAMES }
+      end
+
       def ask_guards(rooms, containers:, open:, missing:)
         original = checkbounty
         guards = []
@@ -93,7 +102,13 @@ module EO
           if Room.current.location =~ /the town of River's Rest/
             guards.push('purser')
           else
-            guards = (GameObj.room_desc.to_a + GameObj.npcs.to_a).find_all { |npc| npc.name =~ GUARD_NAMES }
+            guards = guards_here
+            (GUARD_LOOKS - 1).times do
+              break unless guards.empty?
+
+              sleep 0.25
+              guards = guards_here
+            end
           end
 
           next if guards.empty?

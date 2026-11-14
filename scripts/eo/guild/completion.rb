@@ -50,8 +50,8 @@ module EO
         if bounty =~ CHILD_TASK
           text += %Q{ || !!(checkbounty =~ /^You have made contact with the child/ && GameObj.npcs.any? { |npc| npc.name =~ /\\bchild\\b/ })}
         elsif bounty =~ SKIN_TASK
-          text += %Q{ || !!(count = 0;EBounty.data.containers.each{|i| i.contents.each{ |k| if k.name =~ /bundle of #{bundle_skin}/ && !EBounty.data.bundle_skin.to_s.empty? && !hidden?; lines = Lich::Util.quiet_command_xml("measure #"+k.id.to_s, /You glance through/);count += lines.sum { |l| l.scan(/count a total of (\\d+) <a exist/).flatten.map(&:to_i).sum };end;};};count >= EBounty.data.remaining_skins.to_i && @CORRECT_PERCENT_MIND >= EBounty.data.complete_mind)}
-          text += %Q{ || !!(j=0;EBounty.data.containers.each{|i| j += i.contents.count{|l| l.name =~ /#{skin}/i && !EBounty.data.skin.to_s.empty?}.to_i }; j >= EBounty.data.remaining_skins.to_i && @CORRECT_PERCENT_MIND >= EBounty.data.complete_mind)}
+          # one count: a bundle by what MEASURE says of it, and each loose skin
+          text += %Q{ || !!(count = 0;EBounty.data.containers.each{|i| i.contents.each{ |k| if k.name =~ /bundle of #{bundle_skin}/ && !EBounty.data.bundle_skin.to_s.empty? && !hidden?; lines = Lich::Util.quiet_command_xml("measure #"+k.id.to_s, /You glance through/);count += lines.sum { |l| l.scan(/count a total of (\\d+) <a exist/).flatten.map(&:to_i).sum };elsif k.name =~ /#{skin}/i && !EBounty.data.skin.to_s.empty?; count += 1;end;};};count >= EBounty.data.remaining_skins.to_i && @CORRECT_PERCENT_MIND >= EBounty.data.complete_mind)}
         elsif bounty =~ GEM_TASK
           text += %Q{ || !!(t=0;EBounty.data.containers.each{|k| t += k.contents.count{|v| v.name =~ /#{gem.strip}$/i && !EBounty.data.gem.to_s.empty?}.to_i}; t>= EBounty.data.remaining_gems.to_i && @CORRECT_PERCENT_MIND >= EBounty.data.complete_mind)}
         end

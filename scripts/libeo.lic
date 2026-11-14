@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.43.0')
-    EO.require('0.43.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.44.0')
+    EO.require('0.44.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.43.0
+       version: 0.44.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.44.0 (2026-11-13)
+    - EO::Guild::Taskmaster.ask makes an ask again, without counting it, when the answer is
+      "Who are you trying to ask", three times at most in a round (REASKS)
+    - EO::Guild::Assignments.ask_guards gives a guard two seconds to show in his room
+    - EO::Guild::Completion.rule counts a bundle's skins and the loose ones together
   v0.43.0 (2026-11-13)
     - EO::Containers asks Lich's inventory feed about a carried container: ensure_open
       sends OPEN only to a closed one, never LOOK IN, and nothing to a locked one
