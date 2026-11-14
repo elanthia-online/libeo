@@ -173,7 +173,7 @@ RSpec.describe EO::Cleanse::Recovery do
     expect(search).to eq(1)
     expect(saved.first).to be_empty
     expect(went).to eq([100])
-    expect(sent).to eq([:wait, 'recover item', :wait])
+    expect(sent).to eq(['recover item', :wait])
   end
 
   it 'goes on searching after turning up something else, and says so' do

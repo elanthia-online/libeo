@@ -63,8 +63,7 @@ module EO
 
           before&.call
           EO.settle
-          fput 'stand' until checkstanding
-          EO.settle
+          EO.stand
           current_target = XMLData.current_target_id
           fput 'target clear'
           fput 'cman retreat'
@@ -87,8 +86,7 @@ module EO
           before&.call
           Lich::Gemstone::Mana.pulse(dispel.num)
 
-          fput 'stand' until checkstanding
-          EO.settle
+          EO.stand
           dispel.force_incant('channel open') if dispel.affordable?
         end
       end
