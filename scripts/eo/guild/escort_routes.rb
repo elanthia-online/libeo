@@ -29,7 +29,8 @@ module EO
       #   :northwest_path,        ways that have to be searched for
       #   :hidden_path, :footpath
       #   :misty_trail            the trail that leads off a different
-      #                           way each time
+      #                           way each time; not gone down when
+      #                           three looks do not show which
       ROUTES = {
         '2524,2523'   => [:climb, 'climb rockslide'],
         '2510,2509'   => [:climb, 'climb bank'],
@@ -327,8 +328,15 @@ module EO
           check_room
           hide
           escort_catch_up
-          look_result = dothistimeout 'look trail', 5, /^You peer into the mist and see that the trail heads off to the/
-          dir = /^You peer into the mist and see that the trail heads off to the (\w+)/.match(look_result).captures.first
+          dir = nil
+          3.times do
+            look_result = dothistimeout 'look trail', 5, /^You peer into the mist and see that the trail heads off to the/
+            dir = look_result.to_s[/^You peer into the mist and see that the trail heads off to the (\w+)/, 1]
+            break if dir
+          end
+          # into the mist without knowing the way out is a walk in circles
+          return if dir.nil?
+
           haste
           hide
           move 'down'

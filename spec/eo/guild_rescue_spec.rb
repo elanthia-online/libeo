@@ -106,6 +106,28 @@ RSpec.describe EO::Guild::Disablers do
     expect(best[:num]).to eq(213)
   end
 
+  it 'takes the custom spell though no spell of the table can be cast' do
+    known.replace(617 => 17)
+    expect(described_class.best(min_mana: 0, custom: 617, untargetable: [])).to eq({ num: 617 })
+  end
+
+  it 'takes there to be justice when JUSTICE STATUS is not answered' do
+    allow(described_class).to receive(:justice?).and_call_original
+    hooks = []
+    stub_const('DownstreamHook', Class.new do
+      define_singleton_method(:add) { |name, _action| hooks << [:add, name] }
+      define_singleton_method(:remove) { |name| hooks << [:remove, name] }
+    end)
+    stub_const('Script', Class.new { define_singleton_method(:current) { Struct.new(:name).new('echild') } })
+    described_class.define_singleton_method(:put) { |_cmd| nil }
+    allow(described_class).to receive(:sleep)
+    expect(described_class.justice?(1)).to be(true)
+    expect(described_class).to have_received(:sleep).exactly(100).times
+    expect(hooks).to eq([[:add, 'echild_check_justice'], [:remove, 'echild_check_justice']])
+  ensure
+    described_class.singleton_class.remove_method(:put)
+  end
+
   it 'takes the custom spell whenever it is known' do
     targets << creature.new('a kobold')
     expect(described_class.best(min_mana: 0, custom: 505, untargetable: [])).to eq({ num: 505 })

@@ -103,11 +103,12 @@ module EO
       end
 
       # In Platinum, take the portals out of the map for this session, so
-      # no path is laid through one.
+      # no path is laid through one. Nothing is done to a map whose portals
+      # go by $go2_use_portals, which find_path turns off.
       #
       # @return [void]
       def close_portals
-        if XMLData.game =~ /^GSPlat/ and not Map.list.any? { |room| room.timeto.any? { |_adj_id, time| time.class == Proc and time._dump =~ /$go2_use_portals/ } }
+        if XMLData.game =~ /^GSPlat/ and not Map.list.any? { |room| room.timeto.any? { |_adj_id, time| time.class == Proc and time._dump =~ /\$go2_use_portals/ } }
           for start_room in ['7561', '9318', '3479', '2696', '17691', '12584', '9664', '20453', '16746']
             for end_room in ['7561', '9318', '3479', '2696', '17691', '12584', '9664', '20453', '16746']
               if start_room != end_room
