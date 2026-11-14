@@ -73,17 +73,25 @@ module EO
     ANALYZE_START = /^You analyze the .*brooch and sense that the creator has provided the following information:$/
     # ANALYZE's last line: the brooch is bound to an account or a character.
     ANALYZE_END = /^The brooch is restricted to this \w+\.$/
-    # "it is unresponsive" is the answer to a word WHISPER does not take.
-    WHISPER_DONE = /is now attuned to the (\w+) ring|already centered on the (\w+) orb|it is unresponsive/
+    # The game's lines, whole, as played (the tags Lich strips are not here).
+    ATTUNED = /^\[Your quintuple orb brooch is now attuned to the (\w+) ring\.  You can see this change in LOOK\.\]$/
+    CENTERED = /^You discreetly whisper your desire to have your brooch shift, but it is already centered on the (\w+) orb\.$/
+    # The answer to a word WHISPER does not take.
+    UNRESPONSIVE = /^You discreetly whisper your desire to have your brooch shift, but it is unresponsive\.$/
     # The brooch is on an orb: moved to that ring, or already on that colour.
-    WHISPER_ON = /is now attuned to the (\w+) ring|already centered on the (\w+) orb/
-    # A rub's answer: the energy that took hold (a chaos rub names the orb
-    # it gave), or the brooch has no use left for this orb.
-    RUB = /energy flows into you|ebbs weakly, but nothing further happens/
-    SPENT = /ebbs weakly, but nothing further happens/
-    # A chaos rub names the orb it gave after its own chaotic energy.
-    REPLACED = /as (\w+) energy soon replaces it/
-    FLOWS = /(\w+) energy flows into you/
+    WHISPER_ON = Regexp.union(ATTUNED, CENTERED)
+    WHISPER_DONE = Regexp.union(WHISPER_ON, UNRESPONSIVE)
+    # A rub's answer: the energy that took hold, a chaos rub's own energy
+    # replaced by the orb it gave, or the brooch has no use left for this orb.
+    FLOWS = /^You trace the central orb of \w+ in your brooch and your fingertips begin to tingle as (\w+) energy flows into you\.  Within seconds, you feel .+ course through your veins\.$/
+    REPLACED = /^You trace the central orb of black in your brooch and your fingertips begin to tingle as chaotic energy flows into you\.  Within seconds, you feel .+ course through your veins, but it is fleeting as (\w+) energy soon replaces it and you feel .+ take hold\.$/
+    SPENT = /^The quintuple orb brooch ebbs weakly, but nothing further happens\.$/
+    RUB = Regexp.union(FLOWS, REPLACED, SPENT)
+    # ANALYZE's lines that say which orb the brooch is on (and, on chaos, the
+    # one it gives next), and the header of the day's uses.
+    CURRENT = /^These bonuses are only active while the brooch's effect is active or when triggered and it is not on cooldown\.  It is currently set to (\w+)(?:, which will use the (\w+) benefit when next activated)?\.$/
+    USES_HEADER = /^Daily uses reset at midnight\.  You have used each orb:$/
+    USED = /^  (\w+): (\d+) out of (\d+)$/
     ENERGY = { 'planar' => :planar, 'spiritual' => :spirit, 'elemental' => :element, 'order' => :order, 'orderly' => :order, 'ordered' => :order,
                'chaotic' => :chaos }.freeze
 
@@ -103,13 +111,20 @@ module EO
     # @param lines [Array<String>]
     # @return [Status]
     def parse(lines)
-      text = lines.join("\n")
       by_name = ORBS.to_h { |key, orb| [orb[:name], key] }
-      current = by_name[text[/It is currently set to (\w+)/, 1]]
-      gives = by_name[text[/will use the (\w+) benefit/, 1]]
+      current = gives = nil
       uses = {}
-      used_at = text.index('You have used each orb')
-      text[used_at..].to_s.scan(/^\s*(\w+): (\d+) out of (\d+)/) { |name, used, max| uses[by_name[name]] = [used.to_i, max.to_i] if by_name[name] }
+      counting = false
+      lines.each do |line|
+        if (match = CURRENT.match(line))
+          current = by_name[match[1]]
+          gives = by_name[match[2]]
+        elsif line.match?(USES_HEADER)
+          counting = true
+        elsif counting && (match = USED.match(line)) && by_name[match[1]]
+          uses[by_name[match[1]]] = [match[2].to_i, match[3].to_i]
+        end
+      end
       Status.new(current: current, chaos_gives: gives, uses: uses)
     end
 

@@ -27,6 +27,8 @@
       answered :stuck, which a caller takes for a fault
     - fix: EO::Brooch ends its ANALYZE at its last line, the one that says what the brooch is
       restricted to; it waited five seconds on every one for a prompt Lich strips
+    - fix: EO::Brooch matches the whisper, rub and ANALYZE lines whole, as the game prints them,
+      not by a few words of them
     - fix: EO::Hands.take chooses the hand that is free and usable; with the right arm crippled
       it dragged to the right hand and waited five seconds
     - fix: EO::Skinning.tool answers nil when no weapon is listed and the right hand is empty

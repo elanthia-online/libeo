@@ -28,6 +28,16 @@ ANALYZE = <<~TEXT.lines.map(&:chomp)
   The brooch is restricted to this account.
 TEXT
 
+# The game's rub and whisper lines, whole, as played (2026-01-04 log).
+RUB_PLANAR = "You trace the central orb of red in your brooch and your fingertips begin to tingle as planar energy flows into you.  Within seconds, you feel Lumnis' Enlightenment course through your veins."
+RUB_SPIRIT = "You trace the central orb of blue in your brooch and your fingertips begin to tingle as spiritual energy flows into you.  Within seconds, you feel Lumnis' Vigor course through your veins."
+RUB_ORDER = "You trace the central orb of white in your brooch and your fingertips begin to tingle as ordered energy flows into you.  Within seconds, you feel Lumnis' Repose course through your veins."
+RUB_CHAOS_PLANAR = "You trace the central orb of black in your brooch and your fingertips begin to tingle as chaotic energy flows into you.  Within seconds, you feel Lumnis' Divergence course through your veins, but it is fleeting as planar energy soon replaces it and you feel Lumnis' Enlightenment take hold."
+RUB_CHAOS_SPIRIT = RUB_CHAOS_PLANAR.sub('planar energy', 'spiritual energy').sub("Lumnis' Enlightenment take hold", "Lumnis' Vigor take hold")
+ATTUNED_CHAOS = '[Your quintuple orb brooch is now attuned to the chaos ring.  You can see this change in LOOK.]'
+CENTERED_BLUE = 'You discreetly whisper your desire to have your brooch shift, but it is already centered on the blue orb.'
+CENTERED_RED = 'You discreetly whisper your desire to have your brooch shift, but it is already centered on the red orb.'
+
 RSpec.describe EO::Brooch do
   describe '.parse' do
     let(:status) { described_class.parse(ANALYZE) }
@@ -53,20 +63,55 @@ RSpec.describe EO::Brooch do
     end
 
     it 'names the orb whose energy took hold' do
-      expect(rub_answer('You trace the central orb of red in your brooch and your fingertips begin to tingle as planar energy flows into you.  ' \
-                        "Within seconds, you feel Lumnis' Enlightenment course through your veins.")).to eq(:planar)
-      expect(rub_answer('You trace the central orb of blue in your brooch and your fingertips begin to tingle as spiritual energy flows into you.')).to eq(:spirit)
+      expect(rub_answer(RUB_PLANAR)).to eq(:planar)
+      expect(rub_answer(RUB_SPIRIT)).to eq(:spirit)
+      expect(rub_answer(RUB_ORDER)).to eq(:order)
     end
 
     it 'names the orb a chaos rub gave' do
-      line = 'You trace the central orb of black in your brooch and your fingertips begin to tingle as chaotic energy flows into you.  ' \
-             "Within seconds, you feel Lumnis' Divergence course through your veins, but it is fleeting as spiritual energy soon " \
-             "replaces it and you feel Lumnis' Vigor take hold."
-      expect(rub_answer(line)).to eq(:spirit)
+      expect(rub_answer(RUB_CHAOS_PLANAR)).to eq(:planar)
+      expect(rub_answer(RUB_CHAOS_SPIRIT)).to eq(:spirit)
     end
 
     it 'knows a spent orb' do
       expect(rub_answer('The quintuple orb brooch ebbs weakly, but nothing further happens.')).to eq(:spent)
+    end
+  end
+
+  describe 'the game lines' do
+    whole = {
+      ATTUNED: ATTUNED_CHAOS,
+      CENTERED: CENTERED_BLUE,
+      UNRESPONSIVE: 'You discreetly whisper your desire to have your brooch shift, but it is unresponsive.',
+      SPENT: 'The quintuple orb brooch ebbs weakly, but nothing further happens.',
+      FLOWS: RUB_SPIRIT,
+      REPLACED: RUB_CHAOS_PLANAR
+    }
+
+    whole.each do |name, line|
+      it "#{name} matches its line whole and no more" do
+        pattern = described_class.const_get(name)
+        expect(line).to match(pattern)
+        expect("Someone says, \"#{line}\"").not_to match(pattern)
+        expect("#{line} Extra words.").not_to match(pattern)
+      end
+    end
+
+    it 'keeps a plain rub from being taken for a chaos one, and the reverse' do
+      expect(RUB_SPIRIT).not_to match(described_class::REPLACED)
+      expect(RUB_CHAOS_PLANAR).not_to match(described_class::FLOWS)
+    end
+
+    it 'reads ANALYZE by its lines: the orb it is on, what chaos gives, and the day\'s uses' do
+      status = described_class.parse(ANALYZE)
+      expect(status.current).to eq(:chaos)
+      expect(status.chaos_gives).to eq(:element)
+      expect(status.uses).to eq(planar: [2, 2], spirit: [3, 5], element: [0, 0], chaos: [1, 2], order: [2, 2])
+    end
+
+    it 'ignores a use count that is not under the header, or has other words around it' do
+      lines = ['Planar: 2 out of 2', '  Spiritual: 3 out of 5 today']
+      expect(described_class.parse(lines).uses).to be_empty
     end
   end
 
@@ -102,7 +147,7 @@ RSpec.describe EO::Brooch do
     let(:sent) { [] }
     let(:analyzed) { [] }
     let(:text) { [ANALYZE] }
-    let(:rubbed) { ['as spiritual energy flows into you'] }
+    let(:rubbed) { [RUB_SPIRIT] }
 
     before do
       spec = self
@@ -162,14 +207,14 @@ RSpec.describe EO::Brooch do
 
     it 'whispers for chaos and rubs it when it gives the spent orb' do
       text.replace([analyze_with('use the Elemental benefit' => 'use the Planar benefit')])
-      rubbed.replace(['as chaotic energy flows into you.  Within seconds it is fleeting as planar energy soon replaces it'])
+      rubbed.replace([RUB_CHAOS_PLANAR])
       expect(described_class.use(:planar)).to eq(:planar)
       expect(sent).to eq(['whisper my brooch chaos', 'whisper my brooch chaos', 'rub my brooch', 'whisper my brooch chaos']) # ANALYZE again after the chaos rub
     end
 
     it 'asks what chaos gives again only after a chaos rub, right after it' do
       text.replace([analyze_with('use the Elemental benefit' => 'use the Planar benefit', 'Chaos: 1 out of 2' => 'Chaos: 0 out of 2')])
-      rubbed.replace(['as chaotic energy flows into you.  Within seconds it is fleeting as planar energy soon replaces it'])
+      rubbed.replace([RUB_CHAOS_PLANAR])
       2.times { expect(described_class.use_chaos_if(:element)).to eq(:none) }
       expect(analyzed.size).to eq(1)
       described_class.use_chaos_if(:planar)
@@ -186,10 +231,10 @@ RSpec.describe EO::Brooch do
     end
 
     it 'takes "already centered" by the colour of the orb' do
-      answers = { 'whisper my brooch spirit' => 'but it is already centered on the blue orb.', 'rub my brooch' => 'as spiritual energy flows into you' }
+      answers = { 'whisper my brooch spirit' => CENTERED_BLUE, 'rub my brooch' => RUB_SPIRIT }
       allow(EO).to receive(:result) { |cmd, _re, **| answers[cmd] }
       expect(described_class.use(:spirit)).to eq(:spirit)
-      answers['whisper my brooch spirit'] = 'but it is already centered on the red orb.'
+      answers['whisper my brooch spirit'] = CENTERED_RED
       expect(described_class.use(:spirit)).to eq(:none)
     end
 
@@ -202,7 +247,7 @@ RSpec.describe EO::Brooch do
 
     it 'names order from the rub that says ordered energy' do
       allow(EO).to receive(:result) do |cmd, _re, **|
-        cmd == 'rub my brooch' ? 'You trace the central orb of white in your brooch and your fingertips begin to tingle as ordered energy flows into you.' : ''
+        cmd == 'rub my brooch' ? RUB_ORDER : ''
       end
       expect(described_class.rub).to eq(:order)
     end
@@ -215,7 +260,7 @@ RSpec.describe EO::Brooch do
       allow(EO).to receive(:result) do |cmd, _re, **|
         sent << cmd
         seen = on_chaos if cmd == 'whisper my brooch chaos'
-        cmd == 'rub my brooch' ? 'as planar energy soon replaces it' : '[Your quintuple orb brooch is now attuned to the chaos ring.]'
+        cmd == 'rub my brooch' ? RUB_CHAOS_PLANAR : ATTUNED_CHAOS
       end
       described_class.forget
       expect(described_class.use(:planar)).to eq(:planar)
