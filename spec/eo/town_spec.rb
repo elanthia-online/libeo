@@ -132,9 +132,9 @@ RSpec.describe EO::Town do
       expect(described_class.trash_can).to be_nil
     end
 
-    it 'answers the lines, not nil, when TRASH named none either way' do
+    it 'has none when TRASH names none either way' do
       answers['trash'] = ['You could discard items somewhere.']
-      expect(described_class.trash_can).to eq(['You could discard items somewhere.'])
+      expect(described_class.trash_can).to be_nil
     end
   end
 
