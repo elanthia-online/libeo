@@ -3506,9 +3506,9 @@ module ELoot # Gem and Reagent hoarding
     def self.in_locker_room? = EO::Locker.inside?
 
     # Where a non-premium house member's single locker is, from LOCKER INFO; nil if unknown.
+    # Kept once known; a LOCKER INFO that got no answer is asked again next time.
     def self.locker_info_town
-      return @locker_info_town if defined?(@locker_info_town)
-      @locker_info_town = EO::Locker.info_town
+      @locker_info_town ||= EO::Locker.info_town
     end
 
     # Gets inside a locker. True once in the booth; false if it was taken or
