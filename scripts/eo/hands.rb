@@ -1,252 +1,213 @@
 # frozen_string_literal: true
 
 module EO
-  # The hands: knowing what they hold, freeing one, taking an item into one,
-  # wearing an item, putting one into a container, and the READY list's
-  # STORE and READY. Each answers with a word for what happened; what to say
-  # about it, and whether to stop, is the calling script's.
-  #
-  # Commands go through the running script's helpers (EO.use). The helpers
-  # this needs: command(text, pattern) answering the lines, and
-  # result(text, pattern = nil) answering one line, the first line back when
-  # no pattern is given.
+  # The hands and what moves through them: freeing a hand, taking an item
+  # into one, wearing, putting into a container, and the READY list's
+  # weapons. Every outcome comes back as a word for the driver to act on;
+  # nothing here stops the script.
   module Hands
     module_function
 
-    # Every answer to taking something out or drawing it.
     GET = Regexp.union(
       /^You (?:shield the opening of .*? from view as you |discreetly |carefully |deftly |slowly |quickly )?(?:remove|pick up|draw|equip|grab|reach|slip|tuck|retrieve|already have|unsheathe|detach|swap|sling|withdraw)/,
-      /^With subtle movements, you sneak a hand/,
-      /^Get what\?$/,
-      /^Why don't you leave some for others\?$/,
-      /^You need a free hand/,
-      /^You already have that/,
-      /Reaching over your shoulder/,
-      /^As you draw/,
-      /^Ribbons of.*?light/,
-      /^You are already holding/
+      /^With subtle movements, you sneak a hand/, /^Get what\?$/, /^Why don't you leave some for others\?$/,
+      /^You need a free hand/, /^You already have that/, /Reaching over your shoulder/, /^As you draw/,
+      /^Ribbons of.*?light/, /^You are already holding/
     )
-
-    # Every answer to putting something away.
     PUT = Regexp.union(
-      /You/,
-      /Spreading your wings/,
-      /I could not find what you were referring to/,
-      /Draping the/,
-      /Heedful of your surroundings/,
-      /won't fit/,
-      /crumbles? and decays? away/,
-      /crumbles? into a pile of dust/,
-      /That is not yours/,
-      /Hey, that belongs to/,
-      /Get what/,
-      /Reaching over your shoulder/,
-      /An ethereal.*?light swirls/,
+      /You/, /Spreading your wings/, /I could not find what you were referring to/, /Draping the/,
+      /Heedful of your surroundings/, /won't fit/, /crumbles? and decays? away/, /crumbles? into a pile of dust/,
+      /That is not yours/, /Hey, that belongs to/, /Get what/, /Reaching over your shoulder/, /An ethereal.*?light swirls/,
       /As you move to put away your (?:<a exist="\d+" noun="\w+">[^<]+<\/a>|[\w-]+), it reverts to its normal state\./
     )
-
-    # A take's answer when the item is not where it was thought to be.
     MISSING = /Get what|I could not find what you were referring to/
-    # A take's answer when the item is too heavy to pick up.
     OVERLOADED = /You are unable to handle the additional load/
 
     # @param obj [GameObj]
-    # @return [Boolean] whether a hand holds it. Nothing, and an object with no
-    #   id, is in neither hand.
+    # @return [Boolean]
     def holding?(obj)
-      return false if obj.nil? || obj.id.nil?
-
+      return false if obj.nil?
       Lich::Stash.in_hand?(obj)
     end
 
-    # Make a hand free. Nothing is done when one already is and its arm can
-    # be used. Otherwise the left is emptied when it is favoured and usable,
-    # or when the right arm is beyond use; else the right. With both arms
-    # beyond use neither is.
+    # @param side [Symbol] :right or :left
+    # @return [Boolean] whether that arm and hand can hold something
+    def usable?(side)
+      parts = side == :right ? [Wounds.rightArm, Wounds.rightHand, Scars.rightArm, Scars.rightHand] : [Wounds.leftArm, Wounds.leftHand, Scars.leftArm, Scars.leftHand]
+      parts.max < 3
+    end
+
+    # @param side [Symbol]
+    # @return [Boolean] empty and usable
+    def free?(side)
+      Lich::Stash.empty_hand?(side) && usable?(side)
+    end
+
+    # Make a hand free, putting away what is in the one chosen: the left
+    # when favoured or the right arm is gone, else the right.
     #
+    # @param stow [Proc] given the GameObj in the hand, puts it away
     # @param favor_left [Boolean]
-    # @param empty [Proc] given :left or :right, puts away what that hand holds
-    # @return [Symbol] :free, or :crippled when no hand could be chosen
-    def free_hand(favor_left:, empty:)
-      right_usable = [Wounds.rightArm, Wounds.rightHand, Scars.rightArm, Scars.rightHand].max < 3
-      right_hand_free = GameObj.right_hand.id.nil? && right_usable
-
-      left_usable = [Wounds.leftArm, Wounds.leftHand, Scars.leftArm, Scars.leftHand].max < 3
-      left_hand_free = GameObj.left_hand.id.nil? && left_usable
-      return :free if right_hand_free || left_hand_free
-
+    # @return [Symbol] :free, or :crippled when neither hand can be used
+    def free_hand(stow:, favor_left: false)
+      return :free if free?(:right) || free?(:left)
       waitrt?
-
-      if (favor_left && left_usable) || !right_usable
-        return :crippled unless left_usable
-
-        empty.call(:left)
+      if (favor_left && usable?(:left)) || !usable?(:right)
+        return :crippled unless usable?(:left)
+        stow.call(GameObj.left_hand) if checkleft
       else
-        empty.call(:right)
+        stow.call(GameObj.right_hand) if checkright
       end
       :free
     end
 
-    # Take an item from a container or the ground into a hand that is
-    # already free, and wait to see it there. The closed containers a
-    # carried item is inside are opened first.
+    # Take an item from a container or the ground into a hand.
     #
     # @param item [GameObj]
-    # @param to [String] 'right' or 'left'
-    # @return [Symbol] :held, :overloaded (too heavy), :missing (the game
-    #   could not find it), or :failed (no such answer, and not in hand
-    #   after five seconds)
-    def take(item, to)
-      refused = Regexp.union(MISSING, OVERLOADED)
-      # a carried item in a closed container: Lich's Stash opens the way to it
-      Lich::Stash.open_path_to(item)
-      line = EO.result("_drag ##{item.id} #{to}", Regexp.union(GET, refused))
+    # @param to [Symbol] :hand (whichever is free), :right or :left
+    # @param stow [Proc] how to put away what is in the way
+    # @param favor_left [Boolean] for :hand, see free_hand
+    # @return [Symbol] :held, :missing (the game could not find it),
+    #   :overloaded (too heavy), :crippled (no hand to take it with; nothing
+    #   was sent), or :failed (no answer and not in hand)
+    def take(item, to: :hand, stow:, favor_left: false)
+      return :missing if item.nil? || item.name.to_s.empty? || item.name == 'Empty'
+      case to
+      when :hand
+        return :crippled if free_hand(stow: stow, favor_left: favor_left) == :crippled
 
+        to = GameObj.right_hand.id.nil? ? :right : :left
+      when :right then stow.call(GameObj.right_hand) if checkright
+      when :left then stow.call(GameObj.left_hand) if checkleft
+      end
+      # A carried item in a closed container: Lich's Stash opens the way.
+      Lich::Stash.open_path_to(item)
+      line = EO.result("_drag ##{item.id} #{to}", Regexp.union(GET, MISSING, OVERLOADED))
       20.times do
         return :held if holding?(item)
-        break if line =~ refused
+        break if line =~ MISSING || line =~ OVERLOADED
         sleep 0.1
       end
-
-      # a drag the game did not answer in time gets as long again as a
-      # sale does
-      unless line =~ refused
+      # the first line back can be room chatter instead of the drag's reply
+      unless line =~ MISSING || line =~ OVERLOADED
         30.times do
           return :held if holding?(item)
           sleep 0.1
         end
       end
-
       return :overloaded if line =~ OVERLOADED
       return :missing if line =~ MISSING
-
       :failed
     end
 
-    # Wear an item held in a hand.
+    # Wear an item from a hand.
     #
     # @param item [GameObj]
-    # @return [Symbol] :worn, :stuck (still in the hand), or :unseen (out of
-    #   the hand but not seen among what is worn)
+    # @return [Symbol] :worn, :cant, or :stuck (still in hand with no refusal)
     def wear(item)
-      line = EO.result("_drag ##{item.id} wear")
-
+      return :cant if item.nil? || item.name.to_s.empty? || item.name == 'Empty'
+      line = EO.result("_drag ##{item.id} wear", /You can't wear that|^You/)
       20.times do
         return :worn if !holding?(item) && GameObj.inv.map(&:id).compact.include?(item.id)
         break if line =~ /You can't wear that/
         sleep 0.1
       end
-
-      holding?(item) ? :stuck : :unseen
+      holding?(item) ? :stuck : :worn
     end
 
-    # Put an item into a container, up to five tries, opening the container
-    # when it answers closed.
+    # Put an item into a container, up to five tries, opening the
+    # container when it answers closed.
     #
     # @param bag [GameObj]
     # @param item [GameObj]
     # @param loose [Boolean] the container shows no contents (a weapon
-    #   displayer): the item leaving the hand is proof enough
-    # @param on_closed [Proc, nil] given the bag when it answered closed,
-    #   before it is opened for the second try
-    # @param ensure_open [Proc, nil] given the bag when its contents are not
-    #   known after the put, to open it and look in
-    # @return [Symbol] :not_yours, :gone (not in hand to begin with, or
-    #   already taken), :unlootable (it cannot be held), :full, :crumbled,
-    #   :stored, or :failed after five tries
-    def store(bag, item, loose: false, on_closed: nil, ensure_open: nil)
+    #   display): leaving the hand is proof enough
+    # @param on_closed [Proc, nil] called with the bag when it answered
+    #   closed and was opened for the put (a bag that closes itself)
+    # @return [Symbol] :stored, :full, :not_yours, :gone (not in hand to
+    #   begin with, or already taken), :unlootable (cannot be held),
+    #   :crumbled, or :failed
+    def store(bag, item, loose: false, on_closed: nil)
+      return :gone if item.nil? || item.name == 'Empty'
       5.times do
         lines = EO.command("_drag ##{item.id} ##{bag.id}", PUT)
-
         if lines.any? { |l| l =~ /You can't.*?It's closed!/ }
           on_closed&.call(bag)
           EO.result("open ##{bag.id}", Containers::OPEN)
           lines = EO.command("_drag ##{item.id} ##{bag.id}", PUT)
         end
-
-        lines.each do |line|
-          return :not_yours if line.match?(/Hey, that belongs to/)
-          return :gone if line.match?(/You are unable to handle|That is not yours|Get what|I could not find what you were referring/)
-        end
-
+        return :not_yours if lines.any? { |l| l =~ /Hey, that belongs to/ }
+        return :gone if lines.any? { |l| l =~ /You are unable to handle|That is not yours|Get what|I could not find what you were referring/ }
         return :unlootable if lines.any? { |l| l =~ /put something that you can't hold/ }
-
         return :full if lines.any? { |l| l =~ /won't fit/i }
         return :crumbled if lines.any? { |l| l =~ /crumbles? and decays? away|crumbles? into a pile of dust/i }
 
-        ensure_open&.call(bag) unless bag.contents.is_a?(Array) || loose
-
+        Containers.ensure_open(bag) unless bag.contents.is_a?(Array) || loose
         20.times do
-          return :stored if !holding?(item) && bag.contents.to_a.map(&:id).include?(item.id)
-          return :stored if loose && !holding?(item)
-
+          return :stored if !holding?(item) && (loose || bag.contents.to_a.map(&:id).include?(item.id))
           sleep 0.1
         end
-
-        # a container the game sends no updates for (a disk) keeps what Lich
-        # last saw in it: look in once before dragging again
+        # containers the game never refreshes (a disk) keep stale contents
         unless loose || holding?(item)
           EO.command("look in ##{bag.id}", Containers::LOOK, silent: true, quiet: true)
           return :stored if bag.contents.to_a.map(&:id).include?(item.id)
         end
-
         waitrt?
       end
-
       :failed
     end
 
-    # --- the READY list ---------------------------------------------------
+    # --- the READY list -----------------------------------------------------
 
     # @param key [String, Symbol] a READY list key
-    # @return [String, Symbol] the word READY and STORE take for it
+    # @return [String] the word READY and STORE want for it
     def ready_word(key)
       case key.to_s
       when 'secondary_weapon' then '2weapon'
-      when 'ranged_weapon'    then 'ranged'
-      else key
+      when 'ranged_weapon' then 'ranged'
+      else key.to_s
       end
     end
 
-    # Put a READY list item away with STORE, up to ten tries. Its sheath is
-    # seen to first when STORE is set to put it in one.
-    #
-    # @param key [String, Symbol] the item's READY list key
     # @param item [GameObj]
-    # @param ensure_open [Proc, nil] given the sheath, to open it
-    # @return [Boolean] whether it left the hand; true when the key holds nothing
-    def stow_ready(key, item, ensure_open: nil)
+    # @param keys [Array<Symbol>] the READY list keys to consider
+    # @return [Symbol, nil] the key this item is readied as
+    def ready_key(item, keys: ReadyList.ready_list.keys)
+      ReadyList.ready_list.find { |key, value| keys.include?(key) && value && value.id == item.id }&.first
+    end
+
+    # STORE a readied item back where the READY list keeps it.
+    #
+    # @param key [Symbol]
+    # @param item [GameObj]
+    # @return [Boolean] whether it left the hand
+    def stow_ready(key, item)
       return true if ReadyList.ready_list[key.to_sym].nil?
-
       if ReadyList.store_list[key.to_sym] =~ /put in sheath/
-        ensure_open&.call(ReadyList.ready_list[:sheath])
+        Containers.ensure_open(ReadyList.ready_list[:sheath])
       elsif ReadyList.store_list[key.to_sym] =~ /put in secondary/
-        ensure_open&.call(ReadyList.ready_list[:secondary_sheath])
+        Containers.ensure_open(ReadyList.ready_list[:secondary_sheath])
       end
-
       10.times do
-        EO.result("store #{ready_word(key.to_s)}", PUT)
+        EO.result("store #{ready_word(key)}", PUT)
         sleep 0.2
         return true unless holding?(item)
       end
-
       false
     end
 
-    # Bring a READY list item back to hand with READY, up to ten tries.
+    # READY an item back into a hand.
     #
-    # @param key [String, Symbol] the item's READY list key
+    # @param key [Symbol]
     # @param item [GameObj]
-    # @return [Boolean] whether it is in hand; true when the key holds nothing
-    def return_ready(key, item)
+    # @return [Boolean] whether it is in hand
+    def ready(key, item)
       return true if ReadyList.ready_list[key.to_sym].nil?
-
       10.times do
-        EO.result("ready #{ready_word(key.to_s)}", GET)
+        EO.result("ready #{ready_word(key)}", GET)
         sleep 0.2
         return true if holding?(item)
       end
-
       false
     end
   end

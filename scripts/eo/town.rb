@@ -1,145 +1,119 @@
 # frozen_string_literal: true
 
 module EO
-  # The town around the character: which shop to walk to and whether to go
-  # at all, a shop in a bounty's town when it is in the same region, Four
-  # Winds Isle and the way off it, the trash receptacle, and the locksmith
-  # pool's worker.
-  #
-  # Commands and walks go through the running script's helpers (EO.use).
-  # The helpers this needs: command(text, pattern, silent:, quiet:)
-  # answering the lines, go(place), and say(type:, text:).
+  # Towns and their shops: which shop to walk to and whether to go at all,
+  # the region a bounty's town shares with the character, Four Winds Isle,
+  # the trash can and the locksmith pool's worker; and carrying the silver
+  # to keep.
   module Town
     module_function
 
-    FWI = /Four Winds|Mist Harbor|Western Harbor/
-
     # Coldriver Village in the Hinterwilds has a gemshop, a furrier and the
-    # locksmith pool, and none of SHOPS_ELSEWHERE: the nearest of those on
-    # the map is a long way off.
-    HINTERWILDS_TOWN_UID = 7503205
-    SHOPS_ELSEWHERE = /collect|pawnshop|consignment|chronomage/
+    # locksmith pool and nothing else; the nearest pawnshop on the map is
+    # Icemule's, a continent away.
+    HINTERWILDS_UID = 7503205
+    HINTERWILDS_ONLY = /collect|pawnshop|consignment|chronomage/
 
-    # Rooms a path leaves the region by: a ferry, a mine cart, a transport
-    # or a portmaster.
+    # Crossing one of these means leaving the region: the ferry, the mine
+    # carts, the River's Rest boot, the Hinterwilds transports, the portmasters.
     REGION_EDGE_UIDS = [
-      14_001_002, # Ta'Vaalor Ferry
-      13_002_021, # Western Spine Mine Cart
-      13_003_019, # Eastern Spine Mine Cart
-      373_014,    # River's Rest Boot
-      7_503_001,  # Hinterwilds Caravan Dropoff
-      13_205_202, # EN Hinterwilds Transport
-      4_132_054,  # IMT Hinterwilds Transport
-      7111,       # Portmaster - Wehnimer's Landing
-      3_002_033,  # Portmaster - Teras Isle
-      2_101_030,  # Portmaster - River's Rest
-      4_744_014,  # Portmaster - Solhaven
-      7_118_259,  # Portmaster - Kraken's Fall
-      7_136_032,  # Portmaster - Ta'Vaalor
-      7_133_026   # Portmaster - Icemule Trace
+      14001002, # Ta'Vaalor Ferry
+      13002021, # Western Spine Mine Cart
+      13003019, # Eastern Spine Mine Cart
+      373014,   # River's Rest Boot
+      7503001,  # Hinterwilds Caravan Dropoff
+      13205202, # EN Hinterwilds Transport
+      4132054,  # IMT Hinterwilds Transport
+      7111,     # Portmaster - Wehnimer's Landing
+      3002033,  # Portmaster - Teras Isle
+      2101030,  # Portmaster - River's Rest
+      4744014,  # Portmaster - Solhaven
+      7118259,  # Portmaster - Kraken's Fall
+      7136032,  # Portmaster - Ta'Vaalor
+      7133026,  # Portmaster - Icemule Trace
     ].freeze
 
-    # The room on Four Winds Isle that counts as its town, and the dock the
-    # way off starts from.
-    FWI_TOWN = 3668
-    FWI_DOCK = 3669
-
-    # What the locksmith pool's worker is called, where the room does not say.
     POOL_WORKERS = %w[worker trickster Jahck woman attendant gnome merchant dwarf].freeze
 
-    # @param room [Room]
-    # @return [Boolean] whether the room is on Four Winds Isle
+    # @param room [Room, nil]
+    # @return [Boolean] on Four Winds Isle
     def fwi?(room)
-      room.location.to_s =~ FWI ? true : false
+      return false if room.nil?
+      room.location.to_s =~ /Four Winds|Mist Harbor|Western Harbor/ ? true : false
     end
 
-    # Whether a shop is one this town does not have, so that going to the
-    # nearest would mean leaving the area. Only the Hinterwilds town counts,
-    # and not for a character willing to travel to sell.
-    #
+    # @return [Room, nil] the nearest town square
+    def square(from: Room.current)
+      id = from&.find_nearest_by_tag('town')
+      id && Room[id]
+    end
+
     # @param shop [String] a shop tag
-    # @param travels [Boolean] the character sells on Four Winds Isle
-    # @return [Boolean]
-    def shop_elsewhere?(shop, travels: false)
-      return false unless shop.to_s =~ SHOPS_ELSEWHERE
-      return false if travels
-
-      town = Room.current.find_nearest_by_tag('town')
-      return false if town.nil?
-
-      Room[town].uid.first == HINTERWILDS_TOWN_UID
+    # @param from [Room]
+    # @return [Boolean] whether this town lacks the shop and a trip would leave the area
+    def shop_elsewhere?(shop, from: Room.current)
+      return false unless shop.to_s =~ HINTERWILDS_ONLY
+      town = square(from: from)
+      !town.nil? && town.uid.first == HINTERWILDS_UID
     end
 
-    # Where to sell at a kind of shop, and whether to go at all. Use this
-    # and not find_nearest_by_tag: that searches the whole map, and in a town
-    # without the shop answers with one on the far side of the continent.
+    # The room to sell at, or nil when the shop is not in this town and
+    # going would mean a trip out of the area. Every shop walk should come
+    # through here: find_nearest_by_tag alone searches the whole map.
     #
-    # @param shop [String] a shop tag
-    # @param travels [Boolean] see shop_elsewhere?
-    # @return [Integer, nil] the room id, nil to skip this shop
-    def nearest_shop(shop, travels: false)
-      return nil if shop_elsewhere?(shop, travels: travels)
-
-      Room.current.find_nearest_by_tag(shop)
+    # @param shop [String] a shop tag ("pawnshop")
+    # @param from [Room]
+    # @param far_is_fine [Boolean] the character means to travel to sell
+    # @return [Integer, nil]
+    def nearest_shop(shop, from: Room.current, far_is_fine: false)
+      return nil if !far_is_fine && shop_elsewhere?(shop, from: from)
+      from.find_nearest_by_tag(shop)
     end
 
-    # The room tagged +tag+ nearest each town, by the town's location.
+    # The room with +tag+ in a given town.
     #
     # @param tag [String]
-    # @param towns [Array<Room>] the rooms tagged town
-    # @return [Hash{String => Room}]
-    def by_town(tag, towns)
-      EO.say(type: 'debug', text: "tag: #{tag}")
-      towns.to_h { |town| [town.location, Room[town.find_nearest_by_tag(tag)]] }
-    end
-
-    # @param town [String] a town's name, matched loosely against the locations
-    # @param tag [String]
-    # @param towns [Array<Room>]
+    # @param town [String] a town name, matched loosely against the map's location
     # @return [Room, nil]
-    def in_town(town, tag, towns)
-      EO.say(type: 'debug', text: "tag: #{tag} | town: #{town}")
-      match = by_town(tag, towns).find { |location, _room| location.downcase.include?(town.downcase) }
-      match&.last
+    def in_town(tag, town)
+      # every location includes "", which would answer with the first town
+      return nil if town.to_s.strip.empty?
+
+      towns = Map.list.select { |r| r.tags.include?('town') }
+      match = towns.find { |t| t.location.to_s.downcase.include?(town.to_s.downcase) }
+      return nil if match.nil?
+      id = match.find_nearest_by_tag(tag)
+      id && Room[id]
     end
 
-    # A shop in a bounty's town, when the walk there stays in the region.
+    # A shop in a bounty's town, when it can be reached without leaving the
+    # region: the path crosses none of the REGION_EDGE rooms.
     #
-    # @param place [String] the shop's tag
-    # @param town [String] the bounty's town; "Cold River" is the Hinterwilds
-    # @param towns [Array<Room>]
-    # @return [Integer, nil] the room id, nil when unknown or out of the region
-    def in_region(place, town:, towns:)
-      EO.say(type: 'debug', text: "place: #{place}")
-
-      town = 'Hinterwilds' if town.eql?('Cold River')
-      destination = in_town(town, place, towns)
-      return nil unless destination
-
-      place = destination.id
-      return place if Room.current.eql?(Room[place])
-
-      path = Room.current.path_to(Room[place])
-      return nil unless path
-
-      edges = REGION_EDGE_UIDS.map { |uid| Map.ids_from_uid(uid).first }
-      (path & edges).empty? ? place : nil
+    # @param tag [String] the shop
+    # @param town [String] the task's town ("Cold River" is the Hinterwilds)
+    # @param from [Room]
+    # @return [Integer, nil] the room id, nil when out of region or unknown
+    def in_region(tag, town, from: Room.current)
+      town = 'Hinterwilds' if town == 'Cold River'
+      destination = in_town(tag, town) or return nil
+      return destination.id if from.id == destination.id
+      path = from.path_to(destination) or return nil
+      edges = REGION_EDGE_UIDS.map { |uid| Map.ids_from_uid(uid).first }.compact
+      (path & edges).empty? ? destination.id : nil
     end
 
-    # Leave Four Winds Isle when the character's town is there: walk to the
-    # dock, then to the return room, or turn the trinket when none is set.
+    # Leave Four Winds Isle the way the go2 settings say: the return room,
+    # or the trinket turned at the dock.
     #
-    # @param trinket [String, nil] the trinket's name
-    # @param return_room [Integer, String, nil]
-    # @return [Symbol] :elsewhere (not on the isle; nothing done),
-    #   :no_trinket (on the isle with no trinket named; nothing done), or :left
-    def leave_fwi(trinket:, return_room:)
-      return :elsewhere unless Room.current.find_nearest_by_tag('town') == FWI_TOWN
-      return :no_trinket if trinket.nil?
-
-      EO.go2(FWI_DOCK)
+    # @param trinket [String, nil] UserVars.mapdb_fwi_trinket
+    # @param return_room [Integer, String, nil] UserVars.mapdb_fwi_return_room
+    # @return [Symbol] :left, :not_here, or :no_trinket
+    def fwi_return(trinket:, return_room:)
+      return :not_here unless Room.current.find_nearest_by_tag('town') == 3668
+      return :no_trinket if trinket.nil? && return_room.nil?
+      EO.go2(3669)
       if return_room.nil?
-        worn = GameObj[trinket].nil? ? false : true
+        worn = !GameObj[trinket].nil?
         fput "get my #{trinket}" unless worn
         fput "turn ##{GameObj[trinket].id}"
         fput "stow my #{trinket}" unless worn
@@ -149,41 +123,71 @@ module EO
       :left
     end
 
-    # The room's trash receptacle, asked of TRASH.
-    #
-    # @return [GameObj, nil] the receptacle; nil when the game says there is
-    #   none, or names none
+    # @return [GameObj, nil] the trash receptacle here
     def trash_can
       lines = EO.command('trash', /You could discard items|You do not notice/, silent: true, quiet: true)
-      return nil if lines.any? { |line| line =~ /You do not notice a trash receptacle here/ }
-
+      return nil if lines.any? { |l| l =~ /You do not notice a trash receptacle here/ }
       lines.each do |line|
-        if (found = line.match(/You could discard items in (?:an?|the) <a exist="(?<exist>-?\d+)" noun="(?<noun>.*?)">(?<name>.*?)<\/a>/))
-          return GameObj.new(found[:exist], found[:noun], found[:name])
-        end
+        m = line.match(/You could discard items in (?:an?|the) <a exist="(?<exist>-?\d+)" noun="(?<noun>.*?)">(?<name>.*?)<\/a>/)
+        return GameObj.new(m[:exist], m[:noun], m[:name]) if m
       end
       nil
     end
 
-    # The locksmith pool's worker, by the name the room's tag gives or by
-    # POOL_WORKERS, looking up to twenty times.
+    # The locksmith pool's worker, named by the room's meta:boxpool:npc tag
+    # or one of the usual nouns, waiting a little for the room to fill in.
     #
-    # @return [Array(GameObj, Array<String>)] the worker, nil when not found,
-    #   and the lines of the last LOOK
+    # @return [GameObj, nil]
     def pool_worker
-      worker = nil
-      lines = nil
-      name = Regexp.last_match(1) if Room.current.tags.find { |tag| tag =~ /meta:boxpool:npc:(.*)/ }
-      name ||= POOL_WORKERS
-
+      tag = Room.current.tags.find { |t| t =~ /meta:boxpool:npc:(.*)/ }
+      names = tag ? [Regexp.last_match(1)] : POOL_WORKERS
       20.times do
-        worker = GameObj.npcs.find { |obj| obj.name =~ Regexp.union(name) }
-        break if worker
-
-        lines = EO.command('look', /<resource picture/, silent: true, quiet: true)
+        worker = GameObj.npcs.to_a.find { |n| n.name =~ Regexp.union(names) }
+        return worker if worker
+        EO.command('look', /<resource picture/, silent: true, quiet: true)
         sleep 0.1
       end
-      [worker, lines]
+      nil
+    end
+
+    # Carry exactly +keep+ silver: walk to the bank only when there is
+    # something to do, deposit everything (Lich's Bank knows the
+    # free-to-play cap and Pinefar), then take +keep+ back out.
+    #
+    # @param keep [Integer] silver to carry away
+    # @param go [Proc] walks to the bank (a script's own go2)
+    # @param force [Boolean] go even when the silver is right (a note to deposit)
+    # @return [Symbol] :none (already right), :done, :no_bank (nothing
+    #   could be deposited where it walked), :not_there (the walk did not
+    #   reach a bank), :refused (the deposit was refused or not answered;
+    #   the silver is still carried) or :short (deposited, but the silver to
+    #   keep did not come back out, or not all of it). The last three are said
+    #   as warnings.
+    def keep_silver(keep: 0, go: -> { EO.go2('bank') }, force: false)
+      keep = [keep.to_i, 0].max
+      return :none if !force && Lich::Gemstone::Currency.silver(refresh: true).to_i == keep
+
+      go.call
+      return bank_failed(:not_there, 'could not get to a bank; the silver was not deposited') unless Lich::Gemstone::Bank.here?
+
+      deposited = Lich::Gemstone::Bank.deposit
+      if deposited.nil?
+        return :no_bank if Lich::Gemstone::Bank.f2p? && !Lich::Gemstone::Bank.pinefar?
+
+        return bank_failed(:refused, 'the bank did not take the deposit; the silver is still carried')
+      end
+      # a free-to-play account out of funds hands over part of it
+      if keep.positive? && Lich::Gemstone::Bank.withdraw(keep).to_i < keep
+        return bank_failed(:short, "the bank did not hand back the #{keep} silver to keep")
+      end
+
+      :done
+    end
+
+    # @api private
+    def bank_failed(outcome, text)
+      Lich::Messaging.msg('warn', " #{text}")
+      outcome
     end
   end
 end
