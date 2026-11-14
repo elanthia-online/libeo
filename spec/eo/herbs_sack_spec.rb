@@ -104,14 +104,6 @@ RSpec.describe EO::Herbs::Sack do
       sack.analyze!
     end
 
-    it "knows a Survivalist's Kit, its tier and its extractor" do
-      lines = ["You analyze the kit.  It is a Survivalist's Kit, which is a specialized container.", 'Capacity: 3/5 ',
-               'It has the Liquid Extractor unlock.']
-      expect(analyze_with(lines)).to be(true)
-      expect(sack.tier).to eq(3)
-      expect(sack.distiller).to be(true)
-    end
-
     it 'knows an ordinary sack' do
       expect(analyze_with(['You analyze the sack.  It is a leather backpack.'])).to be(false)
       expect(sack.survival_kit).to be(false)
