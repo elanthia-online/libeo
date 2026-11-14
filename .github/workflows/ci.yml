@@ -25,7 +25,7 @@ jobs:
           ruby-version: '3.4'
           bundler-cache: true
       # Each part on its own, so a syntax error names the file it is in.
-      - run: ruby -c scripts/libeo.lic
+      - run: find scripts -maxdepth 1 -name '*.lic' -print0 | xargs -0 -n1 ruby -c > /dev/null
       - run: find scripts/eo -name '*.rb' -print0 | xargs -0 -n1 ruby -c > /dev/null
       - run: bundle exec rake gem
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

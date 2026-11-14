@@ -69,6 +69,20 @@ What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
 directly; a script that needs it raises its required Lich version.
 
+## The scripts
+
+The e-scripts that use the library are here too, each as it stands on
+the library: what moved out of it is gone from the script, and what is
+left is its settings, its command line and its own flow.
+
+| Script | Version | What it asks of the library |
+|---|---|---|
+| `scripts/ewander.lic` | 2.1.0 | `EO::Wander` |
+
+`spec/scripts_spec.rb` checks that every `EO` method a script names is
+one the library has. The installer does not copy the scripts; they are
+installed as scripts are.
+
 ## Installing
 
 libeo needs Lich 5.22.0 or later. It ships as a gem that carries the
