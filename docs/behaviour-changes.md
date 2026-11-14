@@ -194,9 +194,13 @@ These recur; the script tables do not repeat the detail.
 | 58 | `sell_item` no longer raises with no breakdown data | fix |
 | 59 | `look on #table` at the locksmith is hidden | message |
 | 60 | Three locksmith table errors collapsed into one | message |
+| 61 | `;eloot settings <key> ...` is matched before `pool` and `debug`: a setting or value with those words is saved, not run as a pool trip or a debug toggle | fix |
+| 62 | Selling a bundle of skins stops when a skin is left in hand, or after three unanswered BUNDLE REMOVE commands (upstream repeated without end) | rule |
+| 63 | A wear refused with "You can't wear that" returns `:cant` and the script goes on (upstream exited) | rule |
 
-The command-line dispatch is the same text. About 2,100 of the 2,250 lines in
-Sell are untouched.
+The command-line dispatch is the same text apart from row 61, which moves one
+branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
+untouched.
 
 ## ebounty
 
@@ -388,6 +392,7 @@ Every route of upstream's table is present with the same commands.
 | 11 | The reportee match is case-insensitive | rule |
 | 12 | A bad room argument falls back to the nearest dropoff | fix |
 | 13 | Messages; the hook renamed `_justice`; ties on mana cost by `min_by` | message |
+| 14 | A number inside an option (`--disabler=617`, `--test:owl2`) is not taken as the destination room | fix |
 
 ## ewander
 
@@ -402,3 +407,4 @@ Every route of upstream's table is present with the same commands.
 | 7 | Either Confluence step does not move when LOOK is not answered or shows no exits | fix |
 | 8 | Unknown current room: sleeps the delay | fix |
 | 9 | `target_random!` takes its room snapshot later | rule |
+| 10 | An exit whose scripted travel time is nil (closed by the map) is not stepped to; upstream's `is_a?(Proc)` did not match a StringProc, so it could step into one | fix |
