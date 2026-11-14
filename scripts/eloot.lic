@@ -6906,6 +6906,17 @@ module ELoot # Starts the script
       ELoot::Hoard.list_inventory(type)
     end
     ELoot.go2(ELoot.data.start_room)
+  when /\A\s*(?:settings|setup)\b/i # ahead of /debug/ and /pool/: a setting named debug_file or sell_locksmith_pool must reach update_setting
+    if Script.current.vars[2] =~ /^help$/i
+      ELoot.settings_help
+    elsif Script.current.vars[2]
+      ELoot.update_setting(Script.current.vars[2..-1])
+      ELoot.data.build_compiled_filters if ELoot.data.respond_to?(:build_compiled_filters)
+    elsif ELoot::Setup.available?
+      ELoot.launch_settings_ui
+    else
+      ELoot.settings_cli_notice
+    end
   when /debug/
     if Script.current.vars[0].split(/[\s,|]+/).last =~ /file/
       ELoot.data.settings[:debug_file] = !ELoot.data.settings[:debug_file]
@@ -6994,17 +7005,6 @@ module ELoot # Starts the script
 
     ELoot.go2(ELoot.data.start_room)
     ELoot::Sell.breakdown
-  when /settings|setup/i
-    if Script.current.vars[2] =~ /^help$/i
-      ELoot.settings_help
-    elsif Script.current.vars[2]
-      ELoot.update_setting(Script.current.vars[2..-1])
-      ELoot.data.build_compiled_filters if ELoot.data.respond_to?(:build_compiled_filters)
-    elsif ELoot::Setup.available?
-      ELoot.launch_settings_ui
-    else
-      ELoot.settings_cli_notice
-    end
   when /options/i
     ELoot.msg(type: "default", text: ELoot.data.settings.keys.sort.join("\n"))
   when /^reset unskinnable\b/i
