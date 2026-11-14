@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.46.0')             the version the script was built against
+EO.require('0.47.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -39,7 +39,7 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/locker.rb` | `EO::Locker`: the character's locker rooms, getting into a booth (taken, elsewhere, a debt), opening it to a container, leaving |
 | `eo/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, reading a jar, the stash inventory by looking or from a premium locker manifest, filling and shaking |
 | `eo/appraisal.rb` | `EO::Appraisal`: ask a shop what an item is worth and read the answer |
-| `eo/casting.rb` | `EO::Casting`: the multicast count, one cast and what its answer means, having the mana or stamina for it (Sign of Wracking, Sigil of Power, Symbol of Mana), another character's active spells, manna bread |
+| `eo/casting.rb` | `EO::Casting`: casting a spell at a target and reading the answer (hindrance retried, with a recheck before each retry), the multicast limit, making mana by a society's power or waiting for it (`Resources`), stamina, another character's active spells, manna bread summoned, eaten and dropped |
 | `eo/cleanse/tables.rb` | `EO::Cleanse`: the debuffs and room hazards by name, the spell a character has for each job, TARGET and its answers |
 | `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: a web, globe or cloud got rid of by spell, Spell Cleave or Spell Thieve; acidic mist blown away; a runestone broken |
 | `eo/cleanse/traps.rb` | `EO::Cleanse::Traps`: the Hive's traps searched out and disarmed; the itchy curse's safe place and wait |

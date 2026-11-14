@@ -8,10 +8,19 @@
           game: gs
           tags: magic, utility, spell
       required: Lich >= 5.22.0
-       version: 2.4.0
+       version: 2.5.0
 
   Version Control:
     Major_change.feature_addition.bugfix
+  2.5.0 (2026-11-13)
+    - making mana, waiting for stamina and the manna bread (summoning it, eating it, dropping
+      what is left) are libeo's whole (EO::Casting); ewaggle keeps what to cast, on whom and
+      how many at once. Needs libeo 0.47.0
+    - mana (or stamina) is checked again before each retry of a hindered cast: a hindered
+      cast spends the mana
+    - the mana bread cast bails or stops using Symbol of Mana like any other cast, and is not
+      tried when Manna (203) is not known
+    - the walk to cast Sign of Wracking unseen and the walk back are libeo's (EO.wander, EO.go2)
   2.4.0 (2026-11-13)
     - the profile file is read and written through libeo (EO::Settings), so other scripts
       can read ewaggle's settings (EO::Settings.read(:ewaggle)); the settings table's
@@ -79,6 +88,15 @@
     Add bail mode
 
 =end
+
+# A libeo loaded earlier in this Lich session may be older than this script
+# needs; load it again unless the one loaded is new enough.
+# Script.loadlib loads libeo once a session; a copy older than this script needs is run again
+Script.loadlib('libeo')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.47.0')
+EO.require('0.47.0')
+Script.require_lich_version!
+
 =begin
 waggle.lic prior release notes
   0.18.4 (2023-04-05):
@@ -109,38 +127,8 @@ waggle.lic prior release notes
 
 # fixme: option to cast high level spells first
 
-# Check version of Lich for compatibility
-lich_gem_requires = Script.list.find { |x| x.name == Script.current.name }.inspect[/required: Lich >= (\d+\.\d+\.\d+)/i, 1]
-
-if Gem::Version.new(LICH_VERSION) < Gem::Version.new(lich_gem_requires)
-  if $frontend == 'stormfront' || $frontend == 'profanity'
-    _respond "\<preset id=\"speech\"\>" + "########################################" + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "Script:#{script.name} now requires a newer version of Lich(#{lich_gem_requires}+) to run." + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "Please update to a newer version." + "\<\/preset\>"
-    _respond ""
-    _respond "\<preset id=\"thought\"\>" + "Currently Running Lich Version: #{Gem::Version.new(LICH_VERSION)}" + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "For help updating visit: https://gswiki.play.net/Lich_(software)/Installation" + "\<\/preset\>"
-    _respond "\<preset id=\"speech\"\>" + "########################################" + "\<\/preset\>"
-  else
-    _respond "##" + "########################################"
-    _respond ">" + "Script:#{script.name} now requires a newer version of Lich(#{lich_gem_requires}+) to run."
-    _respond ">" + "Please update to a newer version."
-    _respond ">" + ""
-    _respond ">" + "Currently Running Lich Version: #{Gem::Version.new(LICH_VERSION)}"
-    _respond ">" + "For help updating visit: https://gswiki.play.net/Lich_(software)/Installation"
-    _respond "##" + "########################################"
-  end
-  exit
-end
-
 require 'yaml'
 require 'terminal-table'
-
-# Script.loadlib loads libeo once a session; a copy older than this script
-# needs is run again.
-Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.43.0')
-EO.require('0.43.0')
 
 # Data
 module Ewaggle
@@ -226,7 +214,10 @@ module Ewaggle
   # Save & Close writes the profile exactly as the GTK window's Close did;
   # Cancel or closing the window discards. Built on Lich::WebUI::SettingsForm.
   class Setup
-    extend EO::Settings::Registry
+    # Lich keeps this class between runs in a session. A method a newer version
+    # dropped would otherwise still run, ahead of the one the class now includes.
+    # First, so it removes nothing this run defines.
+    (instance_methods(false) + private_instance_methods(false)).each { |name| remove_method(name) }
 
     attr_accessor :settings
 
@@ -280,8 +271,10 @@ module Ewaggle
       },
     }
 
+    extend EO::Settings::Registry
+
     # True when Lich can open a WebUI window for this script.
-    def self.available? = EO::Settings.available?
+    def self.available? = EO::Settings.available?(:SettingsForm)
 
     def initialize(settings)
       @owner = Script.current
@@ -295,13 +288,8 @@ module Ewaggle
 
       @version = Ewaggle.get_script_version
 
-      # set default values if they don't exist
-      @@categories.each do |_key, data|
-        data.each { |key, value| @settings[key] = value[:default] if @settings[key].nil? }
-      end
-
-      # remove settings that don't exist
-      @settings.delete_if { |key, _| next Setup.get_category(key).nil? }
+      Setup.fill_defaults(@settings)
+      Setup.prune(@settings)
 
       # disable options and set them to false if the character can't do them
       disabled.each { |key| @settings[key] = key == :retribution_spell ? "" : false }
@@ -621,13 +609,8 @@ module Ewaggle
     end
 
     def render_footer(ui, save, cancel)
-      setup = self
-      ui.columns(key: 'footer', count: 3, weights: [5, 1, 1], compact: true, row_align: :center, gap: 6) do
-        ui.text(slot: '0', key: 'footer-text', wrap: true, emphasis: :subtle,
-                content: "#{setup.status.empty? ? '' : "#{setup.status}    "}Cancel or closing the window discards changes.")
-        ui.button(slot: '1', key: 'cancel', label: 'Cancel', on: { activate: ->(_ev) { cancel.call } })
-        save.call(ui, slot: '2', variant: :primary, tooltip: 'Save the settings to your ewaggle profile and close this window.')
-      end
+      EO::Settings.footer(ui, save, cancel, status: status, wrap: true,
+                                            tooltip: 'Save the settings to your ewaggle profile and close this window.')
     end
 
     attr_reader :status
@@ -654,10 +637,7 @@ module Ewaggle
     }
   end
 
-  def self.get_script_version
-    data = Script.list.find { |x| x.name == Script.current.name }.inspect
-    return data[/version: (\d+\.\d+\.\d+)/i, 1]
-  end
+  def self.get_script_version = Script.version(Script.current.name).to_s
 
   def self.load(settings)
     @@data = Data.new(settings)
@@ -738,9 +718,7 @@ module Ewaggle
     return default_hash
   end
 
-  def self.load_profile
-    EO::Settings.load_profile('ewaggle') || Ewaggle.load_defaults
-  end
+  def self.load_profile = EO::Settings.load_profile('ewaggle') || Ewaggle.load_defaults
 
   def self.save_profile
     if Ewaggle.data.settings == Ewaggle.data.original_settings
@@ -795,21 +773,14 @@ module Ewaggle
   end
 
   # 203 food is whatever new item lands in hand after the cast, so custom food nouns just work
-  def self.summon_bread
-    before = [GameObj.right_hand, GameObj.left_hand].map(&:id)
-    Casting.cast_spell(Spell[203], Char.name)
-    EO::Casting.new_in_hand(before)
-  end
+  # 203 food is whatever new item lands in hand after the cast (libeo's)
+  def self.summon_bread = EO::Casting.summon_bread(Casting.resources, check: ->(spell) { Casting.check_mana(spell, 1) })
 
   def self.eat_bread(bypass_check: false)
     return unless Ewaggle.data.settings[:use_203] || bypass_check
-    return if Effects::Spells.time_left("Manna") > 10
+    return unless Ewaggle.valid_spell?(Spell[203])
 
-    empty_hand
-
-    EO::Casting.gobble(Ewaggle.summon_bread)
-
-    fill_hand
+    EO::Casting.eat_bread(Casting.resources, check: ->(spell) { Casting.check_mana(spell, 1) })
   end
 
   def self.fix_spell(spell)
@@ -824,20 +795,16 @@ module Ewaggle
   end
 
   def self.get_target_info(target)
-    target_info = EO::Casting.active_on(target)
-    return target_info if target_info['sharing']
+    info = EO::Casting.active_on(target)
+    return info if info['sharing']
+    return nil if Ewaggle.data.settings[:skip_not_sharing]
 
-    if Ewaggle.data.settings[:skip_not_sharing]
-      return nil
-    else
-      respond
-      Lich::Messaging.msg('plain', "#{target.capitalize} is not sharing spell information using SPELL PRIVACY")
-      Lich::Messaging.msg('plain', "A single cast of each spell will be used instead.")
-      Lich::Messaging.msg('plain', "To skip characters that don't share, toggle the 'skip not sharing' in the UI or CLI")
-      respond
-
-      return target_info
-    end
+    respond
+    Lich::Messaging.msg('plain', "#{target.capitalize} is not sharing spell information using SPELL PRIVACY")
+    Lich::Messaging.msg('plain', "A single cast of each spell will be used instead.")
+    Lich::Messaging.msg('plain', "To skip characters that don't share, toggle the 'skip not sharing' in the UI or CLI")
+    respond
+    info
   end
 
   def self.help
@@ -986,7 +953,7 @@ module Ewaggle
       target_info.keys.each do |name|
         next unless spell.num == 511
 
-        disk_nouns_regex = /\b(?:bassinet|cassone|chest|coffer|coffin|coffret|disk|hamper|saucer|sphere|trunk|tureen)\b/
+        disk_nouns_regex = EO::Loot::DISK_NOUNS
         disk = GameObj.loot.find { |l| l.name =~ /#{name} #{disk_nouns_regex}\b/ }
 
         unless disk
@@ -1058,7 +1025,7 @@ module Ewaggle
     retribution = Ewaggle.data.settings[:retribution_spell].to_s.empty? ? 'none' : "#{Ewaggle.data.settings[:retribution_spell]} #{Spell[Ewaggle.data.settings[:retribution_spell]]}"
     rows << ["retribution spell", retribution]
     rows << ["armor list", Ewaggle.data.armor_list.join(', ')] unless Ewaggle.data.armor_list.empty?
-    rows << ["cast list", Ewaggle.word_wrap(Ewaggle.data.cast_list.join(', '), 30)]
+    rows << ["cast list", EO.word_wrap(Ewaggle.data.cast_list.join(', '), 30)]
 
     table = Terminal::Table.new(
       title: "#{Script.current.name.capitalize} v#{Ewaggle.get_script_version} Settings",
@@ -1093,17 +1060,7 @@ module Ewaggle
     if target == Char.name
       Ewaggle.eat_bread(bypass_check: true)
     else
-      empty_hand
-
-      if (bread = Ewaggle.summon_bread)
-        3.times do
-          break unless [GameObj.right_hand, GameObj.left_hand].map(&:id).include?(bread.id)
-          fput "drop ##{bread.id}"
-          sleep 0.2
-        end
-      end
-
-      fill_hand
+      EO::Casting.drop_bread(Casting.resources)
     end
   end
 
@@ -1312,57 +1269,23 @@ module Ewaggle
 
     return true
   end
-
-  def self.word_wrap(text, width = 60)
-    text.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").strip
-  end
 end
 
 # Casting methods
 module Ewaggle
   module Casting
     def self.cast_spell(spell, target, num_multicast = 1)
-      result = nil
+      return :bad_spell unless Ewaggle.valid_spell?(spell)
 
-      unless Ewaggle.valid_spell?(spell)
-        return :bad_spell
+      Casting.check_mana(spell, num_multicast)
+      argument = nil
+      if target == Char.name
+        argument = { 1009 => :sonic_shield, 1012 => :sonic_weapon, 1014 => :sonic_armor }[spell.num]
+        argument &&= Ewaggle.data.settings[argument]
       end
-
-      loop {
-        if Object.const_defined?(:Feat) && Feat.known?(:mental_acuity)
-          Casting.check_stamina(spell, num_multicast)
-        else
-          Casting.check_mana(spell, num_multicast)
-        end
-
-        if target == Char.name
-          if spell.num == 1009
-            cast_result = EO::Casting.cast(spell, argument: Ewaggle.data.settings[:sonic_shield])
-          elsif spell.num == 1012
-            cast_result = EO::Casting.cast(spell, argument: Ewaggle.data.settings[:sonic_weapon])
-          elsif spell.num == 1014
-            cast_result = EO::Casting.cast(spell, argument: Ewaggle.data.settings[:sonic_armor])
-          else
-            cast_result = EO::Casting.cast(spell, multicast: num_multicast)
-          end
-        else
-          cast_result = EO::Casting.cast(spell, target: target, multicast: num_multicast)
-        end
-
-        if cast_result == :refused_here
-          result = :bad_spell
-          break
-        elsif cast_result == :bad_target
-          result = :bad_target
-          break
-        elsif cast_result == :hindered
-          nil # try again
-        else
-          result = :success
-          break
-        end
-      }
-      result
+      result = EO::Casting.cast(spell, target: target == Char.name ? nil : target, multicast: num_multicast, argument: argument,
+                                       recheck: -> { Casting.check_mana(spell, num_multicast) })
+      result == :refused_here ? :bad_spell : result
     end
 
     def self.cast_support
@@ -1453,7 +1376,7 @@ module Ewaggle
 
         existing_duration = info[spell.num.to_s] ||= 0
         next if existing_duration > Ewaggle.data.settings[:start_at] && spell.num != 203
-        max_multicast = EO::Casting.max_multicast(spell)
+        max_multicast = Casting.max_multicast(spell)
 
         Casting.cast_support
 
@@ -1479,6 +1402,8 @@ module Ewaggle
             when :bad_target
               Ewaggle.data.skip_targets.push(target)
               break
+            when :hindered
+              break # hindrance stopped every try; the next pass tries again
             else
               info[spell.num.to_s] += spell.time_per(target: target) * number_casts
             end
@@ -1499,8 +1424,7 @@ module Ewaggle
 
       spell = Ewaggle.fix_spell(511)
 
-      disk_nouns_regex = /\b(?:bassinet|cassone|chest|coffer|coffin|coffret|disk|hamper|saucer|sphere|trunk|tureen)\b/
-      disk = GameObj.loot.find { |l| l.name =~ /#{target} #{disk_nouns_regex}\b/ }
+      disk = GameObj.loot.find { |l| l.name =~ /#{target} #{EO::Loot::DISK_NOUNS}\b/ }
 
       return if disk
 
@@ -1512,19 +1436,19 @@ module Ewaggle
       end
     end
 
-    # How this character goes about having mana, from the settings.
+    # How the settings say to make mana: libeo's Casting::Resources.
     def self.resources
-      settings = Ewaggle.data.settings
-      source = if settings[:use_wracking] then :wracking # Wracking - COL
-               elsif settings[:use_power] then :power # Sigil of Power - GOS
-               elsif settings[:use_mana] then :voln # Symbol of Mana - Voln
+      st = Ewaggle.data.settings
+      source = if st[:use_wracking] then :wracking
+               elsif st[:use_power] then :power
+               elsif st[:use_mana] then :voln
                end
-      EO::Casting::Resources.new(reserve: settings[:reserve_mana], source: source, bail: settings[:bail_no_mana],
-                                 wander_to_wrack: settings[:wander_to_wrack])
+      EO::Casting::Resources.new(reserve: st[:reserve_mana], source: source, bail: st[:bail_no_mana],
+                                 wander_to_wrack: st[:wander_to_wrack])
     end
 
-    def self.check_mana(spell, num_multicast)
-      case EO::Casting.ready(spell, num_multicast, Casting.resources)
+    def self.handle_ready(outcome)
+      case outcome
       when :bail
         echo 'out of resource, bailing out!'
         exit
@@ -1534,12 +1458,15 @@ module Ewaggle
       end
     end
 
-    def self.check_stamina(spell, num_multicast)
-      return unless EO::Casting.ready_stamina(spell, num_multicast, Casting.resources) == :bail
-
-      echo 'out of resource, bailing out!'
-      exit
+    def self.check_mana(spell, num_multicast)
+      Casting.handle_ready(EO::Casting.ready(spell, num_multicast, Casting.resources))
     end
+
+    def self.check_stamina(spell, num_multicast)
+      Casting.handle_ready(EO::Casting.ready_stamina(spell, num_multicast, Casting.resources))
+    end
+
+    def self.max_multicast(spell) = EO::Casting.max_multicast(spell)
   end
 end
 

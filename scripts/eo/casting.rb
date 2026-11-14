@@ -1,333 +1,325 @@
 # frozen_string_literal: true
 
 module EO
-  # Casting spells on oneself and others: how many times one cast can
-  # multicast, one cast and what its answer means, having the mana or the
-  # stamina for it (making mana by a society's power when short), another
-  # character's active spells, and manna bread.
+  # Casting: how many casts at once a character's lore allows, casting at
+  # a target and what the game said, waiting for the mana or stamina a
+  # cast needs (and the society abilities that make it), reading the
+  # spells active on another character, and manna bread.
   module Casting
     module_function
 
-    # A cast the room will not allow: a sanctuary, or a place closed to
-    # spells of war.
     REFUSED_HERE = /^Be at peace my child, there is no need for spells of war in here\.$|Spells of War cannot be cast/
     HINDERED = /^\[Spell Hindrance for/
-    # The Council of Light's sign of recognition, as the character sees it.
-    RECOGNITION = /^You (?:touch|scratch|rub|tap|point to) your (?:right|left) (?:eyebrow|nostril|earlobe|shoulder|cheek) with your (?:right|left) (?:pinky|forefinger|thumb|index finger)/
-    # A line of SPELL ACTIVE <name>: the spell and its time left.
-    ACTIVE_SPELL = /\s+([A-z0-9\s'()-]+) \.* (([0-9]+):([0-9]+):([0-9]+)|Indefinite)$/
+    # Casts tried while hindrance stops them, before giving up (bigshot's cast_spell max_attempts).
+    MAX_HINDERED = 3
+    WRACK_SIGN = /^You (?:touch|scratch|rub|tap|point to) your (?:right|left) (?:eyebrow|nostril|earlobe|shoulder|cheek) with your (?:right|left) (?:pinky|forefinger|thumb|index finger)/
 
-    # Stands for "no argument" where nil is itself an argument.
-    NONE = Object.new.freeze
-
-    # How a character goes about having mana. reserve: mana never spent.
-    # source: :wracking (Sign of Wracking, Council of Light), :power (Sigil
-    # of Power, Guardians of Sunfist), :voln (Symbol of Mana), or nil to
-    # wait for it. bail: give up when it would mean waiting.
-    # wander_to_wrack: walk to where nobody is watching before wracking.
-    Resources = Struct.new(:reserve, :source, :bail, :wander_to_wrack, keyword_init: true)
-
-    # How many times a spell can be cast at once, by the mana control the
-    # character's profession uses for the spell's circle.
+    # How many casts of +spell+ one CAST may carry, by the character's lore
+    # ranks in the circles that spell draws on: one more per 25 ranks.
     #
     # @param spell [Spell]
     # @return [Integer]
     def max_multicast(spell)
-      ranks = 0
-      if Stats.prof == 'Wizard'
-        ranks = Skills.emc
-      elsif Stats.prof =~ /^Cleric$|^Ranger$|^Paladin$/
-        ranks = Skills.smc
-      elsif Stats.prof =~ /^Empath$|^Monk$|^Bard$/
-        if [1, 2].include?(spell.circle.to_i)
-          ranks = Skills.smc + (Skills.mmc / 2)
-        elsif spell.circle.to_i == 11
-          ranks = [Skills.mmc, Skills.smc].max + ([Skills.mmc, Skills.smc].min / 2)
-        elsif spell.circle.to_i == 12
-          ranks = Skills.mmc + (Skills.smc / 2)
-        elsif spell.circle.to_i == 4
-          ranks = Skills.emc + (Skills.mmc / 2)
-        end
-      elsif Stats.prof =~ /^Sorcerer$|^Warrior$|^Rogue$/
-        if spell.circle.to_i == 4
-          ranks = Skills.emc + (Skills.smc / 2)
-        elsif spell.circle.to_i == 1
-          ranks = Skills.smc + (Skills.emc / 2)
-        elsif spell.circle.to_i == 7
-          ranks = [Skills.emc, Skills.smc].max + ([Skills.emc, Skills.smc].min / 2)
-        end
-      end
+      circle = spell.circle.to_i
+      ranks = case Stats.prof
+              when 'Wizard' then Skills.emc
+              when /^Cleric$|^Ranger$|^Paladin$/ then Skills.smc
+              when /^Empath$|^Monk$|^Bard$/
+                case circle
+                when 1, 2 then Skills.smc + (Skills.mmc / 2)
+                when 11 then [Skills.mmc, Skills.smc].max + ([Skills.mmc, Skills.smc].min / 2)
+                when 12 then Skills.mmc + (Skills.smc / 2)
+                when 4 then Skills.emc + (Skills.mmc / 2)
+                else 0
+                end
+              when /^Sorcerer$|^Warrior$|^Rogue$/
+                case circle
+                when 4 then Skills.emc + (Skills.smc / 2)
+                when 1 then Skills.smc + (Skills.emc / 2)
+                when 7 then [Skills.emc, Skills.smc].max + ([Skills.emc, Skills.smc].min / 2)
+                else 0
+                end
+              else 0
+              end
       (ranks / 25) + 1
     end
 
-    # Cast a spell once, at a target or at oneself.
+    # Cast a spell, at a target or at oneself, retrying through spell
+    # hindrance.
     #
     # @param spell [Spell]
     # @param target [String, nil] a name, or nil for oneself
     # @param multicast [Integer]
-    # @param argument [Object] for a cast at oneself, what the spell is cast
-    #   with in place of a multicast count (a sonic item's name); nil counts
-    #   as given
-    # @return [Symbol] :success, :refused_here, :bad_target, or :hindered
-    #   (spell hindrance stopped it; the mana is spent)
-    def cast(spell, target: nil, multicast: 1, argument: NONE)
-      result = if target.nil?
-                 if !argument.equal?(NONE) then spell.cast(argument)
-                 elsif multicast > 1 then spell.cast(multicast.to_s)
-                 else spell.cast
+    # @param argument [String, nil] what a self-cast takes (a sonic item's name)
+    # @param recheck [Proc, nil] run before each try after the first: a hindered
+    #   cast spends the mana, so the caller waits for it or makes it again
+    # @return [Symbol] :success, :refused_here (sanctuary or a no-war room),
+    #   :bad_target, or :hindered (hindrance stopped every one of MAX_HINDERED tries)
+    def cast(spell, target: nil, multicast: 1, argument: nil, recheck: nil)
+      MAX_HINDERED.times do |attempt|
+        recheck&.call if attempt.positive?
+        result = if target.nil?
+                   if argument then spell.cast(argument)
+                   elsif multicast > 1 then spell.cast(multicast.to_s)
+                   else spell.cast
+                   end
+                 else
+                   spell.cast(multicast > 1 ? "at #{target} #{multicast}" : "at #{target}")
                  end
-               elsif multicast > 1 then spell.cast("at #{target} #{multicast}")
-               else
-                 spell.cast("at #{target}")
-               end
+        return :refused_here if result.to_s =~ REFUSED_HERE
+        return :bad_target if result.to_s == 'Cast at what?'
+        next if result.to_s =~ HINDERED
+        return :success
+      end
+      :hindered
+    end
 
-      if result.to_s =~ REFUSED_HERE then :refused_here
-      elsif result.to_s == 'Cast at what?' then :bad_target
-      elsif result.to_s =~ HINDERED then :hindered
-      else :success
+    # How a character makes mana when short. reserve: mana never spent.
+    # source: :wracking (Sign of Wracking, Council of Light), :power (Sigil
+    # of Power, Guardians of Sunfist), :voln (Symbol of Mana), or nil to wait.
+    # bail: give up instead of waiting. wander_to_wrack: walk until no
+    # stranger is watching before wracking.
+    Resources = Struct.new(:reserve, :source, :bail, :wander_to_wrack, keyword_init: true) do
+      def initialize(reserve: 0, source: nil, bail: false, wander_to_wrack: false)
+        super(reserve: reserve.to_i, source: source, bail: bail, wander_to_wrack: wander_to_wrack)
       end
     end
 
-    # @return [Boolean] mana enough for +spell+ times +n+ with the reserve kept
-    def mana_for?(spell, n, cost)
-      spell.affordable?(multicast: n) && (Char.mana >= cost)
+    # @return [Boolean] mana enough for +spell+ times +n+, keeping the reserve
+    def mana_for?(spell, n, resources)
+      cost = spell.mana_cost(multicast: n) + resources.reserve
+      spell.affordable?(multicast: n) && (spell.mana_cost.zero? || Char.mana >= cost)
     end
 
-    # See that +spell+ times +n+ can be cast, making mana the way the
-    # resources say or waiting for it. A prepared spell is released before
-    # a wait.
+    # Wait until an ability that costs stamina can be used (an armor
+    # specialization, say): nothing makes stamina, so it is waited for.
     #
     # @param spell [Spell]
     # @param n [Integer]
     # @param resources [Resources]
-    # @return [Symbol] :ready; :bail (it would mean waiting and the
-    #   resources say not to; "waiting..." has been said); or :no_favor
-    #   (Symbol of Mana failed for want of favor, and no more mana was made)
+    # @return [Symbol] :ready or :bail
+    def ready_stamina(spell, n, resources)
+      return :ready if stamina_for?(spell, n, resources)
+      return :bail if resources.bail
+
+      Lich::Messaging.msg('info', 'waiting for stamina...')
+      wait_until { stamina_for?(spell, n, resources) }
+      :ready
+    end
+
+    # @return [Boolean] stamina enough, for a character casting from stamina (mental acuity)
+    def stamina_for?(spell, n, resources)
+      spell.affordable?(multicast: n) && (spell.mana_cost.zero? || Char.stamina >= (spell.mana_cost(multicast: n) * 2) + resources.reserve)
+    end
+
+    # Wait until +spell+ times +n+ can be cast, making mana the way the
+    # resources say. Releases a prepared spell before waiting.
+    #
+    # @param spell [Spell]
+    # @param n [Integer]
+    # @param resources [Resources]
+    # @return [Symbol] :ready, :bail (out and told to give up), or
+    #   :no_favor (Symbol of Mana refused for lack of favor; the caller
+    #   should stop using it)
     def ready(spell, n, resources)
-      cost = spell.mana_cost(multicast: n) + resources.reserve
-      return :ready if spell.affordable?(multicast: n) && (spell.mana_cost == 0 || Char.mana >= cost)
-      return :ready unless spell.mana_cost > 0
+      if Object.const_defined?(:Feat) && Feat.known?(:mental_acuity)
+        return :ready if stamina_for?(spell, n, resources)
+        return :bail if resources.bail
+        Lich::Messaging.msg('info', 'waiting for stamina...')
+        wait_until { stamina_for?(spell, n, resources) }
+        return :ready
+      end
+      return :ready if mana_for?(spell, n, resources) || !spell.mana_cost.positive?
 
       case resources.source
-      when :wracking then wrack(spell, n, cost, resources)
-      when :power then sigil_of_power(spell, n, cost, resources)
-      when :voln then symbol_of_mana(spell, n, cost, resources)
+      when :wracking then wrack(spell, n, resources)
+      when :power then sigil_of_power(spell, n, resources)
+      when :voln then symbol_of_mana(spell, n, resources)
       else
         fput 'release' unless checkprep == 'None'
-        echo 'waiting for mana...'
         return :bail if resources.bail
-
-        wait_until { spell.affordable?(multicast: n) && (spell.mana_cost == 0 || Char.mana >= cost) }
+        Lich::Messaging.msg('info', 'waiting for mana...')
+        wait_until { mana_for?(spell, n, resources) }
         :ready
       end
     end
 
-    # See that a character who casts from stamina has it for +spell+ times +n+.
-    #
-    # @return [Symbol] :ready or :bail
-    def ready_stamina(spell, n, resources)
-      enough = -> { spell.affordable?(multicast: n) && (spell.mana_cost == 0 || Char.stamina >= (spell.mana_cost(multicast: n) * 2) + resources.reserve) }
-      return :ready if enough.call
-
-      echo 'waiting for stamina...'
-      return :bail if resources.bail
-
-      wait_until { enough.call }
-      :ready
-    end
-
-    # Make mana with Sign of Wracking. It is cast where nobody who is not
-    # of the Council can see: hidden or invisible, alone, or among those who
-    # answer the sign of recognition; else, when the resources allow it,
-    # after walking up to twenty rooms to find such a place, and back. With
-    # nowhere to cast it unseen, the mana is waited for.
-    #
     # @api private
-    def wrack(spell, n, cost, resources)
-      sign_of_wracking = Spell[9918]
+    def wrack(spell, n, resources)
+      wracking = Spell[9918]
       punishment = Spell[9012]
-
-      until mana_for?(spell, n, cost)
+      until mana_for?(spell, n, resources)
         waitrt?
         waitcastrt?
-        if sign_of_wracking.affordable? && !punishment.active?
+        if wracking.affordable? && !punishment.active?
           if (invisible? || hidden? || !checkpcs || safe_to_wrack?) && !Room.current.tags.include?('no-magic')
-            sign_of_wracking.cast if sign_of_wracking.affordable? && !punishment.active?
-          else
-            unseen = false
-            if resources.wander_to_wrack
-              visited = []
-              start_room = Room.current
-
-              20.times do
-                break if (unseen = safe_to_wrack? && !Room.current.tags.include?('no-magic'))
-
-                wander_step(visited)
-              end
-
-              sign_of_wracking.cast if unseen && sign_of_wracking.affordable? && !punishment.active?
-
-              Script.run('go2', "#{start_room.id} --disable-confirm", { quiet: true }) unless start_room.id == Room.current.id
-            end
-
-            unless unseen
-              echo 'waiting for mana: nowhere to wrack unseen...'
-              return :bail if resources.bail
-
-              wait_until { mana_for?(spell, n, cost) }
-            end
+            wracking.cast
+          elsif !(resources.wander_to_wrack && wrack_elsewhere(wracking, punishment))
+            # someone who might not like it is watching; wait for mana instead
+            return :bail if resources.bail
+            wait_until { mana_for?(spell, n, resources) }
           end
         else
           fput 'release' unless checkprep == 'None'
-          echo 'waiting for mana or spirit...'
           return :bail if resources.bail
-
-          wait_until { mana_for?(spell, n, cost) || sign_of_wracking.affordable? }
+          Lich::Messaging.msg('info', 'waiting for mana or spirit...')
+          wait_until { mana_for?(spell, n, resources) || wracking.affordable? }
         end
       end
       :ready
     end
 
-    # One step to a neighbouring room not yet visited, else to the one
-    # visited longest ago.
-    #
-    # @param visited [Array<String>] room ids, the latest last; added to
-    # @return [void]
-    def wander_step(visited)
-      room = Room.current
-      next_room = Wander.next_room(room, visited, [])
-      visited.delete(next_room)
-      visited.push(next_room)
-      way = room.wayto[next_room]
-      if way.class == String
-        move(way)
-      else
-        way.call
-      end
-    end
-
-    # Whether everyone here answers the sign of recognition.
-    #
-    # @return [Boolean]
-    def safe_to_wrack?
-      lines = Lich::Util.issue_command('sign of recognition', RECOGNITION, usexml: true, silent: true, quiet: true)
-      acknowledgers = lines.filter_map { |line| line[/noun="(.*?)">.*?acknowledges your sign/, 1] }
-      !(checkpcs - acknowledgers).count.positive?
-    end
-
-    # Make mana with Sigil of Power.
+    # Walk up to twenty rooms for somewhere Sign of Wracking will not be
+    # seen, cast it there, and walk back. The sign is not cast when the
+    # walk found nowhere.
     #
     # @api private
-    def sigil_of_power(spell, n, cost, resources)
-      sigil = Spell[9718]
-      until mana_for?(spell, n, cost)
-        if sigil.affordable?
-          sigil.cast
+    # @return [Boolean] whether somewhere was found
+    def wrack_elsewhere(wracking, punishment)
+      start = Room.current
+      visited = []
+      unseen = false
+      20.times do
+        break if (unseen = safe_to_wrack? && !Room.current.tags.include?('no-magic'))
+
+        EO.wander(visited)
+      end
+      wracking.cast if unseen && wracking.affordable? && !punishment.active?
+      EO.go2(start.id) unless start.id == Room.current.id
+      unseen
+    end
+
+    # @api private
+    def sigil_of_power(spell, n, resources)
+      power = Spell[9718]
+      until mana_for?(spell, n, resources)
+        if power.affordable?
+          power.cast
           sleep 0.2
         else
           fput 'release' unless checkprep == 'None'
-          echo 'waiting for mana...'
           return :bail if resources.bail
-
-          wait_until { mana_for?(spell, n, cost) || sigil.affordable? }
+          Lich::Messaging.msg('info', 'waiting for mana...')
+          wait_until { mana_for?(spell, n, resources) || power.affordable? }
         end
       end
       :ready
     end
 
-    # Make mana with Symbol of Mana, between its cooldowns.
-    #
     # @api private
-    def symbol_of_mana(spell, n, cost, resources)
-      until mana_for?(spell, n, cost)
+    def symbol_of_mana(spell, n, resources)
+      until mana_for?(spell, n, resources)
         waitrt?
         waitcastrt?
         if !Effects::Cooldowns.active?('Symbol of Mana')
-          result = Spell[9813].cast
-          return :no_favor if result =~ /^You strain to perform the symbol/
-
+          return :no_favor if Spell[9813].cast.to_s =~ /^You strain to perform the symbol/
           sleep 0.2
         else
           fput 'release' unless checkprep == 'None'
-          echo 'waiting for mana or mana cooldown...'
           return :bail if resources.bail
-
-          wait_until { mana_for?(spell, n, cost) || !Effects::Cooldowns.active?('Symbol of Mana') }
+          Lich::Messaging.msg('info', 'waiting for mana or mana cooldown...')
+          wait_until { mana_for?(spell, n, resources) || !Effects::Cooldowns.active?('Symbol of Mana') }
         end
       end
       :ready
     end
 
-    # Another character's active spells, from SPELL ACTIVE <name>.
+    # Whether every player here is Council of Light and acknowledges the
+    # sign, so Sign of Wracking will not be seen by the uninitiated.
+    #
+    # @return [Boolean]
+    def safe_to_wrack?
+      lines = Lich::Util.issue_command('sign of recognition', WRACK_SIGN, usexml: true, silent: true, quiet: true)
+      knowing = lines.filter_map { |line| line[/noun="(.*?)">.*?acknowledges your sign/, 1] }
+      (checkpcs.to_a - knowing).empty?
+    end
+
+    # The spells active on a character and the minutes left on each, from
+    # SPELL ACTIVE. Indefinite reads as 599.
     #
     # @param target [String]
-    # @return [Hash{String => Object}] each spell's number to the minutes it
-    #   has left (599.0 for one that does not end), and 'sharing' true; only
-    #   'sharing' false for a character who does not share
+    # @return [Hash] spell number (as a string) => minutes, plus 'sharing'
+    #   => false when the character keeps spell information private
     def active_on(target)
-      res = Lich::Util.quiet_command_xml("spell active #{target}", /currently has the following active effects|has spell sharing disabled\./)
-      return { 'sharing' => false } if res.any?(/has spell sharing disabled/)
+      lines = Lich::Util.quiet_command_xml("spell active #{target}", /currently has the following active effects|has spell sharing disabled\./)
+      return { 'sharing' => false } if lines.any? { |l| l =~ /has spell sharing disabled/ }
 
-      target_info = {}
-      res.each do |line|
-        next unless line =~ ACTIVE_SPELL
-
-        spell_name = Regexp.last_match(1)
-        spell_time = if Regexp.last_match(2) == 'Indefinite'
-                       599.0
-                     else
-                       (Regexp.last_match(3).to_i * 60) + Regexp.last_match(4).to_i + (Regexp.last_match(5).to_i / 60.0)
-                     end
-        # the names SPELL ACTIVE gives that the spell list has otherwise
-        if spell_name == 'Raise Dead Recovery'
-          spell_name = 'Raise Dead Cooldown'
-        elsif spell_name =~ /Mage Armor - /
-          spell_name = 'Mage Armor'
-        elsif spell_name =~ /Cloak of Shadows - /
-          spell_name = 'Cloak of Shadows'
-        end
-        if (spell = Spell.list.find { |s| s.name == spell_name.strip || s.num.to_s == spell_name.strip })
-          target_info[spell.num.to_s] = spell_time
-        elsif $infomon_debug
-          echo "no spell matches #{spell_name}"
-        end
+      found = { 'sharing' => true }
+      lines.each do |line|
+        next unless line =~ /\s+([A-z0-9\s'()\-]+) \.* (([0-9]+):([0-9]+):([0-9]+)|Indefinite)$/
+        name = Regexp.last_match(1).strip
+        minutes = Regexp.last_match(2) == 'Indefinite' ? 599.0 : (Regexp.last_match(3).to_i * 60) + Regexp.last_match(4).to_i + (Regexp.last_match(5).to_i / 60.0)
+        name = 'Raise Dead Cooldown' if name == 'Raise Dead Recovery'
+        name = 'Mage Armor' if name =~ /Mage Armor - /
+        name = 'Cloak of Shadows' if name =~ /Cloak of Shadows - /
+        spell = Spell.list.find { |s| s.name == name || s.num.to_s == name }
+        found[spell.num.to_s] = minutes if spell
       end
-      target_info['sharing'] = true
-      target_info
+      found
     end
 
-    # Whatever new item lands in a hand after a cast, given two seconds:
-    # the bread of Manna (203), under any name it has been given.
+    # Cast 203 and return the bread: whatever new item lands in hand, so a
+    # custom food noun just works.
     #
-    # @param before [Array<String, nil>] the ids in the hands before the cast
-    # @return [GameObj, nil]
-    def new_in_hand(before)
-      bread = nil
+    # @param resources [Resources]
+    # @param check [Proc, nil] the caller's own wait for mana, given the
+    #   spell, when it has more to do on :bail or :no_favor than not cast
+    # @return [GameObj, nil] nil when the bread was not made
+    def summon_bread(resources = Resources.new, check: nil)
+      before = [GameObj.right_hand, GameObj.left_hand].map(&:id)
+      if check
+        check.call(Spell[203])
+      elsif ready(Spell[203], 1, resources) != :ready
+        return nil
+      end
+      cast(Spell[203], recheck: check && -> { check.call(Spell[203]) })
       20.times do
-        break if (bread = [GameObj.right_hand, GameObj.left_hand].find { |obj| obj.id && !before.include?(obj.id) })
+        bread = [GameObj.right_hand, GameObj.left_hand].find { |obj| obj.id && !before.include?(obj.id) }
+        return bread if bread
         sleep 0.1
       end
-      bread
+      nil
     end
 
-    # Eat the bread, up to three gobbles while it is in hand, and wait up
-    # to two seconds for Manna to show.
+    # Eat manna bread unless Manna has more than ten seconds to run.
     #
-    # @param bread [GameObj, nil]
-    # @return [void]
-    def gobble(bread)
+    # @param resources [Resources]
+    # @param check [Proc, nil] see summon_bread
+    # @return [Boolean] whether bread was eaten
+    def eat_bread(resources = Resources.new, check: nil)
+      return false if Effects::Spells.time_left('Manna') > 10
+      empty_hand
+      bread = summon_bread(resources, check: check)
       if bread
         3.times do
-          break unless [GameObj.right_hand, GameObj.left_hand].map(&:id).include?(bread.id)
+          break unless Hands.holding?(bread)
           fput "gobble ##{bread.id}"
           sleep 0.2
         end
       end
-
       20.times do
         break if Effects::Spells.time_left('Manna').positive?
         sleep 0.1
       end
+      fill_hand
+      !bread.nil?
+    end
+
+    # Summon bread and leave it on the ground for someone else.
+    #
+    # @param resources [Resources]
+    # @return [void]
+    def drop_bread(resources = Resources.new)
+      empty_hand
+      bread = summon_bread(resources)
+      if bread
+        3.times do
+          break unless Hands.holding?(bread)
+          fput "drop ##{bread.id}"
+          sleep 0.2
+        end
+      end
+      fill_hand
     end
   end
 end
