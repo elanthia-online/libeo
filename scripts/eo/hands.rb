@@ -103,7 +103,8 @@ module EO
     # Wear an item from a hand.
     #
     # @param item [GameObj]
-    # @return [Symbol] :worn, :cant, or :stuck (still in hand with no refusal)
+    # @return [Symbol] :worn, :cant (no item, or the game said it cannot be
+    #   worn), or :stuck (still in hand with no refusal)
     def wear(item)
       return :cant if item.nil? || item.name.to_s.empty? || item.name == 'Empty'
       line = EO.result("_drag ##{item.id} wear", /You can't wear that|^You/)
@@ -112,7 +113,9 @@ module EO
         break if line =~ /You can't wear that/
         sleep 0.1
       end
-      holding?(item) ? :stuck : :worn
+      return :worn unless holding?(item)
+
+      line =~ /You can't wear that/ ? :cant : :stuck
     end
 
     # Put an item into a container, up to five tries, opening the

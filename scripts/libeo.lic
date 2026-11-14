@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.0')
-    EO.require('0.52.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
+    EO.require('0.52.1')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.52.0
+       version: 0.52.1
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.52.1 (2026-11-14)
+    - fix: EO::Hands.wear answers :cant when the game says the item cannot be worn; it
+      answered :stuck, which a caller takes for a fault
+    - fix: EO::Brooch ends its ANALYZE at the SYNTAX line; it waited five seconds on every
+      one for a prompt Lich strips
   v0.52.0 (2026-11-13)
     - EO.use, EO.forget, EO.helper, EO.helper?, EO.lines and EO::NoHelper are gone
       (eo/helpers.rb): no script lends the library a helper any more, and EO.command,

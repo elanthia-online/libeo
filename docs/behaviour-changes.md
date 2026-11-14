@@ -13,17 +13,17 @@ run in the game.**
 
 | Script | Upstream | Here |
 |---|---|---|
-| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.0 |
+| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.1 |
 | ebounty | PR #2579 (1.13.0) | 1.16.0 |
 | ewaggle | PR #2580 (2.2.0) | 2.5.0 |
 | eherbs | PR #2587 (2.3.0) | 2.6.0 |
 | ecleanse | PR #2588 (2.4.0) | 2.7.0 |
-| echild | main (1.20.4) | 1.23.0 |
+| echild | main (1.20.4) | 1.23.1 |
 | escortgo2 | main (1.0.5) | 1.3.0 |
 | ewander | main (2.0.1) | 2.3.0 |
 
 The upstream side of the first five is the open WebUI pull request for each,
-since that is the version these were built from. The library is libeo 0.52.0.
+since that is the version these were built from. The library is libeo 0.52.1.
 
 `EO::Brooch`, `EO::Chain`, `EO::Carry` and the coordination files are new and no
 script upstream had them; they are not listed here.
@@ -194,9 +194,13 @@ These recur; the script tables do not repeat the detail.
 | 58 | `sell_item` no longer raises with no breakdown data | fix |
 | 59 | `look on #table` at the locksmith is hidden | message |
 | 60 | Three locksmith table errors collapsed into one | message |
+| 61 | `;eloot settings <key> ...` is matched before `pool` and `debug`: a setting or value with those words is saved, not run as a pool trip or a debug toggle | fix |
+| 62 | Selling a bundle of skins stops when a skin is left in hand, or after three unanswered BUNDLE REMOVE commands (upstream repeated without end) | rule |
+| 63 | A wear refused with "You can't wear that" returns `:cant` and the script goes on (upstream exited) | rule |
 
-The command-line dispatch is the same text. About 2,100 of the 2,250 lines in
-Sell are untouched.
+The command-line dispatch is the same text apart from row 61, which moves one
+branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
+untouched.
 
 ## ebounty
 
@@ -388,6 +392,7 @@ Every route of upstream's table is present with the same commands.
 | 11 | The reportee match is case-insensitive | rule |
 | 12 | A bad room argument falls back to the nearest dropoff | fix |
 | 13 | Messages; the hook renamed `_justice`; ties on mana cost by `min_by` | message |
+| 14 | A number inside an option (`--disabler=617`, `--test:owl2`) is not taken as the destination room | fix |
 
 ## ewander
 
@@ -402,3 +407,4 @@ Every route of upstream's table is present with the same commands.
 | 7 | Either Confluence step does not move when LOOK is not answered or shows no exits | fix |
 | 8 | Unknown current room: sleeps the delay | fix |
 | 9 | `target_random!` takes its room snapshot later | rule |
+| 10 | An exit whose scripted travel time is nil (closed by the map) is not stepped to; upstream's `is_a?(Proc)` did not match a StringProc, so it could step into one | fix |
