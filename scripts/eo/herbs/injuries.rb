@@ -16,29 +16,29 @@ module EO
       # How LOOK describes an escort's wounds, and the herbs each takes: a
       # major wound takes its herb and then the minor one, the worst twice.
       ESCORT = {
-        /severe head trauma and bleeding from the ears/                        => ['major head wound', 'major head wound', 'minor head wound'],
-        /minor lacerations about the head and a possible mild concussion/      => ['major head wound', 'minor head wound'],
-        /snapped bones and serious bleeding from the neck/                     => ['major head wound', 'major head wound', 'minor head wound'],
-        /moderate bleeding from (?:his|her) neck/                              => ['major head wound', 'minor head wound'],
-        /deep gashes and serious bleeding from (?:his|her) chest/              => ['major organ wound', 'major organ wound', 'minor organ wound'],
-        /deep lacerations across (?:his|her) chest/                            => ['major organ wound', 'minor organ wound'],
-        /deep gashes and serious bleeding from (?:his|her) abdomen/            => ['major organ wound', 'major organ wound', 'minor organ wound'],
-        /deep lacerations across (?:his|her) abdomen/                          => ['major organ wound', 'minor organ wound'],
-        /deep gashes and serious bleeding from (?:his|her) back/               => ['major organ wound', 'major organ wound', 'minor organ wound'],
-        /deep lacerations across (?:his|her) back/                             => ['major organ wound', 'minor organ wound'],
-        /a blinded (right|left) eye/                                           => ['major organ wound', 'major organ wound', 'minor organ wound'],
-        /a swollen (right|left) eye/                                           => ['major organ wound', 'minor organ wound'],
-        /a completely severed (right|left) leg|arm|hand/                       => ['major limb wound', 'major limb wound', 'minor limb wound'],
-        /a fractured and bleeding (right|left) leg|arm|hand/                   => ['major limb wound', 'minor limb wound'],
-        /a case of uncontrollable convulsions|a case of sporadic convulsions/  => ['major nerve wound', 'minor nerve wound'],
-        /minor bruises about the head/                                         => ['minor head wound'],
-        /minor bruises on (?:his|her) neck/                                    => ['minor head wound'],
-        /minor cuts and bruises on (?:his|her) chest/                          => ['minor organ wound'],
-        /minor cuts and bruises on (?:his|her) abdomen/                        => ['minor organ wound'],
-        /minor cuts and bruises on (?:his|her) back/                           => ['minor organ wound'],
-        /a bruised (right|left) eye/                                           => ['minor organ wound'],
-        /some minor cuts and bruises on (?:his|her) (right|left) leg|arm|hand/ => ['minor limb wound'],
-        /a strange case of muscle twitching/                                   => ['minor nerve wound']
+        /severe head trauma and bleeding from the ears/                            => ['major head wound', 'major head wound', 'minor head wound'],
+        /minor lacerations about the head and a possible mild concussion/          => ['major head wound', 'minor head wound'],
+        /snapped bones and serious bleeding from the neck/                         => ['major head wound', 'major head wound', 'minor head wound'],
+        /moderate bleeding from (?:his|her) neck/                                  => ['major head wound', 'minor head wound'],
+        /deep gashes and serious bleeding from (?:his|her) chest/                  => ['major organ wound', 'major organ wound', 'minor organ wound'],
+        /deep lacerations across (?:his|her) chest/                                => ['major organ wound', 'minor organ wound'],
+        /deep gashes and serious bleeding from (?:his|her) abdomen/                => ['major organ wound', 'major organ wound', 'minor organ wound'],
+        /deep lacerations across (?:his|her) abdomen/                              => ['major organ wound', 'minor organ wound'],
+        /deep gashes and serious bleeding from (?:his|her) back/                   => ['major organ wound', 'major organ wound', 'minor organ wound'],
+        /deep lacerations across (?:his|her) back/                                 => ['major organ wound', 'minor organ wound'],
+        /a blinded (right|left) eye/                                               => ['major organ wound', 'major organ wound', 'minor organ wound'],
+        /a swollen (right|left) eye/                                               => ['major organ wound', 'minor organ wound'],
+        /a completely severed (right|left) (?:leg|arm|hand)/                       => ['major limb wound', 'major limb wound', 'minor limb wound'],
+        /a fractured and bleeding (right|left) (?:leg|arm|hand)/                   => ['major limb wound', 'minor limb wound'],
+        /a case of uncontrollable convulsions|a case of sporadic convulsions/      => ['major nerve wound', 'minor nerve wound'],
+        /minor bruises about the head/                                             => ['minor head wound'],
+        /minor bruises on (?:his|her) neck/                                        => ['minor head wound'],
+        /minor cuts and bruises on (?:his|her) chest/                              => ['minor organ wound'],
+        /minor cuts and bruises on (?:his|her) abdomen/                            => ['minor organ wound'],
+        /minor cuts and bruises on (?:his|her) back/                               => ['minor organ wound'],
+        /a bruised (right|left) eye/                                               => ['minor organ wound'],
+        /some minor cuts and bruises on (?:his|her) (right|left) (?:leg|arm|hand)/ => ['minor limb wound'],
+        /a strange case of muscle twitching/                                       => ['minor nerve wound']
       }.freeze
 
       # The type of herb the character's condition calls for next: blood
@@ -108,7 +108,7 @@ module EO
               end
             end
           end
-          herb_type = 'severed limb' if herb_type.nil? && [::Scars.rightHand, ::Scars.rightArm, ::Scars.leftHand, ::Scars.rightHand].max == 3 && !skip.include?('limbs')
+          herb_type = 'severed limb' if herb_type.nil? && [::Scars.rightHand, ::Scars.rightArm, ::Scars.leftHand, ::Scars.leftArm].max == 3 && !skip.include?('limbs')
           herb_type = 'missing eye' if spellcast_only && herb_type.nil? && [::Scars.rightEye, ::Scars.leftEye].max == 3 && !skip.include?('torso')
           unless herb_type
             (FIGHTING_AREAS - skip).each do |area|
