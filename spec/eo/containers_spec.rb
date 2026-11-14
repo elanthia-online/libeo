@@ -31,6 +31,57 @@ RSpec.describe EO::Containers do
     end
   end
 
+  describe 'with the inventory feed' do
+    let(:fed) { Struct.new(:closed?, :locked?) }
+    let(:feed) { {} }
+
+    before do
+      items = feed
+      log = sent
+      stub_const('Lich::Common::Inventory', Class.new do
+        define_singleton_method(:refresh) { log << :refresh && items }
+        define_singleton_method(:[]) { |id| items[id] }
+        define_singleton_method(:last_updated) { Time.now }
+      end)
+    end
+
+    it 'sends an open container nothing, and a locked one nothing' do
+      feed['7'] = fed.new(false, false)
+      expect(described_class.ensure_open(bag)).to eq(:listed)
+      feed['7'] = fed.new(true, true)
+      expect(described_class.ensure_open(bag)).to eq(:locked)
+      expect(sent).to eq(%i[refresh refresh])
+    end
+
+    it 'opens a closed one, and does not look in' do
+      feed['7'] = fed.new(true, false)
+      listed!
+      expect(described_class.ensure_open(bag)).to eq(:opened)
+      expect(sent).to eq([:refresh, 'open #7'])
+    end
+
+    it 'goes on as before with a container the feed does not know' do
+      answers['look in #7'] = ['In the disk you see a ruby.']
+      expect(described_class.ensure_open(bag)).to eq(:opened)
+      expect(sent).to eq([:refresh, 'open #7', 'look in #7'])
+    end
+
+    it 'reads fresh contents from the feed, with no LOOK IN' do
+      feed['7'] = fed.new(false, false)
+      listed!(%w[ruby])
+      expect(described_class.fresh_contents(bag)).to eq(%w[ruby])
+      expect(sent).to eq([:refresh])
+    end
+
+    it 'says what the feed last heard of a container, without asking' do
+      feed['7'] = fed.new(true, false)
+      expect(described_class.feed?).to be(true)
+      expect(described_class.closed?(bag)).to be(true)
+      expect(described_class.closed?(bag_type.new('99', 'a disk', nil))).to be_nil
+      expect(sent).to be_empty
+    end
+  end
+
   describe '.ensure_open' do
     it 'leaves a listed container alone' do
       listed!

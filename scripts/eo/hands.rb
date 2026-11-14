@@ -56,7 +56,7 @@ module EO
     def holding?(obj)
       return false if obj.nil? || obj.id.nil?
 
-      [GameObj.right_hand.id, GameObj.left_hand.id].include?(obj.id)
+      Lich::Stash.in_hand?(obj)
     end
 
     # Make a hand free. Nothing is done when one already is and its arm can
@@ -88,7 +88,8 @@ module EO
     end
 
     # Take an item from a container or the ground into a hand that is
-    # already free, and wait to see it there.
+    # already free, and wait to see it there. The closed containers a
+    # carried item is inside are opened first.
     #
     # @param item [GameObj]
     # @param to [String] 'right' or 'left'
@@ -97,6 +98,8 @@ module EO
     #   after five seconds)
     def take(item, to)
       refused = Regexp.union(MISSING, OVERLOADED)
+      # a carried item in a closed container: Lich's Stash opens the way to it
+      Lich::Stash.open_path_to(item)
       line = EO.result("_drag ##{item.id} #{to}", Regexp.union(GET, refused))
 
       20.times do

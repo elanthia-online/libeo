@@ -57,3 +57,15 @@ RSpec.configure do |config|
     allow(EO).to receive_messages(stand: true, kneel: true) unless example.metadata[:posture]
   end
 end
+
+# Lich's Stash, as far as EO::Hands asks it: an item is in hand when a
+# hand has its id, and the way to an item is open. A spec about the way
+# stubs open_path_to itself.
+RSpec.configure do |config|
+  config.before do
+    stub_const('Lich::Stash', Class.new do
+      define_singleton_method(:in_hand?) { |item| [GameObj.right_hand&.id, GameObj.left_hand&.id].include?(item.id) }
+      define_singleton_method(:open_path_to) { |_item| true }
+    end)
+  end
+end
