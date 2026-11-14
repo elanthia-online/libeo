@@ -37,7 +37,7 @@
     - fix: EO::Casting.active_on answers nil when SPELL ACTIVE got no answer in time
     - fix: EO::Hands.take chooses the hand that is free and usable; with the right arm crippled
       it dragged to the right hand and waited five seconds
-    - fix: EO::Stow#make_room moves a box only into a bag the STOW list sends boxes to, not any
+    - fix: EO::Stow#make_room moves a box only into the box bag or an overflow bag, not any
       worn container with room
     - fix: EO::Skinning.tool answers nil when no weapon is listed and the right hand is empty
     - fix: a profile is written through a temporary file; one that cannot be read is moved

@@ -211,9 +211,9 @@ module EO
         box = boxes.select { |c| c.type.to_s =~ /\bbox\b/ && c.total_weight >= short }.min_by(&:total_weight)
         next unless box
 
-        # only a bag the STOW list sends this box to: a container kept for
-        # something else (always-at-hand things, say) is never filled
-        allowed = route(box).compact.map { |c| c.id.to_s }
+        # only the box bag and the overflow bags: a container kept for
+        # something else (always-at-hand things, the default bag) is never filled
+        allowed = [bags[:box], *overflow].compact.map { |c| c.id.to_s }
         target = containers.select { |c| allowed.include?(c.id.to_s) && c.id != bag.id }
                            .select { |c| room_in(c).to_f >= box.total_weight }.max_by { |c| room_in(c) }
         # the live objects: a snapshot's contents never change, so a put into one is never seen

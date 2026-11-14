@@ -193,6 +193,17 @@ RSpec.describe EO::Stow do
         expect(moved).to eq(['3'])
       end
 
+      it 'does not put a box in the default bag, which has room, when the overflow bag is the full one' do
+        snapshot.items['2'].space_left = 500
+        snapshot.items['2'].children = []
+        snapshot.items['3'].space_left = 10
+        snapshot.items['3'].children = [feed.new(id: '50', total_weight: 57, type: 'box', children: [], opaque?: true)]
+        live = { '2' => sack, '3' => third, '50' => big, '5' => obj.new(id: '5', name: 'belt pouch') }
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| live[id] } })
+        expect(stow.make_room(heavy)).to be_nil
+        expect(moved).to be_empty
+      end
+
       it 'moves nothing when it is the only one with room' do
         snapshot.items['3'].space_left = 10
         expect(stow.make_room(heavy)).to be_nil
