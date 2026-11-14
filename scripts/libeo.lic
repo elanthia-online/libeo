@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.39.0')
-    EO.require('0.39.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.40.0')
+    EO.require('0.40.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,17 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.39.0
+       version: 0.40.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.40.0 (2026-11-13)
+    - EO::Carry, new: capacity before encumbrance (capacity), what is carried (carried),
+      the room left (room) and the encumbrance it comes to (percent), from the formula
+      over Lich's stats, skills and spells, the inventory feed's weights, the worn
+      armor's difference from standard (identify_armor), and a correction learned from
+      the encumbrance bar (observe); the floating disk's limit (disk_limit, disk_items).
+      What is learned is kept in the character's libeo_carry profile (EO::Settings)
   v0.39.0 (2026-11-13)
     - EO::Settings, new to this library: a script's profile file, <data>/<game>/<character>/
       <script>.yaml (load_profile, save_profile, profile_path); every e-script's settings
@@ -281,7 +288,7 @@ parts = %w[
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
   guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
-  guild/disablers guild/rescue wander brooch chain
+  guild/disablers guild/rescue wander brooch chain carry
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
