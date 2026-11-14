@@ -23,6 +23,17 @@ game, and by eloot's own use of it once that has been tried.
 A pass is built from the bottom: a Context, then a Handler over it, then the Floor
 and the skinning pass with the Handler as their `hands`, then the Pass.
 
+## The short way
+
+```ruby
+pass = EO::Loot.build(EO::Settings.load_profile('eloot'), say: say, save: save)
+```
+
+`EO::Loot.build` wires everything below with libeo's standard hooks (`EO::Loot::Hooks`, copies of
+eloot's, held to eloot's by a spec) and finds what the character carries: the fossil charm, the
+eonake gauntlet, the blood band, the weapons for skinning and the disks. The rest of this page is
+for a caller that wants its own hooks.
+
 ## Putting it together
 
 A sketch, with the hooks left as what each must be (see below):

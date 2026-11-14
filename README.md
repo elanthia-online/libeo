@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.59.0')             the version the script was built against
+EO.require('0.60.0')             the version the script was built against
 ```
 
 ## What is in it
@@ -35,6 +35,7 @@ EO.require('0.59.0')             the version the script was built against
 | `eo/loot/floor.rb` | `EO::Loot::Floor`: the looting of a room, its boxes and its bags: coins, cursed items, orbs and keepers one by one, the ordinary items by LOOT ROOM or by hand, the boxes lying in a room, and the policy that says what is loot; each item goes through the caller's drag, so a full pack stays the caller's |
 | `eo/loot/pass.rb` | `EO::Loot::Pass`: one looting pass over a room a step at a time (start, step, finish, run): skin the dead, search them, loot the floor, give the hands back; a step ends with what it handled put away, and says :no_room when it could not |
 | `eo/loot/handler.rb` | `EO::Loot::Handler`: what a looting pass does with the hands and the bags (free a hand, draw an item, put it away, open the bags, give the hands back); it never pauses or ends the script, and answers :full, :no_default, :crippled or :overloaded for the caller to act on |
+| `eo/loot/hooks.rb` | `EO::Loot::Hooks` and `EO::Loot.build`: the standard hooks of a looting pass the way eloot has them (commands and their roundtime retries, the sell inventory, the disk, decurse, toss, unlootable, stance), what the character carries, and a pass ready to run for a script that is not eloot |
 | `eo/skinning.rb` | `EO::Skinning`: who needs a blunt tool, which dead to skin and with which tool, the tool drawn and put back, getting ready, the skinning and what it learned, standing up after |
 | `eo/skinning/pass.rb` | `EO::Skinning::Pass`: the skinning of a looting pass a tool group at a time (start, step, finish, run): which dead take which tool, the tool drawn and put away, what the game said cannot be skinned; the hands are free between steps |
 | `eo/selling.rb` | `EO::Selling`: sell one item at a shop: sold, refused or kept |
