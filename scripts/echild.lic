@@ -17,8 +17,13 @@
           game: Gemstone
           tags: escort, child, advguild, adventurer guild, guild
       required: Lich >= 5.22.0
-       version: 1.21.0
+       version: 1.22.0
 
+  2026-11-13 - 1.22.0
+    - settings live in the character's echild.yaml profile, so other scripts can read them
+      (EO::Settings.read(:echild)); the first run copies them from CharSettings and leaves
+      those as they were
+    - ;echild nodisable sticks: the setting was turned back on at every start
   2026-11-13 - 1.21.0
     - the disablers, finding the child and its home, the test for a room that is a danger
       to it, and the Maaghara roots come from libeo (EO::Guild::Disablers,
@@ -139,15 +144,17 @@ module EChild
   end
 
   Settings['untargetable'] ||= Array.new
-  CharSettings['min_mana'] ||= 0
-  CharSettings['use_disablers'] ||= true
-  CharSettings['custom_disabler'] ||= false
+  # This character's settings, in its echild.yaml profile (copied from CharSettings once)
+  char_settings = EO::Settings.store('echild', migrate: %w[min_mana use_disablers custom_disabler])
+  char_settings['min_mana'] ||= 0
+  char_settings['use_disablers'] = true if char_settings['use_disablers'].nil?
+  char_settings['custom_disabler'] ||= false
   stop_1011 = false
 
   if Script.current.vars[0] =~ /list|help/
-    echo "Current Disabler Usage: #{CharSettings['use_disablers']}"
-    echo "Current Minium mana to reserve: #{CharSettings['min_mana']}"
-    echo "Current Forced Disabler: #{CharSettings['custom_disabler']}"
+    echo "Current Disabler Usage: #{char_settings['use_disablers']}"
+    echo "Current Minium mana to reserve: #{char_settings['min_mana']}"
+    echo "Current Forced Disabler: #{char_settings['custom_disabler']}"
     echo "Current untargetables: #{Settings['untargetable'].join(', ')}"
     echo "To modify this list, use one of the following:"
     echo "   ;echild clear - clears entire untargetable list"
@@ -162,19 +169,19 @@ module EChild
     echo Settings['untargetable'].delete(Script.current.vars[2..-1].join(' '))
     exit
   elsif Script.current.vars[0] =~ /mana/
-    CharSettings['min_mana'] = Script.current.vars[2].to_i
-    echo "Minimum mana to reserve: #{CharSettings['min_mana']}"
+    char_settings['min_mana'] = Script.current.vars[2].to_i
+    echo "Minimum mana to reserve: #{char_settings['min_mana']}"
     exit
   elsif Script.current.vars[0] =~ /nodisable/
-    CharSettings['use_disablers'] = !CharSettings['use_disablers']
-    echo "Disablers Usage now set to #{CharSettings['use_disablers']}"
+    char_settings['use_disablers'] = !char_settings['use_disablers']
+    echo "Disablers Usage now set to #{char_settings['use_disablers']}"
     exit
   end
   if Script.current.vars[0] =~ /--disabler[:=](\d+|false|nil)\b/i
     if ['nil', 'false', '0'].include?($1)
-      CharSettings['custom_disabler'] = false
+      char_settings['custom_disabler'] = false
     else
-      CharSettings['custom_disabler'] = $1.to_i
+      char_settings['custom_disabler'] = $1.to_i
     end
   end
 
@@ -198,11 +205,11 @@ module EChild
   # disablers
   #------------------------------------------------------------------------------#
   best_disabler = lambda do |skip_can_cast = false|
-    EO::Guild::Disablers.best(min_mana: CharSettings['min_mana'], custom: CharSettings['custom_disabler'],
+    EO::Guild::Disablers.best(min_mana: char_settings['min_mana'], custom: char_settings['custom_disabler'],
                               untargetable: Settings['untargetable'], skip_can_cast: skip_can_cast)
   end
 
-  if CharSettings['use_disablers']
+  if char_settings['use_disablers']
     can_cast_disabler = !best_disabler.call(true).nil?
     echo "Note: No disablers known" if can_cast_disabler == false
   else
