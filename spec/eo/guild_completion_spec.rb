@@ -31,9 +31,33 @@ RSpec.describe EO::Guild::Completion do
       expect(text).to include('You have made contact with the child', '/\bchild\b/')
     end
 
+    it 'counts a bundle and the loose skins together, in one test' do
+      text = rule('You have been tasked to retrieve 5 kobold skins of at least fair quality.', bundle_skin: 'kobold skin', skin: 'kobold skin')
+      expect(text.scan('EBounty.data.remaining_skins').size).to eq(1)
+      expect(text).to include('elsif k.name =~ /kobold skin/i && !EBounty.data.skin.to_s.empty?; count += 1;end;')
+    end
+
+    it 'gives a rule that counts four in a bundle and one loose as five' do
+      text = rule('You have been tasked to retrieve 5 kobold skins of at least fair quality.', bundle_skin: 'kobold skin', skin: 'kobold skin')
+      clause = text[/ \|\| (!!\(count = 0;.*)\z/m, 1]
+      item = Struct.new(:id, :name)
+      bags = [Struct.new(:contents).new([item.new('2', 'bundle of kobold skin'), item.new('1', 'a kobold skin')])]
+      data = Struct.new(:containers, :bundle_skin, :skin, :remaining_skins, :complete_mind).new(bags, 'kobold skin', 'kobold skin', 5, 0)
+      stub_const('EBounty', Class.new { define_singleton_method(:data) { data } })
+      stub_const('Lich::Util', Class.new do
+        define_singleton_method(:quiet_command_xml) { |_cmd, _pattern| ['You glance through the bundle and count a total of 4 <a exist="2">skins</a>.'] }
+      end)
+      runner = Object.new
+      runner.instance_variable_set(:@CORRECT_PERCENT_MIND, 100)
+      runner.define_singleton_method(:hidden?) { false }
+      expect(runner.instance_eval(clause)).to be(true)
+      data.remaining_skins = 6
+      expect(runner.instance_eval(clause)).to be(false)
+    end
+
     it 'adds the skins counted, in a bundle or loose, for a skin task' do
       text = rule('You have been tasked to retrieve 5 kobold skins of at least fair quality.', bundle_skin: 'kobold skin', skin: 'kobold skin')
-      expect(text).to include('/bundle of kobold skin/', 'l.name =~ /kobold skin/i', 'count a total of (\d+) <a exist')
+      expect(text).to include('/bundle of kobold skin/', 'k.name =~ /kobold skin/i', 'count a total of (\d+) <a exist')
     end
 
     it 'adds the gems counted for a gem task' do
