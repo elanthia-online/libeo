@@ -83,8 +83,10 @@ module EO
     WHISPER_DONE = Regexp.union(WHISPER_ON, UNRESPONSIVE)
     # A rub's answer: the energy that took hold, a chaos rub's own energy
     # replaced by the orb it gave, or the brooch has no use left for this orb.
-    FLOWS = /^You trace the central orb of \w+ in your brooch and your fingertips begin to tingle as (\w+) energy flows into you\.  Within seconds, you feel .+ course through your veins\.$/
-    REPLACED = /^You trace the central orb of black in your brooch and your fingertips begin to tingle as chaotic energy flows into you\.  Within seconds, you feel .+ course through your veins, but it is fleeting as (\w+) energy soon replaces it and you feel .+ take hold\.$/
+    # A full moon adds a sentence to a rub's line.
+    FULL_MOON = /(?:  \w+'s full moon strengthens the power of the brooch\.)?/
+    FLOWS = /^You trace the central orb of \w+ in your brooch and your fingertips begin to tingle as (\w+) energy flows into you\.  Within seconds, you feel .+ course through your veins\.#{FULL_MOON}$/
+    REPLACED = /^You trace the central orb of black in your brooch and your fingertips begin to tingle as chaotic energy flows into you\.  Within seconds, you feel .+ course through your veins, but it is fleeting as (\w+) energy soon replaces it and you feel .+ take hold\.#{FULL_MOON}$/
     SPENT = /^The quintuple orb brooch ebbs weakly, but nothing further happens\.$/
     RUB = Regexp.union(FLOWS, REPLACED, SPENT)
     # ANALYZE's lines that say which orb the brooch is on (and, on chaos, the

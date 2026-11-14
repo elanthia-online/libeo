@@ -97,6 +97,18 @@ RSpec.describe EO::Brooch do
       end
     end
 
+    it 'reads the rub lines of a full moon night, which end with a sentence more' do
+      moon = "  Liabo's full moon strengthens the power of the brooch."
+      expect(rub_answer_for(RUB_SPIRIT + moon)).to eq(:spirit)
+      expect(rub_answer_for(RUB_CHAOS_PLANAR + moon)).to eq(:planar)
+      expect(RUB_ORDER + moon).to match(described_class::RUB)
+    end
+
+    def rub_answer_for(line)
+      allow(EO).to receive(:result).and_return(line)
+      described_class.rub
+    end
+
     it 'keeps a plain rub from being taken for a chaos one, and the reverse' do
       expect(RUB_SPIRIT).not_to match(described_class::REPLACED)
       expect(RUB_CHAOS_PLANAR).not_to match(described_class::FLOWS)
