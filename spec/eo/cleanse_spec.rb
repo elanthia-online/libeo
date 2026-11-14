@@ -7,6 +7,8 @@ require_relative '../../scripts/eo/cleanse/traps'
 require_relative '../../scripts/eo/cleanse/disarms'
 
 RSpec.describe EO::Cleanse do
+  include_context 'Lich mana'
+
   let(:spell_type) do
     Struct.new(:num, :known, :affordable, :casts, keyword_init: true) do
       def known? = known
@@ -50,15 +52,6 @@ RSpec.describe EO::Cleanse do
     expect(fputs).to eq(['target #7'] * 3)
   end
 
-  it 'pulses mana only for a known spell that cannot be afforded' do
-    described_class.mana_pulse(417)
-    book[417].known = true
-    described_class.mana_pulse(417)
-    book[417].affordable = false
-    described_class.mana_pulse(417)
-    expect(fputs).to eq(['mana pulse'])
-  end
-
   it 'remembers the latest bad targets, up to its size' do
     bad = described_class::BadTargets.new(2)
     %w[1 2 3].each { |id| bad << id }
@@ -75,14 +68,14 @@ RSpec.describe EO::Cleanse do
       stub_const('Char', Class.new { define_singleton_method(:stamina) { state[:stamina] } })
     end
 
-    it 'casts the spell at the hazard, after a mana pulse when it cannot be afforded' do
+    it 'casts the spell at the hazard when it can be afforded, asking for a mana pulse first' do
       spell = book[417]
       spell.known = true
       described_class.clear(web, spell)
       expect(spell.casts).to eq(['at #7'])
       spell.affordable = false
       described_class.clear(web, spell)
-      expect(fputs).to eq(['mana pulse'])
+      expect(pulses).to eq([417, 417])
       expect(spell.casts.size).to eq(1)
     end
 

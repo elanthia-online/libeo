@@ -81,6 +81,7 @@ end
 
 RSpec.describe EO::Cleanse::Afflictions do
   include_context 'a script lending helpers'
+  include_context 'Lich mana'
 
   let(:spell_type) do
     Struct.new(:num, :known, :affordable, :available, :active, :casts, keyword_init: true) do
@@ -208,6 +209,7 @@ end
 
 RSpec.describe EO::Cleanse::Recovery do
   include_context 'a script lending helpers'
+  include_context 'Lich mana'
 
   let(:thing) { Struct.new(:id, :name, :noun) }
   let(:hands) { { right: thing.new(nil, 'Empty', nil), left: thing.new(nil, 'Empty', nil) } }

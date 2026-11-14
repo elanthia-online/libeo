@@ -11,13 +11,6 @@ module EO
   module Items
     module_function
 
-    MANA_PULSE = Regexp.union(
-      /An invigorating rush of mana pulses through you/i,
-      /You are too mentally fatigued to attempt this ability/i,
-      /You're already at full mana./i,
-      /Your mana control skills are not yet advanced/i
-    )
-
     # @param obj [GameObj]
     # @return [Boolean] whether MARK has the item as unsellable
     def marked?(obj)
@@ -101,7 +94,7 @@ module EO
     # @return [Symbol] :lifted, :no_mana (315 is known and cannot be
     #   afforded), or :cannot
     def lift_curse(obj, gauntlet: nil)
-      dothistimeout 'mana pulse', 2, MANA_PULSE if Spell[315].known? && !Spell[315].affordable?
+      Lich::Gemstone::Mana.pulse(315)
 
       return :no_mana if Spell[315].known? && !Spell[315].affordable?
 

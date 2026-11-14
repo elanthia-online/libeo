@@ -34,13 +34,13 @@ module EO
         stop_213 = stop_1011 = false
 
         if Spell[213].known? && use_213
-          Cleanse.mana_pulse(213)
+          Lich::Gemstone::Mana.pulse(213)
           Spell[213].cast if Spell[213].affordable?
           stop_213 = true
         end
 
         if Spell[1011].known? && use_1011
-          Cleanse.mana_pulse(1011)
+          Lich::Gemstone::Mana.pulse(1011)
           Spell[1011].cast if Spell[1011].affordable?
           stop_1011 = true
         end
@@ -193,7 +193,7 @@ module EO
           if dispel.nil?
             fput "get #{item}"
           else
-            Cleanse.mana_pulse(dispel.num)
+            Lich::Gemstone::Mana.pulse(dispel.num)
             dispel.cast("at #{item}") if dispel.affordable?
           end
 
