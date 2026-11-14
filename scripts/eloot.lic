@@ -15,10 +15,20 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.16.0
+           version: 2.17.0
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.17.0 (2026-11-13)
+    - taking an item, wearing it, putting it in a bag, the READY list's STORE and READY, freeing
+      a hand, and opening a container and waiting on its contents come from libeo (EO::Hands,
+      EO::Containers)
+    - a carried bag is asked of Lich's inventory feed: an open one is sent nothing, a closed one
+      OPEN and no LOOK IN, a locked one nothing
+    - a take opens the closed containers a carried item is inside, and waits for the drag's own answer
+    - with both arms beyond use neither hand is emptied
+    - a bag is not put down as an auto-closer while the inventory feed is answering: there a
+      closed bag being listed proves nothing
   v2.16.0 (2026-11-13)
     - what eloot knows (the answers it reads, the names that are not loot, the loot categories)
       and its small single-purpose methods (towns and shops, phasing, marking, tossing, the
@@ -3590,25 +3600,7 @@ module ELoot # Inventory methods
     def self.container_contents(container, time: 3)
       ELoot.msg(type: "debug", text: "container: #{container.inspect}")
 
-      wait_time = time * 10 # check in tenth of a second increments
-      wait_time.times {
-        return true if GameObj.containers.keys.include?(container.id) && container.contents.is_a?(Array)
-        sleep 0.1
-      }
-      ELoot.msg(type: "info", text: "This failed the first time. Trying again. | Container: #{container.name} | GameObj.containers.keys: #{GameObj.containers.keys.include?(container.id)} | container.contents.is_a?: #{container.contents.is_a?(Array)} | caller: #{caller[0]}")
-
-      # still here? Try one more time, goofy things happen
-      lines = ELoot.get_command("look in ##{container.id}", ELoot.data.look_regex, silent: true, quiet: true)
-
-      wait_time.times {
-        return true if GameObj.containers.keys.include?(container.id) && container.contents.is_a?(Array)
-        return true if lines.any? { |l| l =~ /The wide leather belt|You glance|There is nothing|stuffed with a variety of shredded up paper and cloth|Looking at the .*?, you notice:/i }
-        sleep 0.1
-      }
-      ELoot.msg(type: "info", text: "This failed the second time. | Container: #{container.inspect} | caller: #{caller[0]}")
-      ELoot.msg(type: "info", text: " Unable to determine the contents of  #{container.name}.")
-
-      return false
+      EO::Containers.contents_ready?(container, seconds: time, from: caller[0])
     end
 
     # Determines if an item is a transmog (allows transferring its appearance onto another worn item).
@@ -3686,29 +3678,15 @@ module ELoot # Inventory methods
         Inventory.free_hands(left: true)
       end
 
-      line = ELoot.get_res("_drag ##{item.id} #{to}")
+      result = EO::Hands.take(item, to)
+      return true if result == :held
 
-      20.times {
-        return true if ELoot.in_hand?(item)
-        break if line =~ /Get what|I could not find what you were referring to|You are unable to handle the additional load/
-        sleep 0.1
-      }
-
-      # The first line back can be room chatter instead of the drag's reply, so give an
-      # unanswered drag as long as sell_item waits before calling it a miss
-      unless line =~ /Get what|I could not find what you were referring to|You are unable to handle the additional load/
-        30.times {
-          return true if ELoot.in_hand?(item)
-          sleep 0.1
-        }
-      end
-
-      if line =~ /You are unable to handle the additional load/
+      if result == :overloaded
         ELoot.msg(type: "yellow", text: " Unable to pick up the #{item.name}. Exiting...")
         exit
       end
 
-      if line =~ /Get what|I could not find what you were referring to/
+      if result == :missing
         StowList.stow_list.each_value do |bag_obj|
           Inventory.open_single_container(bag_obj)
         end
@@ -3730,17 +3708,11 @@ module ELoot # Inventory methods
 
       return false if item.nil? || item.empty? || item.name == "Empty"
 
-      line = ELoot.get_res("_drag ##{item.id} wear")
+      result = EO::Hands.wear(item)
+      return true if result == :worn
 
-      # Give it time to update and confirm action
-      20.times {
-        return true if !ELoot.in_hand?(item) && GameObj.inv.map(&:id).compact.include?(item.id)
-        break if line =~ /You can't wear that/
-        sleep 0.1
-      }
-
-      # Still here? Something is wrong, inform the player and exit.
-      if ELoot.in_hand?(item)
+      # Still in hand? Something is wrong, inform the player and exit.
+      if result == :stuck
         ELoot.msg(type: "warn", text: " Something is wrong. Unable to wear the #{item}. Exiting to avoid losing items.")
         ELoot.msg(type: "warn", text: " Please grab a short log of what just happened and post it to the scripting discord for debugging")
         exit
@@ -3748,26 +3720,11 @@ module ELoot # Inventory methods
     end
 
     def self.free_hand
-      right_usable = [Wounds.rightArm, Wounds.rightHand, Scars.rightArm, Scars.rightHand].max < 3
-      right_hand_free = GameObj.right_hand.id.nil? && right_usable
+      empty = ->(side) { Inventory.free_hands(side => true) }
+      return unless EO::Hands.free_hand(favor_left: ELoot.data.settings[:favor_left], empty: empty) == :crippled
 
-      left_usable = [Wounds.leftArm, Wounds.leftHand, Scars.leftArm, Scars.leftHand].max < 3
-      left_hand_free = GameObj.left_hand.id.nil? && left_usable
-      return if right_hand_free || left_hand_free
-
-      waitrt?
-
-      favor_left = ELoot.data.settings[:favor_left]
-      right_damaged = [Wounds.rightArm, Wounds.rightHand, Scars.rightArm, Scars.rightHand].max == 3
-
-      if (favor_left && left_usable) || right_damaged
-        Inventory.free_hands(left: true)
-      elsif right_usable
-        Inventory.free_hands(right: true)
-      else
-        ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
-        exit
-      end
+      ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
+      exit
     end
 
     def self.free_hands(right: false, left: false, both: false)
@@ -3841,15 +3798,8 @@ module ELoot # Inventory methods
         return
       end
 
-      # If it's in the game obj and contents.is_a?(Array) return
-      return if GameObj.containers.keys.include?(container.id) && container.contents.is_a?(Array)
-
-      # Still here? Assume the container is closed and open it
-      ELoot.get_command("open ##{container.id}", ELoot.data.silent_open, silent: true, quiet: true)
-
-      # check out whats inside
-      lines = ELoot.get_command("look in ##{container.id}", ELoot.data.look_regex, silent: true, quiet: true)
-      return if lines.any? { |l| l =~ /You glance|There is nothing|stuffed with a variety of shredded up paper and cloth|^Looking at the .*?, you notice:|^The .+? has .+? in its left-hand scabbard and .+? in its right-hand scabbard\.$/i }
+      # Open it if it is closed; one this opened is kept to close again later
+      return unless EO::Containers.ensure_open(container) == :opened
 
       ELoot.data.sell_containers.push(container) unless ELoot.data.sell_containers.include?(container)
     end
@@ -3877,17 +3827,7 @@ module ELoot # Inventory methods
       end
     end
 
-    def self.return_ready_list(ready_item, item)
-      return true if ReadyList.ready_list[ready_item.to_sym].nil?
-
-      10.times {
-        ELoot.get_res("ready #{ELoot.fix_item_key(ready_item.to_s)}", ELoot.data.get_regex)
-        sleep 0.2
-        return true if ELoot.in_hand?(item)
-      }
-
-      return false
-    end
+    def self.return_ready_list(ready_item, item) = EO::Hands.return_ready(ready_item, item)
 
     def self.single_drag(item, phase_thing = true, on_full: :pause) # drags single item into container
       ELoot.msg(type: "debug", text: "item: #{item.inspect} | on_full: #{on_full}")
@@ -4052,88 +3992,45 @@ module ELoot # Inventory methods
 
       pending_stow = ELoot.record_room_tool_stow(item, bag) if is_skinner
 
-      5.times do
-        lines = ELoot.get_command("_drag ##{item.id} ##{bag.id}", ELoot.data.put_regex)
+      # A bag that answers closed while Lich still lists it and its contents is an auto closer:
+      # one closed by hand drops out of GameObj.containers. Under the inventory feed every
+      # carried bag stays listed, closed or not, so there this says nothing.
+      closed = lambda do |closed_bag|
+        next if EO::Containers.feed?
+        next unless GameObj.containers.keys.include?(closed_bag.id) && closed_bag.contents.is_a?(Array)
 
-        if lines.any? { |l| l =~ /You can't.*?It's closed!/ }
-          if GameObj.containers.keys.include?(bag.id) && bag.contents.is_a?(Array)
-            # Must be an auto closer. Their ID and contents don't drop from GameObj.container when closed
-            ELoot.data.settings[:auto_close].push(bag.name)
-            ELoot.msg(type: "info", text: " #{bag.name} must be an autocloser, adding to list.")
-            ELoot.save_profile()
-          end
-          ELoot.get_res("open ##{bag.id}", ELoot.data.silent_open)
-          lines = ELoot.get_command("_drag ##{item.id} ##{bag.id}", ELoot.data.put_regex)
-        end
-
-        lines.each do |line|
-          return false if line.match?(/Hey, that belongs to/)
-          return true  if line.match?(/You are unable to handle|That is not yours|Get what|I could not find what you were referring/)
-        end
-
-        if lines.any? { |l| l =~ /put something that you can't hold/ }
-          ELoot.unlootable(item)
-          return true
-        end
-
-        # Check if full
-        if lines.any? { |l| l =~ /won't fit/i }
-          unless item.name =~ /gold ingot/
-            ELoot.msg(type: "debug", text: "sacks_full(#{bag.name}) - item: #{item.inspect}")
-            ELoot.data.sacks_full[bag.name] = [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, "#{item.name}(#{item.id})"]
-          end
-          return false
-        end
-
-        if lines.any? { |l| l =~ /crumbles? and decays? away|crumbles? into a pile of dust/i }
-          ELoot.msg(type: "info", text: " This item was crumbly, adding to list")
-          ELoot.data.settings[:crumbly].push(item.name)
-          ELoot.save_profile()
-          return true
-        end
-
-        Inventory.open_single_container(bag) unless bag.contents.is_a?(Array) || is_skinner
-
-        20.times do
-          return true if (!ELoot.in_hand?(item) && bag.contents.to_a.map(&:id).include?(item.id))
-
-          # Lousy weapon displayers don't have contents
-          if is_skinner
-            return true if !ELoot.in_hand?(item)
-          end
-          sleep 0.1
-        end
-
-        # Containers the game doesn't push updates for (disks) keep stale contents; refresh once before re-dragging
-        unless is_skinner || ELoot.in_hand?(item)
-          ELoot.get_command("look in ##{bag.id}", ELoot.data.look_regex, silent: true, quiet: true)
-          return true if bag.contents.to_a.map(&:id).include?(item.id)
-        end
-
-        waitrt?
+        ELoot.data.settings[:auto_close].push(closed_bag.name)
+        ELoot.msg(type: "info", text: " #{closed_bag.name} must be an autocloser, adding to list.")
+        ELoot.save_profile()
       end
 
-      # Give up and return false
-      return false
+      case EO::Hands.store(bag, item, loose: is_skinner, on_closed: closed, ensure_open: ->(sack) { Inventory.open_single_container(sack) })
+      when :stored, :gone
+        true
+      when :unlootable
+        ELoot.unlootable(item)
+        true
+      when :crumbled
+        ELoot.msg(type: "info", text: " This item was crumbly, adding to list")
+        ELoot.data.settings[:crumbly].push(item.name)
+        ELoot.save_profile()
+        true
+      when :full
+        unless item.name =~ /gold ingot/
+          ELoot.msg(type: "debug", text: "sacks_full(#{bag.name}) - item: #{item.inspect}")
+          ELoot.data.sacks_full[bag.name] = [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, "#{item.name}(#{item.id})"]
+        end
+        false
+      else
+        # not ours to take, or five tries without seeing it arrive
+        false
+      end
     ensure
       pending_stow[:settled] = true if pending_stow && !ELoot.in_hand?(item)
     end
 
     def self.stow_ready_list(ready_item, item)
-      return true if ReadyList.ready_list[ready_item.to_sym].nil?
-      if ReadyList.store_list[ready_item.to_sym] =~ /put in sheath/
-        Inventory.open_single_container(ReadyList.ready_list[:sheath])
-      elsif ReadyList.store_list[ready_item.to_sym] =~ /put in secondary/
-        Inventory.open_single_container(ReadyList.ready_list[:secondary_sheath])
-      end
-
-      10.times {
-        ELoot.get_res("store #{ELoot.fix_item_key(ready_item.to_s)}", ELoot.data.put_regex)
-        sleep 0.2
-        return true if !ELoot.in_hand?(item)
-      }
-
-      return false
+      EO::Hands.stow_ready(ready_item, item, ensure_open: ->(sheath) { Inventory.open_single_container(sheath) })
     end
   end # End of Inventory
 end

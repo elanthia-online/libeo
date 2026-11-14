@@ -84,7 +84,7 @@ left is its settings, its command line and its own flow.
 | `scripts/eherbs.lic` | 2.5.0 | `EO::Herbs`, `EO::Settings` |
 | `scripts/ebounty.lic` | 1.15.0 | `EO::Guild`, `EO::Settings` |
 | `scripts/ebounty.lic` | 1.14.0 | `EO::Guild` |
-| `scripts/eloot.lic` | 2.16.0 | `EO::Containers`, `EO::Hands`, `EO::Town`, `EO::Items`, `EO::Loot`, `EO::Skinning`, `EO::Selling`, `EO::Locksmith`, `EO::Locker`, `EO::Hoard` |
+| `scripts/eloot.lic` | 2.17.0 | `EO::Containers`, `EO::Hands`, `EO::Town`, `EO::Items`, `EO::Loot`, `EO::Skinning`, `EO::Selling`, `EO::Locksmith`, `EO::Locker`, `EO::Hoard` |
 | `scripts/echild.lic` | 1.22.0 | `EO::Guild::Rescue`, `EO::Guild::Disablers`, `EO::Settings` |
 
 `spec/scripts_spec.rb` checks that every `EO` method a script names is
