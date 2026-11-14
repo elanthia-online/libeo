@@ -122,6 +122,41 @@ RSpec.describe EO::Casting do
       expect(described_class.ready(spell, 3, resources(reserve: 100, source: :voln))).to eq(:no_favor)
     end
 
+    context 'with someone watching who is not of the Council' do
+      let(:sign) { spell(num: 9918) }
+      let(:rooms) { [] }
+
+      before do
+        the_sign = sign
+        seen = rooms
+        stub_const('Spell', Class.new { define_singleton_method(:[]) { |_num| the_sign } })
+        stub_const('Room', Class.new { define_singleton_method(:current) { Struct.new(:id, :tags).new(seen.size, []) } })
+        stub_const('Script', Class.new { define_singleton_method(:run) { |*args| seen << args } })
+        %i[invisible? hidden?].each { |m| described_class.define_singleton_method(m) { false } }
+        described_class.define_singleton_method(:checkpcs) { ['Someone'] }
+        allow(described_class).to receive(:safe_to_wrack?).and_return(false)
+        allow(described_class).to receive(:wander_step) { |visited| seen << visited }
+        char[:mana] = 0
+      end
+
+      after { %i[invisible? hidden? checkpcs].each { |m| described_class.singleton_class.remove_method(m) } }
+
+      it 'does not wrack, and waits for the mana or bails' do
+        expect(described_class.ready(spell, 3, resources(source: :wracking, bail: true))).to eq(:bail)
+        allow(described_class).to receive(:wait_until) { char[:mana] = 100 }
+        expect(described_class.ready(spell, 3, resources(source: :wracking))).to eq(:ready)
+        expect(sign.casts).to be_empty
+        expect(echoed).to eq(['waiting for mana: nowhere to wrack unseen...'] * 2)
+      end
+
+      it 'does not wrack after walking twenty rooms and finding nowhere, and comes back' do
+        expect(described_class.ready(spell, 3, resources(source: :wracking, bail: true, wander_to_wrack: true))).to eq(:bail)
+        expect(sign.casts).to be_empty
+        expect(rooms.size).to eq(21)
+        expect(rooms.last).to eq(['go2', '0 --disable-confirm', { quiet: true }])
+      end
+    end
+
     it 'wracks when alone, and bails when the sign cannot be afforded' do
       sign = spell(num: 9918)
       stub_const('Spell', Class.new { define_singleton_method(:[]) { |_num| sign } })
