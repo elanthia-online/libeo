@@ -21,7 +21,11 @@ ANALYZE = <<~TEXT.lines.map(&:chomp)
     Chaos: 1 out of 2
     Order: 2 out of 2
   The following verbs are available to use with it: rub, turn, tap, cover, tickle, spin, push, touch, and pull.
+  You may prod the brooch to turn off third-party messaging on mechanic-based verbs.
+  You may whisper to the brooch, in appropriate places, to change the orb.
   [SYNTAX: WHISPER {my} BROOCH [{CHAOS} or {ELEMENT} or {ORDER} or {PLANAR} or {SPIRIT}]
+  You can tell that the brooch is as light as it can get.
+  The brooch is restricted to this account.
 TEXT
 
 RSpec.describe EO::Brooch do
@@ -66,8 +70,24 @@ RSpec.describe EO::Brooch do
     end
   end
 
+  describe 'ANALYZE_START and ANALYZE_END' do
+    it 'match the first line and the restriction line of the real output, and no other line' do
+      expect(ANALYZE.grep(described_class::ANALYZE_START)).to eq([ANALYZE.first])
+      expect(ANALYZE.grep(described_class::ANALYZE_END)).to eq([ANALYZE.last])
+    end
+
+    it 'end on a brooch bound to a character as well as to an account' do
+      expect('The brooch is restricted to this character.').to match(described_class::ANALYZE_END)
+    end
+
+    it 'do not match a line that only contains the words' do
+      expect('You analyze the quintuple orb brooch and nothing happens').not_to match(described_class::ANALYZE_START)
+      expect('Someone says, "The brooch is restricted to this account."').not_to match(described_class::ANALYZE_END)
+    end
+  end
+
   describe '.analyze' do
-    it 'captures from the first line to the SYNTAX line, not to a prompt Lich strips' do
+    it 'captures from the first line to the restriction line, not to a prompt Lich strips' do
       expect(ANALYZE.first).to match(described_class::ANALYZE_START)
       expect(ANALYZE.last).to match(described_class::ANALYZE_END)
       util = class_double('Lich::Util').as_stubbed_const

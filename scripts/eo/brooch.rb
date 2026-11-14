@@ -50,8 +50,9 @@ module EO
 
     NOUN = /\bbrooch\b/
     NAME = /orb brooch/
-    ANALYZE_START = /You analyze .*brooch/
-    ANALYZE_END = /\[SYNTAX: WHISPER/
+    ANALYZE_START = /^You analyze the .*brooch and sense that the creator has provided the following information:$/
+    # ANALYZE's last line: the brooch is bound to an account or a character.
+    ANALYZE_END = /^The brooch is restricted to this \w+\.$/
     # "it is unresponsive" is the answer to a word WHISPER does not take.
     WHISPER_DONE = /is now attuned to the (\w+) ring|already centered on the (\w+) orb|it is unresponsive/
     # The brooch is on an orb: moved to that ring, or already on that colour.
@@ -92,10 +93,10 @@ module EO
       Status.new(current: current, chaos_gives: gives, uses: uses)
     end
 
-    # ANALYZE MY BROOCH's lines, from its first to the SYNTAX line. Lich
-    # strips the prompt from the text this reads, so no prompt ends the wait:
-    # without an end pattern it ran the full five seconds. The weight and
-    # account lines after SYNTAX are not read.
+    # ANALYZE MY BROOCH's lines, from its first to the line that says what the
+    # brooch is restricted to. Lich strips the prompt from the text this reads,
+    # so no prompt ends the wait: without an end pattern it ran the full five
+    # seconds. Ending sooner would leave the lines after it in the stream.
     #
     # @api private
     # @return [Array<String>]
