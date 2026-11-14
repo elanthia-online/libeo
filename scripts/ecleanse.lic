@@ -6,9 +6,13 @@
           game: Gemstone
           tags: dispel, unpoison, undisease, disarmed, effects
       required: Lich >= 5.22.0
-       version: 2.5.0
+       version: 2.6.0
 
   Improvements:
+  v2.6.0  (2026-11-13)
+    - the profile file is read and written through libeo (EO::Settings), so other scripts
+      can read ecleanse's settings (EO::Settings.read(:ecleanse)); the settings table's
+      lookups are libeo's too
   v2.5.0  (2026-11-13)
     - the acts themselves (hazards, hive traps, curing, getting out of stuns and webs, quieting
       a room, recovering a weapon) and the list of disarms come from libeo (EO::Cleanse);
@@ -263,6 +267,8 @@ module Ecleanse
   # Cancel or closing the window discards. The class also backs
   # ;ecleanse list, which works without the WebUI.
   class Setup
+    extend EO::Settings::Registry
+
     attr_accessor :settings
 
     # Lich keeps this class between runs in a session; start each run clean.
@@ -332,23 +338,7 @@ module Ecleanse
       }
     }
 
-    def self.available?
-      defined?(Lich::WebUI) && Lich::WebUI.respond_to?(:presentation_enabled?) && Lich::WebUI.presentation_enabled? &&
-        defined?(Lich::WebUI::SettingsForm) ? true : false
-    end
-
-    def self.get_category(key)
-      @@categories.each { |category, data| return category unless data[key].nil? }
-      nil
-    end
-
-    def self.get_setting(key)
-      cat = Setup.get_category(key)
-      return nil if cat.nil?
-
-      @@categories[cat].each { |setting, data| return data if setting == key }
-      nil
-    end
+    def self.available? = EO::Settings.available?
 
     def initialize(settings)
       @settings = settings
@@ -428,8 +418,7 @@ module Ecleanse
         Lich::Messaging.msg('plain', " Nothing to save. No changes were made.")
         respond
       else
-        filename = File.join(DATA_DIR, XMLData.game, Char.name, 'ecleanse.yaml')
-        File.write(filename, result.to_yaml)
+        filename = EO::Settings.save_profile('ecleanse', result)
         respond
         Lich::Messaging.msg('plain', " Settings saved to file: #{filename}.")
         respond
@@ -628,15 +617,7 @@ module Ecleanse
   end
 
   def self.load_profile
-    filename = File.join(DATA_DIR, XMLData.game, Char.name, 'ecleanse.yaml')
-
-    if File.exist?(filename)
-      settings_hash = YAML.load_file(filename)
-    else
-      settings_hash = Ecleanse.load_defaults
-    end
-
-    return settings_hash
+    EO::Settings.load_profile('ecleanse') || Ecleanse.load_defaults
   end
 end
 
