@@ -35,6 +35,35 @@ RSpec.describe 'the scripts' do
         expect(wanted).not_to be_nil
         expect(Gem::Version.new(wanted)).to be <= Gem::Version.new(EO::VERSION)
       end
+
+      it 'reloads libeo for the version it requires, not another' do
+        guard = code[/Script\.run\('libeo'\) if .*? < Gem::Version\.new\('([\d.]+)'\)/, 1]
+        expect(guard).to eq(code[/EO\.require\('([\d.]+)'\)/, 1])
+      end
+
+      it 'says in its header the libeo version it requires' do
+        needs = File.read(path)[/Needs libeo ([\d.]+)/, 1]
+        skip 'no "Needs libeo" line in the header' if needs.nil?
+        expect(needs).to eq(code[/EO\.require\('([\d.]+)'\)/, 1])
+      end
+
+      it 'is in the README with the version of its header' do
+        header = File.read(path)[/^\s*version:\s*([\d.]+)/, 1]
+        listed = File.read(File.join(root, '..', 'README.md'))[/`scripts\/#{Regexp.escape(name)}` \| ([\d.]+) \|/, 1]
+        expect(listed).to eq(header)
+      end
+    end
+  end
+
+  describe 'libeo.lic' do
+    let(:text) { File.read(File.join(root, 'libeo.lic')) }
+
+    it 'has the header version of the library' do
+      expect(text[/^\s*version:\s*([\d.]+)/, 1]).to eq(EO::VERSION)
+    end
+
+    it 'shows the library version in its loading example' do
+      expect(text.scan(/Gem::Version\.new\('([\d.]+)'\)|EO\.require\('([\d.]+)'\)/).flatten.compact.uniq).to eq([EO::VERSION])
     end
   end
 end
