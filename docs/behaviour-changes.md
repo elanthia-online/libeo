@@ -113,6 +113,7 @@ These recur; the script tables do not repeat the detail.
 | `;<script> settings`: errors reworded; a decimal value accepted | message + fix |
 | The setup class removes its old instance methods on each run | fix |
 | `EO.stand` and `EO.kneel`: five tries, where scripts tried until it worked | rule |
+| `EO.command` and `EO.result` send a command again only for the whole line "...wait N seconds." (the command did not run). Upstream also did for any "Roundtime: N sec." line, which a command that ran leaves after it, and so could send an action twice | fix |
 | `Lich::Gemstone::Mana.pulse`: `waitrt?` first, anchored patterns, 2 s | swap |
 | `Injured.able_to_cast?`: one rank-2 arm or hand now casts; eyes totalling 3 now block; rank-1 scars are ignored; sends `_injury` | swap |
 | `Stance.change('defensive')`: sends from guarded and under Frenzy; one attempt | swap |

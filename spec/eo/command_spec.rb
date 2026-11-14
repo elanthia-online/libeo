@@ -33,7 +33,7 @@ RSpec.describe 'EO.command and EO.result' do
   end
 
   it 'waits out a roundtime refusal and sends the command again' do
-    @answers = [['...wait 2 seconds.'], ['Roundtime: 3 sec.'], ['You glance through the sack.']]
+    @answers = [['...wait 2 seconds.'], ['...wait 1 seconds.'], ['You glance through the sack.']]
     expect(EO.command('look in #1', /glance/)).to eq(['You glance through the sack.'])
     expect(sent).to eq(['look in #1'] * 3)
     # each wait is a settle: its sleeps are where a script's guarded sleep comes in
@@ -41,10 +41,37 @@ RSpec.describe 'EO.command and EO.result' do
   end
 
   it 'does the same for a single-line result' do
-    @answers = [['Roundtime: 1 sec.'], ['You remove a sack.']]
+    @answers = [['...wait 1 seconds.'], ['You remove a sack.']]
     expect(EO.result('get #1', /You remove/)).to eq('You remove a sack.')
     expect(sent).to eq(['get #1', 'get #1'])
     expect(waits).to eq([0.2, :cast, :rt, 0.2])
+  end
+
+  it 'does not send a command again because it left a roundtime: that is what a command that ran does' do
+    @answers = [['You search the room.', 'Roundtime: 3 sec.']]
+    expect(EO.command('search', /search/)).to eq(['You search the room.', 'Roundtime: 3 sec.'])
+    expect(sent).to eq(['search'])
+    expect(waits).to be_empty
+  end
+
+  it 'keeps a roundtime line that is the whole answer, and does not send the command a second time' do
+    @answers = [['Roundtime: 3 sec.']]
+    expect(EO.result('rub my brooch', /Roundtime/)).to eq('Roundtime: 3 sec.')
+    expect(sent).to eq(['rub my brooch'])
+  end
+
+  describe 'EO::WAIT' do
+    it 'is the whole line the game gives while the character is in roundtime' do
+      expect('...wait 4 seconds.').to match(EO::WAIT)
+      expect('...wait 12 seconds.').to match(EO::WAIT)
+    end
+
+    it 'is not a roundtime line, nor those words inside other text' do
+      expect('Roundtime: 4 sec.').not_to match(EO::WAIT)
+      expect('Roundtime: Varies').not_to match(EO::WAIT)
+      expect('Someone says, "...wait 4 seconds."').not_to match(EO::WAIT)
+      expect('...wait 4 seconds. Then go.').not_to match(EO::WAIT)
+    end
   end
 
   it 'returns nil when a result never came' do
