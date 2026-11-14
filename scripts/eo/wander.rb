@@ -153,11 +153,13 @@ module EO
     # One step in GSIV's Elemental Confluence, learning where each exit
     # leads as it goes: first an exit not yet tried, then one to a room
     # not yet visited, then to the room visited longest ago. What was
-    # learned is thrown away when a room's exits have changed.
+    # learned is thrown away when a room's exits have changed. The step
+    # is started over when the room shifts under it, ten times at most.
     #
     # @return [void]
     def wander_gsiv_confluence!
       $mapdb_confluence_wayto ||= {}
+      restarts = 0
 
       begin
         start_room = Room.current
@@ -189,8 +191,8 @@ module EO
           status_tags
           look_result = dothistimeout('look', 5, /<compass>/)
           status_tags
-          options = look_result.scan(/<dir value="(.*?)"/).flatten
-          move(options.sample)
+          options = look_result.to_s.scan(/<dir value="(.*?)"/).flatten
+          move(options.sample) unless options.empty?
         else
           end_room = Room.current
           wander_rooms.delete(end_room.id)
@@ -199,7 +201,7 @@ module EO
           track_confluence_landmarks!(end_room)
         end
       rescue
-        retry
+        retry if (restarts += 1) <= 10
       end
     end
 
@@ -231,9 +233,9 @@ module EO
       if result == false
         status_tags
         look_result = dothistimeout('look', 5, /<compass>/)
-        options = look_result.scan(/<dir value="(.*?)"/).flatten
+        options = look_result.to_s.scan(/<dir value="(.*?)"/).flatten
         $mapdb_confluence_last_dir = options.sample
-        move($mapdb_confluence_last_dir)
+        move($mapdb_confluence_last_dir) unless options.empty?
       end
     end
 
