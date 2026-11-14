@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'date'
+
 module EO
   # The game's day: the date in US Eastern time, where daily counts reset
   # at midnight. Worked out from the daylight-saving rule (second Sunday of
@@ -9,10 +11,28 @@ module EO
   # @return [String] "2026-11-13"
   def self.eastern_day(now = Time.now)
     utc = now.getutc
+    (utc - ((eastern_daylight?(utc) ? 4 : 5) * 3600)).strftime('%Y-%m-%d')
+  end
+
+  # @param utc [Time] a moment, in UTC
+  # @return [Boolean] whether US Eastern time is on daylight saving then
+  def self.eastern_daylight?(utc)
     sunday = ->(month, nth) { 1 + ((7 - Time.utc(utc.year, month, 1).wday) % 7) + (7 * (nth - 1)) }
     # 2:00 standard is 07:00 UTC; 2:00 daylight is 06:00 UTC
-    daylight = utc >= Time.utc(utc.year, 3, sunday.call(3, 2), 7) && utc < Time.utc(utc.year, 11, sunday.call(11, 1), 6)
-    (utc - ((daylight ? 4 : 5) * 3600)).strftime('%Y-%m-%d')
+    utc >= Time.utc(utc.year, 3, sunday.call(3, 2), 7) && utc < Time.utc(utc.year, 11, sunday.call(11, 1), 6)
+  end
+
+  # A time the game printed in US Eastern ("Tue Feb 10 20:30:45 2026", the
+  # zone word already taken off), as the moment it is whatever zone this
+  # machine is in. The hour the clocks go back is read as daylight time.
+  #
+  # @param text [String]
+  # @return [Time]
+  def self.parse_eastern(text)
+    parts = Date._parse(text)
+    wall = Time.utc(parts[:year], parts[:mon], parts[:mday], parts[:hour] || 0, parts[:min] || 0, parts[:sec] || 0)
+    daylight = wall + (4 * 3600)
+    eastern_daylight?(daylight) ? daylight : wall + (5 * 3600)
   end
 
   # The quintuple orb brooch, a Rings of Lumnis prize: five orbs, each with
