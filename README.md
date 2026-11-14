@@ -6,8 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.51.0')             the version the script was built against
-EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
+EO.require('0.52.0')             the version the script was built against
 ```
 
 ## What is in it
@@ -15,13 +14,11 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | File | What it holds |
 |---|---|
 | `eo/version.rb` | `EO.require` and `EO.version`, the version gate |
-| `eo/command.rb` | `EO.command`, `EO.result`, `EO.settle`, `EO.stand`: a command and its answer, sent again after roundtime; waiting roundtime out; standing up |
+| `eo/command.rb` | `EO.command`, `EO.result`, `EO.settle`, `EO.stand`, `EO.kneel`: a command and its answer, sent again after roundtime; waiting roundtime out; standing up and kneeling down, a few tries at most |
 | `eo/messages.rb` | `EO.say`, `EO.word_wrap`: a message in one of Lich's colours |
 | `eo/travel.rb` | `EO.go2`, `EO.at?`, `EO.nearest`, `EO.visit`, `EO.wander`, `EO.room_id`, `EO.fwi?`, `EO.fog_wanted?`: walking and where the character is |
 | `eo/scripts.rb` | `EO.run_scripts`, `EO.split_script`: running a list of scripts with their arguments |
 | `eo/help.rb` | `EO.help`: a script's table of commands |
-| `eo/helpers.rb` | `EO.use`: a script that still has its own command, wait, walk or message helper lends it, and it is used in place of the library's while that script runs; `EO.lines` |
-| `eo/posture.rb` | `EO.kneel`: kneeling down, a few tries at most |
 | `eo/settings.rb` | `EO::Settings`: a script's profile file (`load_profile`, `save_profile`), every e-script's settings held for the others to read (`read`), a profile used like CharSettings (`store`), whether Lich can open a setup window (`available?`) |
 | `eo/settings/words.rb` | `EO::Settings`: changing one setting from the command line (`update_from_words`, `coerce`, `setting_name`) |
 | `eo/settings/table.rb` | `EO::Settings::Registry` and `Listing`: a script's table of settings by category, with defaults, and its printed listing |
