@@ -77,7 +77,7 @@ left is its settings, its command line and its own flow.
 
 | Script | Version | What it asks of the library |
 |---|---|---|
-| `scripts/ewander.lic` | 2.1.0 | `EO::Wander` |
+| `scripts/ewander.lic` | 2.2.0 | `EO::Wander`, `EO::Settings` |
 
 `spec/scripts_spec.rb` checks that every `EO` method a script names is
 one the library has. The installer does not copy the scripts; they are
