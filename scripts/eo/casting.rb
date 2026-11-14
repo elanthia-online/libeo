@@ -139,7 +139,8 @@ module EO
     # Make mana with Sign of Wracking. It is cast where nobody who is not
     # of the Council can see: hidden or invisible, alone, or among those who
     # answer the sign of recognition; else, when the resources allow it,
-    # after walking up to twenty rooms to find such a place, and back.
+    # after walking up to twenty rooms to find such a place, and back. With
+    # nowhere to cast it unseen, the mana is waited for.
     #
     # @api private
     def wrack(spell, n, cost, resources)
@@ -152,18 +153,29 @@ module EO
         if sign_of_wracking.affordable? && !punishment.active?
           if (invisible? || hidden? || !checkpcs || safe_to_wrack?) && !Room.current.tags.include?('no-magic')
             sign_of_wracking.cast if sign_of_wracking.affordable? && !punishment.active?
-          elsif resources.wander_to_wrack
-            visited = []
-            start_room = Room.current
+          else
+            unseen = false
+            if resources.wander_to_wrack
+              visited = []
+              start_room = Room.current
 
-            20.times do
-              break if safe_to_wrack? && !Room.current.tags.include?('no-magic')
-              wander_step(visited)
+              20.times do
+                break if (unseen = safe_to_wrack? && !Room.current.tags.include?('no-magic'))
+
+                wander_step(visited)
+              end
+
+              sign_of_wracking.cast if unseen && sign_of_wracking.affordable? && !punishment.active?
+
+              Script.run('go2', "#{start_room.id} --disable-confirm", { quiet: true }) unless start_room.id == Room.current.id
             end
 
-            sign_of_wracking.cast if sign_of_wracking.affordable? && !punishment.active?
+            unless unseen
+              echo 'waiting for mana: nowhere to wrack unseen...'
+              return :bail if resources.bail
 
-            Script.run('go2', "#{start_room.id} --disable-confirm", { quiet: true }) unless start_room.id == Room.current.id
+              wait_until { mana_for?(spell, n, cost) }
+            end
           end
         else
           fput 'release' unless checkprep == 'None'
