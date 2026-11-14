@@ -4883,7 +4883,8 @@ module ELoot # Room looting
 
       skinner = EO::Skinning.tool(ReadyList.ready_list, blunt: blunt)
       if skinner.nil?
-        ELoot.msg(type: "info", text: " No blunt weapon found. Please run setup and make sure it's listed.")
+        what = blunt ? "No blunt weapon found" : "No edged skinning weapon found and nothing in your right hand"
+        ELoot.msg(type: "info", text: " #{what}. Please run setup and make sure it's listed.")
         return
       elsif ReadyList.ready_list[weapon_key.to_sym].to_s.empty?
         ELoot.msg(type: "info", text: " No edged skinning weapon found. Using your right hand.")
