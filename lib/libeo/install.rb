@@ -119,10 +119,19 @@ module LibEO
     end
 
     # @param lich_dir [String] a Lich directory
-    # @return [Hash, nil] the manifest of what is installed there
+    # @return [Hash, nil] the manifest of what is installed there, nil when
+    #   there is none
+    # @raise [Error] when the file is cut short or is not a manifest
     def manifest(lich_dir)
       path = File.join(lich_dir, 'scripts', MANIFEST)
-      File.file?(path) ? JSON.parse(File.read(path)) : nil
+      return nil unless File.file?(path)
+
+      record = JSON.parse(File.read(path))
+      return record if record.is_a?(Hash) && record['files'].is_a?(Hash)
+
+      raise Error, "#{path} is incomplete; libeo install writes it again"
+    rescue JSON::ParserError
+      raise Error, "#{path} is unreadable; libeo install writes it again"
     end
 
     # Copy the gem's scripts into Lich, replacing an earlier install.
@@ -135,18 +144,44 @@ module LibEO
 
       scripts = File.join(lich_dir, 'scripts')
       files = payload_files(root)
-      stale = (manifest(lich_dir)&.fetch('files', {})&.keys || []) - files
-      stale.each { |rel| FileUtils.rm_f(File.join(scripts, rel)) }
+      stale = (recorded_files(lich_dir) || []) - files
       digests = files.to_h do |rel|
         target = File.join(scripts, rel)
         FileUtils.mkdir_p(File.dirname(target))
         FileUtils.cp(File.join(root, rel), target)
         [rel, Digest::SHA256.file(target).hexdigest]
       end
+      # only once every file is in place: a copy that fails leaves the old
+      # install, and its manifest, as they were
+      stale.each { |rel| FileUtils.rm_f(File.join(scripts, rel)) }
       prune(scripts, stale)
       record = { 'version' => version(root), 'files' => digests }
-      File.write(File.join(scripts, MANIFEST), JSON.pretty_generate(record))
+      write_manifest(File.join(scripts, MANIFEST), JSON.pretty_generate(record))
       { version: record['version'], copied: files, removed: stale }
+    end
+
+    # The files an earlier install recorded. A manifest that cannot be read
+    # is no record: install writes it again, saying so.
+    #
+    # @api private
+    # @return [Array<String>, nil]
+    def recorded_files(lich_dir)
+      manifest(lich_dir)&.fetch('files')&.keys
+    rescue Error => e
+      warn "warning: #{e.message}"
+      nil
+    end
+
+    # Write the manifest through a temporary file, so a crash leaves the old
+    # one whole.
+    #
+    # @api private
+    def write_manifest(path, text)
+      temp = "#{path}.tmp"
+      File.write(temp, text)
+      File.rename(temp, path)
+    ensure
+      FileUtils.rm_f(temp) if temp
     end
 
     # Remove exactly what the manifest says was installed.
