@@ -2,58 +2,72 @@
 
 module EO
   module Herbs
-    # Healing with a herb: choosing one for a type from what the sack
-    # holds, the spells that make herbs work better, and eating or drinking it.
-    #
-    # Commands go through the running script's helpers (EO.use). The helpers
-    # this needs: result(text, pattern) answering one line, and wait().
+    # Healing with herbs: the character's own wounds from the sack, a dead
+    # player's by pouring potions, an escort client's by handing herbs
+    # over.
     module Heal
       module_function
 
-      # Every answer to eating or drinking a herb.
-      USED = /^You (?:manage to )?take a (?:bite|drink)|You eat your|You must pick the|Why don't you leave some for others|Using your/
-
-      # @param item [GameObj]
-      # @param type [String]
-      # @return [Boolean] whether the table has the item, by its name or
-      #   short name, as treating that type
-      def treats?(item, type)
-        Table::KNOWN.any? { |h| (h[:name] =~ /#{item.name}/ || h[:short_name] =~ /#{item.name}/) && h[:type] == type }
-      end
-
-      # A herb for a type already in a hand.
-      #
-      # @param type [String]
-      # @return [GameObj, nil]
-      def in_hand(type)
-        [GameObj.right_hand, GameObj.left_hand].find do |i|
-          Table::KNOWN.any? { |h| h[:type] == type && (h[:name] =~ /#{i.name}/ || h[:short_name] =~ /#{i.name}/) }
+      # The choices the driver's settings make. use_yaba: yabathilium first
+      # for blood. use_potions: potions before plants. no_get: eat from the
+      # sack without taking the herb out. blood_only: only health.
+      # spellcast_only / ranged_only: only what stops casting or shooting.
+      # buy_missing: go and buy a type the sack lacks (needs a buy proc).
+      Policy = Struct.new(:use_mending, :use1035, :use650, :use_yaba, :use_potions, :skip_scars, :blood_only,
+                          :no_get, :spellcast_only, :ranged_only, :buy_missing, keyword_init: true) do
+        def initialize(**opts)
+          defaults = members.to_h { |m| [m, false] }
+          super(**defaults.merge(opts))
         end
       end
 
-      # The herb to use for a type, from what the sack holds: yabathilium
-      # for blood when that is preferred, then something eaten or something
-      # drunk as preferred, then anything.
+      USE_RESULT = /^You (?:manage to )?take a (?:bite|drink)|You eat your|You must pick the|Why don't you leave some for others|Using your/
+
+      # What came of a healing run: :healed (nothing left to do that the
+      # sack can do), :enough (the game refused more from here),
+      # :must_take (no_get but the herb has to be picked up).
+      Result = Struct.new(:outcome, :missing, keyword_init: true)
+
+      # The herb in the sack for a type, by the policy's preferences.
       #
-      # @param contents [Hash{Symbol => Array<GameObj>}] the sack's contents by form
+      # @param contents [Hash{Symbol => Array<GameObj>}] from Sack#contents
       # @param type [String]
-      # @param use_yaba [Boolean] prefer yabathilium for blood
-      # @param use_potions [Boolean] prefer what is drunk to what is eaten
+      # @param policy [Policy]
       # @return [GameObj, nil]
-      def find(contents, type, use_yaba: false, use_potions: false)
-        if type == 'blood' && use_yaba
+      def find(contents, type, policy)
+        if type == 'blood' && policy.use_yaba
           yaba = contents[:all].find { |i| i.name =~ /yabathilium/ }
           return yaba if yaba
         end
-
-        herb = contents[use_potions ? :drinkable : :edible].find { |i| treats?(i, type) }
-        return herb if herb
-
-        contents[:all].find { |i| treats?(i, type) }
+        form = policy.use_potions ? :drinkable : :edible
+        contents[form].find { |i| Table.cures?(i.name, type) } || contents[:all].find { |i| Table.cures?(i.name, type) }
       end
 
-      # What to pass over from now on when no herb was found for a type:
-      # the areas it covers, so the next type is one that can be treated.
+      # The spells that make herbs work better: Sigil of Mending, Song of
+      # Tonis, the yierka aspect.
+      #
+      # @param policy [Policy]
+      # @return [void]
+      def cast_spells(policy)
+        if policy.use_mending && Spell[9713].known? && Spell[9713].affordable? && !Effects::Buffs.active?('Sigil of Mending')
+          waitcastrt?
+          Spell[9713].cast
+        end
+        if policy.use1035 && Spell[1035].known? && Spell[1035].affordable? && !Effects::Buffs.active?('Song of Tonis') && Lich::Gemstone::Injured.able_to_cast?
+          waitcastrt?
+          Spell[1035].cast
+        end
+        return unless policy.use650 && Lich::Gemstone::Injured.able_to_cast?
+        if Spell[650].known? && Spell[650].affordable? && !Spell[650].active? && !Effects::Buffs.active?('Aspect of the Yierka') && !Spell[9039].active?
+          waitcastrt?
+          multifput('prep 650', 'assume yierka')
+        elsif Spell[650].active? && !Effects::Buffs.active?('Aspect of the Yierka') && !Spell[9039].active? && checkmana > 25
+          waitcastrt?
+          fput 'assume yierka'
+        end
+      end
+
+      # The areas a missing herb type covers, so the next type is asked for.
       #
       # @param type [String]
       # @return [Array<String>]
@@ -67,56 +81,175 @@ module EO
         end
       end
 
-      # Cast what makes herbs work better: Sigil of Mending, Song of Tonis
-      # (1035), and the yierka's aspect (650).
+      # The wound type to treat next, nil when there is none (or, for
+      # blood only, health is close enough to full).
       #
-      # @param use_mending [Boolean]
-      # @param use1035 [Boolean]
-      # @param use650 [Boolean]
+      # @param policy [Policy]
+      # @param skip [Array<String>] types to pass over (the sack lacks them)
+      # @return [String, nil]
+      def next_type(policy, skip: [])
+        if policy.blood_only
+          return nil if skip.include?('blood') || (Char.health + 7) >= Char.max_health
+
+          return 'blood'
+        end
+
+        Injuries.next_type(skip: skip, skip_scars: policy.skip_scars, spellcast_only: policy.spellcast_only,
+                           ranged_only: policy.ranged_only)
+      end
+
+      # Put the herbs taken out earlier back in the sack before another is
+      # reached for: a hand stays free, and the weapon stays where it is.
+      #
+      # @param sack [Sack]
+      # @param used [Array<String>] ids of the herbs taken out
       # @return [void]
-      def cast_spells(use_mending:, use1035:, use650:)
-        if use_mending && Spell[9713].known? && Spell[9713].affordable? && !Effects::Buffs.active?('Sigil of Mending')
-          waitcastrt?
-          Spell[9713].cast
+      def put_back(sack, used)
+        [GameObj.right_hand, GameObj.left_hand].select { |i| i.id && used.include?(i.id) }.each { |herb| sack.put_back(herb) }
+      end
+
+      # One herb for the next wound: in hand, from the sack, or bought; the
+      # helper spells; then eaten or drunk. A driver with its own loop
+      # calls this between other work; use runs it to the end.
+      #
+      # @param sack [Sack]
+      # @param policy [Policy]
+      # @param skip [Array<String>] types the sack lacks; grown here
+      # @param used [Array<String>] ids of herbs taken out, for the driver to put back; grown here
+      # @param buy [Proc, nil] given a type, buys it and returns the item in hand, or nil
+      # @param before_sack [Proc, nil] run before the sack is reached for (a walk back to it)
+      # @return [Array(Symbol, String)] the outcome and the type: :done (nothing
+      #   to treat, type nil), :dosed, :missing (no herb for it; skipped from
+      #   now on), :must_take (no_get but the herb has to be picked up), or
+      #   :enough (the game refused more from here)
+      def dose(sack:, policy:, skip: [], used: [], buy: nil, before_sack: nil)
+        type = next_type(policy, skip: skip)
+        return [:done, nil] if type.nil?
+
+        drinkable = false
+        herb = [GameObj.right_hand, GameObj.left_hand].find { |i| Table.cures?(i.name, type) }
+        if herb.nil? && [Wounds.leftArm, Wounds.rightArm].min < 3
+          before_sack&.call
+          put_back(sack, used)
+          herb = find(sack.contents, type, policy)
+          drinkable = sack.take(herb) if herb && !(policy.no_get && !Table.drinkable?(herb.name))
+        end
+        if herb.nil? && buy && policy.buy_missing && !policy.blood_only && type !~ /poison|disease/
+          put_back(sack, used)
+          herb = buy.call(type)
+          drinkable = herb && Table.drinkable?(herb.name)
+        end
+        if herb.nil?
+          skip.concat(skip_for(type))
+          Lich::Messaging.msg('warn', "Missing herb for #{type}: #{Table.entries(type).map { |h| h[:name] }.join(', ')}")
+          return [:missing, type]
         end
 
-        if Spell[1035].known? && Spell[1035].affordable? && !Effects::Buffs.active?('Song of Tonis') && use1035 && Lich::Gemstone::Injured.able_to_cast?
-          waitcastrt?
-          Spell[1035].cast
-        end
-
-        return unless use650 && Lich::Gemstone::Injured.able_to_cast?
-
-        if Spell[650].known? && Spell[650].affordable? && !Spell[650].active? && !Effects::Buffs.active?('Aspect of the Yierka') && !Spell[9039].active?
-          waitcastrt?
-          multifput('prep 650', 'assume yierka')
-        elsif Spell[650].active? && !Effects::Buffs.active?('Aspect of the Yierka') && !Spell[9039].active? && checkmana > 25
-          waitcastrt?
-          fput 'assume yierka'
+        cast_spells(policy)
+        used << herb.id unless used.include?(herb.id)
+        command = if policy.no_get
+                    "eat #{herb.noun}"
+                  else
+                    drinkable || Table.drinkable?(herb.name) ? "drink my #{herb.noun}" : "eat my #{herb.noun}"
+                  end
+        result = EO.result(command, USE_RESULT)
+        # only roundtime stops the next herb; cast roundtime (the yierka, 650) does not
+        sleep 0.2
+        waitrt?
+        case result
+        when /You must pick the/ then [:must_take, type]
+        when /Why don't you leave some for others?/ then [:enough, type]
+        when nil then raise Guild::Error, 'no result for eating herbs'
+        else [:dosed, type]
         end
       end
 
-      # Eat or drink a herb, and wait out the roundtime.
+      # Heal the character from the sack until nothing it holds helps.
       #
-      # @param herb [GameObj]
-      # @param drinkable [Boolean] it is something drunk, as taking it out showed
-      # @param no_get [Boolean] eat it where it lies, without picking it up
-      # @return [Symbol] :used; :must_take (it has to be picked up);
-      #   :enough (the game will give no more from here); or :no_answer
-      def use(herb, drinkable: false, no_get: false)
-        command = if no_get
-                    "eat #{herb.noun}"
-                  else
-                    herb.name =~ Table::DRINKABLE || drinkable ? "drink my #{herb.noun}" : "eat my #{herb.noun}"
-                  end
-
-        result = EO.result(command, USED)
-        EO.settle
-        if result =~ /You must pick the/ then :must_take
-        elsif result =~ /Why don't you leave some for others?/ then :enough
-        elsif result.nil? then :no_answer
-        else :used
+      # @param (see #dose)
+      # @return [Result]
+      def use(sack:, policy:, used: [], buy: nil, before_sack: nil)
+        skip = []
+        missing = []
+        loop do
+          outcome, type = dose(sack: sack, policy: policy, skip: skip, used: used, buy: buy, before_sack: before_sack)
+          case outcome
+          when :done then break
+          when :missing then missing << type
+          when :must_take, :enough then return Result.new(outcome: outcome, missing: missing)
+          end
         end
+        Result.new(outcome: :healed, missing: missing)
+      end
+
+      # Heal a dead player by pouring potions on them, APPRAISE between.
+      #
+      # @param character [GameObj] the player
+      # @param sack [Sack]
+      # @param full [Boolean] the non-bleeding wounds and scars too
+      # @param used [Array<String>] ids taken out, grown here
+      # @return [Symbol] :done, :not_found, or :missing (a potion the sack lacks)
+      def deader(character, sack:, full: false, used: [])
+        return :done unless character.status =~ /dead/i
+        empty_right_hand
+        loop do
+          lines = EO.command("appraise #{character}", /Usage|^\s*You take a quick appraisal|^You also notice that|^You glance at/, silent: true, quiet: true)
+          return :not_found if lines.any? { |l| l =~ /Appraise what|Usage/ }
+          injuries = Injuries.appraise(lines, full: full)
+          return :done if injuries.empty?
+
+          short = false
+          injuries.each do |type|
+            herb = [GameObj.right_hand, GameObj.left_hand].find { |i| Table.cures?(i.name, type) && Table.drinkable?(i.name) }
+            if herb.nil?
+              put_back(sack, used)
+              herb = sack.contents[:drinkable].find { |i| Table.cures?(i.name, type) }
+              if herb
+                used << herb.id unless used.include?(herb.id)
+                result = dothistimeout("get ##{herb.id}", 5, Sack::GET)
+                raise Guild::Error, "timeout while trying to get herb (#{herb.name}, #{herb.id})" if result.nil? || result =~ /^Get what\?/
+                raise Guild::Error, 'no free hand to get the potion' if result =~ /^You need a free hand for that\./
+              end
+            end
+            if herb
+              item = [GameObj.right_hand, GameObj.left_hand].find { |i| i.noun == herb.noun }
+              dothistimeout("pour ##{item.id} in #{character}", 2, /you pour|and pour in a small amount/) if item
+            else
+              short = true
+            end
+          end
+          return :missing if short
+        end
+      end
+
+      # Hand an escort client the herbs for what LOOK shows.
+      #
+      # @param npc [GameObj] the client
+      # @param sack [Sack]
+      # @param used [Array<String>]
+      # @return [Symbol] :done, :fine (nothing wrong), :not_seen, or :timeout
+      def escort(npc, sack:, used: [])
+        sack.open
+        look = dothistimeout("look ##{npc.id}", 10, /^(?:She|He) appears to be in good shape\.|^(?:She|He) has|^I could not find what you were referring to\./)
+        return :timeout if look.nil?
+        return :not_seen if look =~ /^I could not find what you were referring to\./
+        return :fine if look =~ /^(?:She|He) appears to be in good shape\./
+
+        empty_right_hand
+        Injuries.escort_injuries(look).each do |type|
+          herb = [GameObj.right_hand, GameObj.left_hand].find { |i| Table.cures?(i.name, type) }
+          if herb.nil?
+            put_back(sack, used)
+            herb = sack.contents[:all].find { |i| Table::KNOWN.any? { |h| h[:name] == i.name && h[:type] == type } }
+            next if herb.nil?
+            used << herb.id unless used.include?(herb.id)
+            result = dothistimeout("get ##{herb.id}", 5, Sack::GET)
+            raise Guild::Error, "timeout while trying to get herb (#{herb.name}, #{herb.id})" if result.nil? || result =~ /^Get what\?/
+            raise Guild::Error, 'no free hand to get the herb' if result =~ /^You need a free hand for that\./
+          end
+          dothistimeout("give ##{npc.id}", 10, /accepts your .* hands it back to you|ignores your offer/)
+        end
+        :done
       end
     end
   end

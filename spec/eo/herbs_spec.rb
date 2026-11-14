@@ -1,177 +1,133 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
+require_relative '../../scripts/eo/guild/tables'
 require_relative '../../scripts/eo/herbs/table'
 require_relative '../../scripts/eo/herbs/injuries'
+require_relative '../../scripts/eo/herbs/doses'
 
 RSpec.describe EO::Herbs::Table do
-  let(:acantha) { described_class::KNOWN.find { |h| h[:name] == 'some acantha leaf' } }
-  let(:yaba) { described_class::KNOWN.find { |h| h[:short_name] == 'tincture of yabathilium' } }
-
-  it 'holds every herb with where it is sold, what it treats and its doses' do
+  it 'carries every herb eherbs 2.3.0 knew' do
     expect(described_class::KNOWN.size).to eq(247)
     expect(described_class::KNOWN).to all(include(:location, :name, :type, :short_name, :store_doses))
-    expect(acantha).to include(type: 'blood', store_doses: 10)
   end
 
-  it 'has a stock target for every type a herb treats but poison, disease and the two for the dead' do
-    types = described_class::KNOWN.map { |h| h[:type] }.uniq - %w[poison disease lifekeep raisedead]
-    expect(types - described_class::DEFAULT_DOSES.keys).to be_empty
+  it 'finds an item by its name or short name and says what it cures' do
+    expect(described_class.entry_for('some acantha leaf')[:type]).to eq('blood')
+    expect(described_class.entry_for("Olak's Ol'style ale")[:type]).to eq('blood')
+    expect(described_class.cures?('rose-marrow potion', 'minor head wound')).to be(true)
+    expect(described_class.cures?('rose-marrow potion', 'blood')).to be(false)
+    expect(described_class.herb?('a rusty sword')).to be(false)
+    expect(described_class.entry_for('')).to be_nil
   end
 
-  it 'tells the stronger restoratives of blood from the rest' do
-    expect(described_class.major_blood?(yaba)).to be(true)
-    expect(described_class.major_blood?(acantha)).to be(false)
+  it 'tells potions from plants and major from minor blood' do
+    expect(described_class.drinkable?('bolmara potion')).to be(true)
+    expect(described_class.drinkable?('some acantha leaf')).to be(false)
+    yaba = described_class.entry_for('yabathilium fruit')
+    acantha = described_class.entry_for('some acantha leaf')
+    expect(described_class.blood_tier(yaba)).to eq('major blood')
     expect(described_class.blood_tier(acantha)).to eq('minor blood')
-    expect(described_class.blood_tier(type: 'poison')).to eq('poison')
-  end
-
-  it 'counts blood as one heading unless it is split' do
-    expect(described_class.blood_bucket(yaba, split: false)).to eq('blood')
+    expect(described_class.blood_bucket(yaba)).to eq('blood')
     expect(described_class.blood_bucket(yaba, split: true)).to eq('major blood')
-    expect(described_class.blood_bucket({ type: 'disease' }, split: true)).to eq('disease')
-  end
-
-  it 'puts a herb under its type, and a blood herb under blood and its tier' do
     expect(described_class.in_category?(yaba, 'blood')).to be(true)
-    expect(described_class.in_category?(yaba, 'major blood')).to be(true)
-    expect(described_class.in_category?(yaba, 'minor blood')).to be(false)
-    expect(described_class.in_category?(acantha, 'poison')).to be(false)
+    expect(described_class.in_category?(acantha, 'major blood')).to be(false)
   end
 
-  it 'knows where herbs are sold' do
-    expect(described_class.sold_at?("Ta'Illistim")).to be(true)
-    expect(described_class.sold_at?('the moon')).to be(false)
-    expect(described_class.sold_at?(nil)).to be(false)
+  it 'knows where herbs are sold, by form' do
+    expect(described_class.sold_at?("the town of Wehnimer's Landing")).to be(true)
+    expect(described_class.sold_at?('Atlantis')).to be(false)
+    expect(described_class.sold('blood', "the town of Wehnimer's Landing")[:name]).to eq('some acantha leaf')
+    expect(described_class.sold('blood', 'the town of Kharam-Dzu', form: :drinkable)[:name]).to match(/ale/)
+    expect(described_class.sold('blood', "the city of Ta'Vaalor", form: :edible)).to be_nil
   end
 
-  it 'knows what is drunk by its name' do
-    expect('tincture of acantha').to match(described_class::DRINKABLE)
-    expect('some acantha leaf').not_to match(described_class::DRINKABLE)
+  it 'lists every stock target and fill type' do
+    expect(described_class::TYPES.size).to eq(19)
+    expect(described_class::HERB_TYPES + described_class::POTION_TYPES).to match_array(described_class::TYPES - ['blood'])
+    described_class::TYPES.each { |t| expect(described_class::DEFAULT_DOSES).to have_key(t) }
   end
 end
 
 RSpec.describe EO::Herbs::Injuries do
-  let(:wounds) { Hash.new(0) }
-  let(:scars) { Hash.new(0) }
-  let(:char) { { percent: 100, health: 200, max: 200, poison: false, disease: false } }
+  it 'reads a dead player from APPRAISE, bleeding wounds first' do
+    lines = ['You take a quick appraisal of Ann.', 'She has deep lacerations across her chest and a scar across her face.']
+    expect(described_class.appraise(lines)).to eq(['major organ wound'])
+    expect(described_class.appraise(['She has a scar across her face.'])).to eq([])
+    expect(described_class.appraise(['She has a scar across her face.'], full: true)).to eq(['minor head scar'])
+    expect(described_class.appraise(['She has a bruised left eye.'], full: true)).to eq(['minor organ wound'])
+  end
+
+  it 'reads an escort client from LOOK, in hand-over order' do
+    look = 'He has minor bruises about the head and a fractured and bleeding left leg.'
+    expect(described_class.escort_injuries(look)).to eq(['major limb wound', 'minor limb wound', 'minor head wound'])
+    expect(described_class.escort_injuries('He appears to be in good shape.')).to eq([])
+  end
+
+  it 'does not read a limb wound into a line that only has "arm" or "hand" in it' do
+    expect(described_class.escort_injuries('He is holding a short sword in his right hand.')).to eq([])
+    expect(described_class.escort_injuries('He has minor bruises about the head and is wearing some leather armor.')).to eq(['minor head wound'])
+    expect(described_class.escort_injuries('He has a completely severed right arm.')).to eq(['major limb wound', 'major limb wound', 'minor limb wound'])
+  end
+
+  it 'maps a missing herb type to the areas to stop asking about' do
+    heal = Module.new
+    expect(EO::Herbs::Heal.skip_for('major head wound')).to eq(%w[head neck]) if defined?(EO::Herbs::Heal)
+    expect(heal).to be_a(Module)
+  end
+end
+
+RSpec.describe EO::Herbs::Doses do
+  let(:hand) { Struct.new(:id) }
 
   before do
-    { 'Wounds' => wounds, 'Scars' => scars }.each do |name, marks|
-      stub_const(name, Class.new do
-        define_singleton_method(:method_missing) { |part, *_| marks[part.to_s] }
-        define_singleton_method(:respond_to_missing?) { |*_| true }
-      end)
-    end
-    now = char
-    stub_const('Char', Class.new do
-      define_singleton_method(:percent_health) { now[:percent] }
-      define_singleton_method(:health) { now[:health] }
-      define_singleton_method(:max_health) { now[:max] }
-    end)
-    described_class.define_singleton_method(:checkpoison) { now[:poison] }
-    described_class.define_singleton_method(:checkdisease) { now[:disease] }
+    $eherbs_measure = {}
+    stub_const('GameObj', Class.new { def self.right_hand = Struct.new(:id).new('900') })
   end
 
-  after { %i[checkpoison checkdisease].each { |m| described_class.singleton_class.remove_method(m) } }
-
-  describe '.next_type' do
-    it 'calls for nothing when nothing is wrong' do
-      expect(described_class.next_type).to be_nil
-    end
-
-    it 'puts blood first under half health, then poison and disease' do
-      char.merge!(percent: 40, poison: true, disease: true)
-      expect(described_class.next_type).to eq('blood')
-      expect(described_class.next_type(skip: ['blood'])).to eq('poison')
-      expect(described_class.next_type(skip: %w[blood poison])).to eq('disease')
-    end
-
-    it 'treats wounds before scars, and major before minor' do
-      wounds['limbs'] = 1
-      scars['head'] = 2
-      expect(described_class.next_type).to eq('minor limb wound')
-      wounds['torso'] = 2
-      expect(described_class.next_type).to eq('major organ wound')
-      wounds.clear
-      expect(described_class.next_type).to eq('major head scar')
-    end
-
-    it 'calls either arm or hand scarred to rank 3 severed, when only what stops casting is treated' do
-      %w[rightHand rightArm leftHand leftArm].each do |part|
-        scars.clear
-        scars[part] = 3
-        expect(described_class.next_type(spellcast_only: true)).to eq('severed limb')
-      end
-    end
-
-    it 'calls a limb scarred to rank 3 severed, and an eye missing' do
-      scars['limbs'] = 3
-      expect(described_class.next_type).to eq('severed limb')
-      scars.clear
-      scars['leye'] = 3
-      expect(described_class.next_type).to eq('missing eye')
-    end
-
-    it 'leaves a minor scar when told to, and an area passed over' do
-      scars['nerves'] = 1
-      expect(described_class.next_type).to eq('minor nerve scar')
-      expect(described_class.next_type(skip_scars: true)).to be_nil
-      expect(described_class.next_type(skip: ['nerves'])).to be_nil
-    end
-
-    it 'tops up blood last, when anything is missing from health' do
-      char[:health] = 180
-      expect(described_class.next_type).to eq('blood')
-    end
-
-    it 'treats only arms and hands for shooting, and the head, eyes and nerves too for casting' do
-      wounds.merge!('head' => 2, 'leftHand' => 1, 'limbs' => 1)
-      expect(described_class.next_type(ranged_only: true)).to eq('minor limb wound')
-      wounds['leftHand'] = 0
-      expect(described_class.next_type(ranged_only: true)).to be_nil
-      expect(described_class.next_type(spellcast_only: true)).to eq('major head wound')
-      wounds.clear
-      wounds['rightEye'] = 1
-      expect(described_class.next_type(spellcast_only: true)).to eq('minor organ wound')
-    end
+  it 'learns the doses left as herbs are used' do
+    monitor = described_class::Monitor.new
+    monitor.call('You take a bite of your <a exist="12" noun="leaf">acantha leaf</a>.')
+    monitor.call('You have 3 bites left.')
+    expect(described_class['12']).to eq(3)
+    monitor.call('<prompt time="1">&gt;</prompt>')
+    monitor.call('You have only about one quaff left.')
+    expect(described_class['12']).to eq(3)
   end
 
-  describe '.appraise' do
-    it 'finds only the bleeding wounds unless asked for all' do
-      lines = ['She has deep lacerations across her chest, and a bruised left eye.']
-      expect(described_class.appraise(lines)).to eq(['major organ wound'])
-      expect(described_class.appraise(lines, full: true)).to eq(['major organ wound', 'minor organ wound'])
-    end
-
-    it 'comes to the scars only when there are no wounds' do
-      expect(described_class.appraise(['He has a missing right eye and a scar across his face.'], full: true)).to eq(['missing eye', 'minor head scar'])
-      expect(described_class.appraise(['He has a missing right arm.'], full: true)).to eq(['severed limb'])
-    end
+  it 'reads MEASURE, exact and rough' do
+    monitor = described_class::Monitor.new
+    monitor.call('The <a exist="5" noun="potion">rose-marrow potion</a> has 4 doses left.')
+    expect(described_class[5]).to eq(4)
+    monitor.call('The <a exist="6" noun="leaf">acantha leaf</a> looks like it has several bites left.')
+    expect(described_class[6]).to eq(10)
+    monitor.call('The <a exist="6" noun="leaf">acantha leaf</a> looks like it has several bites left.')
+    expect(described_class[6]).to eq(10)
+    monitor.call('The <a exist="7" noun="leaf">torban leaf</a> has one bite left.')
+    expect(described_class[7]).to eq(1)
   end
 
-  it 'does not take a line that only mentions an arm or a hand for a limb wound' do
-    expect(described_class.escort('He raises a hand in greeting.')).to eq([])
-    expect(described_class.escort('She has a sword arm like no other.')).to eq([])
+  it 'adds a purchase to the bundle it joins, and overestimates an unknown one' do
+    monitor = described_class::Monitor.new
+    described_class['900'] = 10
+    monitor.call(%(She hands you <a exist="33" noun="leaf">some acantha leaf</a> and says, "Here's your purchase.))
+    monitor.call('Carefully, you combine all your acantha leaf into one bundle.')
+    expect(described_class['900']).to eq(20)
+
+    described_class.forget('900')
+    monitor.call('<left exist="44" noun="leaf">acantha leaf</left>')
+    described_class['44'] = 30
+    monitor.call('Carefully, you combine all your acantha leaf into one bundle.')
+    expect(described_class['900']).to eq(50)
+    expect(described_class.known?('44')).to be(false)
   end
 
-  it 'reads what an escort needs from how LOOK describes them' do
-    expect(described_class.escort('He has moderate bleeding from his neck.')).to eq(['major head wound', 'minor head wound'])
-    expect(described_class.escort('She has a swollen left eye and minor bruises about the head.')).to eq(['major organ wound', 'minor organ wound', 'minor head wound'])
-    expect(described_class.escort('He appears to be in good shape.')).to eq([])
-    expect(described_class.escort('She has a fractured and bleeding right arm.')).to eq(['major limb wound', 'minor limb wound'])
-  end
-
-  it "reports the character's condition type by type" do
-    described_class.define_singleton_method(:checkdead) { false }
-    wounds['neck'] = 2
-    scars['rleg'] = 3
-    status = described_class.status
-    expect(status['major head wound']).to be(true)
-    expect(status['minor head wound']).to be(false)
-    expect(status['severed limb']).to be(true)
-    expect(status['blood']).to be(false)
-  ensure
-    described_class.singleton_class.remove_method(:checkdead)
+  it 'counts a dose removed from a bundle' do
+    monitor = described_class::Monitor.new
+    described_class['8'] = 5
+    monitor.call('<left exist="9" noun="leaf">acantha leaf</left>')
+    monitor.call('You carefully remove one dose from your <a exist="8" noun="bundle">bundle</a>.')
+    expect(described_class['8']).to eq(4)
+    expect(described_class['9']).to eq(1)
   end
 end

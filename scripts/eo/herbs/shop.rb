@@ -2,211 +2,290 @@
 
 module EO
   module Herbs
-    # The herbalist: the menu, what on it treats a type, ordering and
-    # buying, what a thing costs, and bundling what the sack holds.
-    #
-    # Commands go through the running script's helpers (EO.use). The helper
-    # this needs: a lines helper, lines(text, pattern), answering the lines
-    # of a command sent quietly.
+    # The herbalist: the menu, prices, buying, bundling what was bought,
+    # and stocking a sack up to its dose targets.
     module Shop
       module_function
 
-      # What bundling by POUR takes: a potion or the like.
-      POURED = /potion|tincture|elixir|barrel|flagon|tea|soup/
-
-      # The shop's menu, from ORDER.
+      # ORDER, as a map of item name to menu number.
       #
-      # @return [Hash{String => String}] each item's name, without its
-      #   article, to its number on the menu
+      # @return [Hash{String => String}]
       def menu
-        lines = EO.lines('order', %r{<output class="mono"/>|<closeDialog id='dlgCustomize'/>})
-        menu = {}
+        lines = EO.command('order', %r{<output class="mono"/>|<closeDialog id='dlgCustomize'/>}, silent: true, quiet: true)
+        found = {}
         lines.each do |line|
-          line.scan(%r{<d.*?cmd=["']order ([0-9]+).*?>(.*?)</d>}).each do |item|
-            menu[item[1].sub(/^an? /, '')] = item[0]
-          end
+          line.scan(%r{<d.*?cmd=["']order ([0-9]+).*?>(.*?)</d>}).each { |number, name| found[name.sub(/^an? /, '')] = number }
         end
-        menu
+        found
       end
 
-      # The name on a menu of something that treats a type.
+      # Each type's price here, read once per herbalist room and kept by
+      # the driver.
       #
-      # @param menu [Hash{String => String}]
-      # @param type [String] a type, or a heading of blood
-      # @return [String, nil]
-      def on_menu(menu, type)
-        menu.keys.find { |name| Table::KNOWN.any? { |h| Table.in_category?(h, type) && (name == h[:name] || name == h[:short_name]) } }
-      end
-
-      # ORDER a number of an item, clearing both hands into the sack when
-      # the shop wants a free hand.
-      #
-      # @param amount [Integer]
-      # @param number [String] the item's number on the menu
-      # @param sack [GameObj] the herb sack
-      # @return [void]
-      def order(amount, number, sack)
-        order_result = dothistimeout "order #{amount} #{number}", 3, /^You will need a free hand|BUY/
-        return unless order_result =~ /You will need a free hand/
-
-        fput "put ##{GameObj.right_hand.id} in #{sack}"
-        fput "put ##{GameObj.left_hand.id} in #{sack}"
-      end
-
-      # BUY what was ordered. A herb the table knows that is then in a hand
-      # has its doses recorded.
-      #
-      # @return [Symbol] :sold, :no_silver, :no_hand, or :other
-      def buy
-        buy_result = dothistimeout 'buy', 3, /Sold for [0-9,]+ silver|^But you do not have enough silver!|You're going to need a free hand/
-        case buy_result
-        when /Sold for ([0-9,]+) silver/
-          item = [GameObj.right_hand, GameObj.left_hand].find { |obj| Table::KNOWN.any? { |herb| herb[:name] =~ /#{obj.name}/ || herb[:short_name] =~ /#{obj.name}/ } }
-          if item && (info = Table::KNOWN.find { |h| h[:name] == item.name })
-            $eherbs_measure[item.id] = info[:store_doses]
-          end
-          :sold
-        when /^But you do not have enough silver!/ then :no_silver
-        when /You're going to need a free hand/ then :no_hand
-        else :other
+      # @param menu [Hash] from .menu
+      # @return [Hash{String => Hash}] type to { cost:, name:, short_name: }
+      def prices(menu = self.menu)
+        found = {}
+        menu.each do |herb, number|
+          lines = EO.command("order #{number}", /You ask/, silent: true, quiet: true)
+          cost = lines.map { |s| s.scan(/\b([\d,]+)\s*(?:silver|silvers)\b/).flatten.first }.compact.first&.delete(',')&.to_i
+          info = Table::KNOWN.find { |h| (h[:name] =~ /#{Regexp.escape(herb)}/ || h[:short_name] =~ /#{Regexp.escape(herb)}/) && !h[:location].include?('Do Not Buy') }
+          next unless info
+          found[info[:type]] = { cost: cost, name: info[:name], short_name: info[:short_name] }
         end
+        found
       end
 
-      # What one item on the menu costs, asked by ordering it.
+      # Buy an herb of a category from the menu. The driver supplies the
+      # silver when the shop says there is not enough.
       #
-      # @param number [String] the item's number on the menu
-      # @return [Integer, nil]
-      def price(number)
-        lines = EO.lines("order #{number}", /You ask/)
-        lines.map { |string| string.scan(/\b([\d,]+)\s*(?:silver|silvers)\b/).flatten.first }.compact.first&.gsub(',', '')&.to_i
-      end
-
-      # The table's entry for a name on a menu, of those that are bought.
-      #
-      # @param name [String]
-      # @return [Hash, nil]
-      def entry_for(name)
-        Table::KNOWN.find { |h| (h[:name] =~ /#{name}/ || h[:short_name] =~ /#{name}/) && !h[:location].include?('Do Not Buy') }
-      end
-
-      # Where herbs are bought from here: this place when any are sold in
-      # it, else the nearest town.
-      #
-      # @return [String] a location, as the map names it
-      def location
-        here = Room.current.location
-        Table.sold_at?(here) ? here : Room[Room.current.find_nearest_by_tag('town')].location
-      end
-
-      # The herb sold at a place for a heading, of a form when one is asked for.
-      #
-      # @param category [String] a type, or a heading of blood
-      # @param location [String]
-      # @param form [String, nil] 'drinkable', 'edible', or nil for either
-      # @return [Hash, nil] the table's entry
-      def sold(category, location, form = nil)
-        Table::KNOWN.find do |h|
-          next false unless Table.in_category?(h, category) && h[:location].any? { |place| place =~ /#{location}/ }
-
-          case form
-          when 'drinkable' then h[:name] =~ Table::DRINKABLE
-          when 'edible' then h[:name] !~ Table::DRINKABLE
-          else true
-          end
-        end
-      end
-
-      # What the sack holds for a heading, of a form when one is asked for.
-      #
-      # @param contents [Hash{Symbol => Array<GameObj>}] the sack's contents by form
       # @param category [String]
-      # @param form [String, nil] 'drinkable', 'edible', or nil for either
-      # @return [Array<GameObj>]
-      def held(contents, category, form = nil)
-        named = lambda do |obj, h|
-          h[:name] =~ /#{obj.name}/ || h[:short_name] =~ /#{obj.name}/ || h[:short_name].include?(obj.name.sub('elixir', ''))
+      # @param amount [Integer]
+      # @param menu [Hash]
+      # @param sack [Sack] where full hands are emptied to
+      # @param more_silver [Proc, nil] fetches silver and returns to the shop; nil to give up
+      # @return [GameObj, nil] what is in the right hand after
+      # @raise [Guild::Error] when the menu has nothing for the category, or silver ran out
+      def buy(category, amount = 1, menu:, sack:, more_silver: nil)
+        name = menu.keys.find { |n| Table::KNOWN.any? { |h| Table.in_category?(h, category) && (n == h[:name] || n == h[:short_name]) } }
+        number = name && menu[name]
+        raise Guild::Error, "failed to find #{name || category} for #{category} in the menu (#{menu})" if number.nil?
+
+        order = dothistimeout("order #{amount} #{number}", 3, /^You will need a free hand|BUY/)
+        if order =~ /You will need a free hand/
+          fput "put ##{GameObj.right_hand.id} in ##{sack.id}" if checkright
+          fput "put ##{GameObj.left_hand.id} in ##{sack.id}" if checkleft
         end
-        case form
-        when 'drinkable'
-          contents[:drinkable].find_all { |obj| Table::KNOWN.find { |h| named.call(obj, h) && Table.in_category?(h, category) && h[:name] =~ Table::DRINKABLE } }
-        when 'edible'
-          contents[:edible].find_all { |obj| Table::KNOWN.find { |h| named.call(obj, h) && Table.in_category?(h, category) && h[:name] !~ Table::DRINKABLE } }
-        else
-          contents[:all].find_all { |obj| Table::KNOWN.find { |h| named.call(obj, h) && Table.in_category?(h, category) } }
+        result = dothistimeout('buy', 3, /Sold for [0-9,]+ silver|^But you do not have enough silver!|You're going to need a free hand/)
+        case result
+        when /Sold for ([0-9,]+) silver/
+          item = Sack.herb_in_hand
+          entry = item && Table::KNOWN.find { |h| h[:name] == item.name }
+          Doses[item.id] = entry[:store_doses] if item && entry
+        when /^But you do not have enough silver!/
+          raise Guild::Error, 'not enough silver for the herb' if more_silver.nil?
+          more_silver.call
+          return buy(category, amount, menu: menu, sack: sack, more_silver: nil)
+        when /You're going to need a free hand/
+          empty_hands
         end
+        checkright ? GameObj.right_hand : nil
       end
 
-      # @param items [Array<GameObj>]
-      # @return [Integer] the doses they are known to hold in all
-      def doses(items)
-        items.sum { |h| $eherbs_measure[h.id].to_i }
-      end
-
-      # Bundle what the sack holds: for each herb name, everything of it is
-      # brought together, by BUNDLE or by POUR for what is drunk; a bundle
-      # that fills up is measured and put back, and the next one started.
+      # Combine like herbs in the sack into bundles, and like potions by
+      # pouring, so they take less room.
       #
-      # @param sack [GameObj] the herb sack, its contents known
-      # @param herb [String, nil] one herb name, or nil for every herb
-      # @return [Symbol, nil] :enough when the game would give no more from
-      #   the sack, and the bundling stopped there
+      # @param sack [Sack]
+      # @param herb [String, nil] one herb name, or every known one
+      # @return [void]
       def bundle_all(sack, herb = nil)
-        herbs = herb.nil? ? Table::KNOWN.map { |item| item[:name] }.uniq : [herb]
-
-        ignore_list = []
-        herbs.each do |thing|
-          bundle = sack.contents.find_all { |item| item.full_name.lstrip =~ /#{thing}/ }
-          next if bundle.length <= 1
-
-          bundle = bundle[0]
+        return if sack.survival_kit
+        names = herb ? [herb] : Table::KNOWN.map { |e| e[:name] }.uniq
+        names = names.reject { |n| n =~ /\b#{Table::CANT_BUNDLE}$/ }
+        ignore = []
+        names.each do |thing|
+          matching = sack.obj.contents.to_a.select { |item| item.full_name.lstrip =~ /#{Regexp.escape(thing)}/ }
+          next if matching.length <= 1
+          bundle = matching.first
           full = false
-
-          return :enough if Sack.take(bundle) == :enough
-          ignore_list.push(bundle.id)
-
-          until (item = sack.contents.find { |h| h.full_name.lstrip =~ /#{thing}/ && !ignore_list.include?(h.id) }).nil?
+          sack.take(bundle)
+          ignore << bundle.id
+          while (item = sack.obj.contents.to_a.find { |h| h.full_name.lstrip =~ /#{Regexp.escape(thing)}/ && !ignore.include?(h.id) })
             unless bundle
               bundle = item
-              return :enough if Sack.take(item) == :enough
-              ignore_list.push(item.id)
+              sack.take(item)
+              ignore << item.id
               next
             end
-
-            return :enough if Sack.take(item) == :enough
-
-            if item.name =~ POURED
-              pour_result = nil
-              pour_result = dothis "pour ##{item.id} in ##{bundle.id}", /You have|You only|You can|twinkling/ until pour_result =~ /You can|twinkling/
-              full = true if pour_result =~ /You can/
+            sack.take(item)
+            if item.name =~ /potion|tincture|elixir|barrel|flagon|tea|soup/
+              result = nil
+              result = dothis("pour ##{item.id} in ##{bundle.id}", /You have|You only|You can|twinkling/) until result =~ /You can|twinkling/
+              full = true if result =~ /You can/
             else
-              bundle_result = dothis 'bundle', /Carefully|If you|Try as|You can't|That is not an herb you can bundle/i
-              if bundle_result =~ /If you/
+              result = dothis('bundle', /Carefully|If you|Try as|You can't|That is not an herb you can bundle/i)
+              if result =~ /If you/
                 full = true
-              elsif bundle_result =~ /Try as|You can't|That is not an herb you can bundle/
-                dothistimeout "measure ##{item.id}", 2, /^The .*? left/
-                Sack.put(item.id, sack.id)
-                ignore_list.push(item.id)
+              elsif result =~ /Try as|You can't|That is not an herb you can bundle/
+                dothistimeout("measure ##{item.id}", 2, /^The .*? left/)
+                sack.store(item)
+                ignore << item.id
               else
                 bundle = GameObj.right_hand
               end
             end
-
             if full
-              dothistimeout "measure ##{bundle.id}", 2, /^The .*? left/
-              Sack.put(bundle.id, sack.id)
+              dothistimeout("measure ##{bundle.id}", 2, /^The .*? left/)
+              sack.store(bundle)
               bundle = item
               full = false
             end
-
-            ignore_list.push(item.id)
+            ignore << item.id
           end
+          next unless bundle
+          dothistimeout("measure ##{bundle.id}", 2, /^The .*? left/)
+          sack.store(bundle)
+        end
+      end
 
-          if bundle
-            dothistimeout "measure ##{bundle.id}", 2, /^The .*? left/
-            Sack.put(bundle.id, sack.id)
+      # Combine what is in the two hands: pour like potions together,
+      # bundle like herbs.
+      #
+      # @return [Symbol] :poured, :bundled, :mismatch (the two herbs differ:
+      #   the character has changed areas), or :nothing
+      def bundle_hands
+        right = GameObj.right_hand
+        left = GameObj.left_hand
+        return :nothing if right.name.to_s.empty? || left.name.to_s.empty?
+        same = right.name.sub(right.noun, '').rstrip == left.name.sub(left.noun, '').rstrip
+        both_drink = Table.drinkable?(right.noun) && Table.drinkable?(left.noun)
+        both_eat = !Table.drinkable?(right.noun) && !Table.drinkable?(left.noun)
+        if same && both_drink
+          10.times do
+            break unless GameObj.right_hand.id == right.id || GameObj.left_hand.id == left.id
+            result = dothistimeout("pour ##{left.id} in ##{right.id}", 5, /^You carefully pour a little bit from your|^You can't pour|^I can't find that|^I could not find what you were referring to/)
+            if result =~ /^You can't pour any more in there without spilling it\./
+              Doses[right.id] = right.name =~ /barrel/ ? 10 : 7
+              break
+            end
+            break if GameObj.left_hand.name == 'Empty' || result =~ /^You can't pour|^I can't find that|^I could not find what you were referring to/
+          end
+          :poured
+        elsif same && both_eat
+          result = dothistimeout('bundle', 5, /^Carefully, you combine|^If you add anything more to this bundle|^You do not have anything to bundle!$|^You can't put .* together in a bundle!/)
+          if result =~ /^You can't put (.*)<a exist=.*noun=.*>(.*), and (.*)<a exist=.*noun=.*>(.*) together in a bundle!/
+            return :mismatch if Regexp.last_match(1) + Regexp.last_match(2) != Regexp.last_match(3) + Regexp.last_match(4)
+          end
+          :bundled
+        else
+          :nothing
+        end
+      end
+
+      # What the sack is short of, against its targets: for each category
+      # wanted, the doses held (measuring any item whose count is not yet
+      # known) against the target, and how many to buy here.
+      #
+      # @param sack [Sack]
+      # @param categories [Array<String>]
+      # @param targets [Hash{String => Integer}] doses to keep per category
+      # @param location [String] where to buy, as the map names it
+      # @param form [Symbol, nil] :drinkable, :edible, or nil for either (a kit stocks by form)
+      # @return [Array<Hash>] { category:, herb_name:, herb_list:, needed: }
+      def shopping_list(sack, categories, targets:, location:, form: nil)
+        form = nil unless sack.survival_kit
+        sack.kit_contents if sack.survival_kit
+        sack.obj.contents.to_a.each do |obj|
+          next unless Table::KNOWN.any? { |h| categories.any? { |c| Table.in_category?(h, c) } && (h[:name] == obj.name || h[:short_name] == obj.name) }
+          next if Doses.known?(obj.id)
+          dothistimeout("get ##{obj.id}", 10, Sack::GET)
+          dothistimeout("measure ##{obj.id}", 10, /^The .*? left/)
+          dothistimeout("put ##{obj.id} in ##{sack.id}", 10, Sack::PUT)
+        end
+        contents = sack.contents
+
+        list = []
+        categories.each do |category|
+          next if Table.sold(category, location, form: form).nil?
+          items = contents[form || :all].select do |obj|
+            Table::KNOWN.any? do |h|
+              (h[:name] =~ /#{Regexp.escape(obj.name)}/ || h[:short_name] =~ /#{Regexp.escape(obj.name)}/ || h[:short_name].include?(obj.name.sub('elixir', ''))) &&
+                Table.in_category?(h, category) &&
+                (form.nil? || (form == :drinkable) == Table.drinkable?(h[:name]))
+            end
+          end
+          held = items.sum { |h| Doses[h.id].to_i }
+          next unless held < targets[category].to_i
+          details = Table.sold(category, location)
+          if details.nil?
+            list << { category: category, herb_name: 'any', herb_list: ['missing'], needed: 2 }
+          else
+            needed = (targets[category].to_i - held) / details[:store_doses]
+            list << { category: category, herb_name: details[:short_name], herb_list: items, needed: needed } if items.empty? || needed >= 1
           end
         end
-        nil
+        list
+      end
+
+      # The silver a shopping list costs here, plus a tenth for luck.
+      #
+      # @param list [Array<Hash>]
+      # @param prices [Hash] from .prices
+      # @return [Integer]
+      # @raise [Guild::Error] for a category with no price
+      def cost(list, prices)
+        total = list.sum do |line|
+          key = ['minor blood', 'major blood'].include?(line[:category]) ? 'blood' : line[:category]
+          unit = prices.dig(key, :cost)
+          raise Guild::Error, "no price for #{line[:category]} (list #{list}, prices #{prices})" if unit.nil?
+          unit * line[:needed]
+        end
+        (total * 1.1).to_i
+      end
+
+      # Buy everything on a shopping list at the herbalist here, store and
+      # bundle it. The note paying for it rides in a hand between buys.
+      #
+      # @param list [Array<Hash>]
+      # @param sack [Sack]
+      # @param menu [Hash]
+      # @param location [String]
+      # @param form [Symbol, nil]
+      # @param note [GameObj, nil] the bank note, kept in hand while buying
+      # @param more_silver [Proc, nil] as .buy
+      # @return [void]
+      def buy_list(list, sack:, menu:, location:, form: nil, note: nil, more_silver: nil)
+        empty_hands
+        bundle_all(sack)
+        sack.take(note) if note
+        list.each do |line|
+          raise Guild::Error, "no herb sold here for #{line[:category]} (#{form})" if Table.sold(line[:category], location, form: form).nil?
+          item = nil
+          (line[:needed] / 10).times do
+            buy(line[:category], 10, menu: menu, sack: sack, more_silver: more_silver)
+            item = put_away(sack)
+          end
+          if (line[:needed] % 10).positive?
+            buy(line[:category], line[:needed] % 10, menu: menu, sack: sack, more_silver: more_silver)
+            item = put_away(sack)
+          end
+          next unless line[:needed] > 1 && !sack.survival_kit && item
+          sack.store(note) if note
+          bundle_all(sack, item.name)
+          sack.take(note) if note
+        end
+        sack.store(note) if note
+        if (item = Sack.herb_in_hand)
+          sack.store(item)
+        end
+        bundle_all(sack)
+      end
+
+      # Store what was just bought: an herb in hand, or a package to empty
+      # into the sack.
+      #
+      # @param sack [Sack]
+      # @return [GameObj, nil] the item stored
+      def put_away(sack)
+        if (item = Sack.herb_in_hand)
+          sack.store(item)
+          item
+        elsif (pack = [GameObj.right_hand, GameObj.left_hand].find { |i| i.name =~ /package/ })
+          EO.result("open ##{pack.id}", /^You open|^That is already open/)
+          inside = pack.contents.to_a
+          EO.result("empty ##{pack.id} in ##{sack.id}", /everything falls in/)
+          EO.settle
+          EO.result("throw ##{pack.id}", /^You throw away/)
+          inside.first
+        end
+      end
+
+      # The types the sack holds nothing for, in fill order.
+      #
+      # @param contents [Hash] from Sack#contents
+      # @return [Array<String>]
+      def missing_types(contents)
+        Table::TYPES.reject { |type| contents[:all].any? { |obj| Table.cures?(obj.name, type) } }
       end
     end
   end
