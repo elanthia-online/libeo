@@ -55,11 +55,12 @@ module EO
         return true
       end
 
-      # Ask JUSTICE STATUS, keeping its answer off the screen. Waits for
-      # the answer however long it takes.
+      # Ask JUSTICE STATUS, keeping its answer off the screen.
       #
-      # @return [Boolean] whether there is justice here
-      def justice?
+      # @param seconds [Numeric] how long to wait for the answer
+      # @return [Boolean] whether there is justice here; true when no answer
+      #   came, so that only what is safe in town is cast
+      def justice?(seconds = 5)
         justice = nil
         action = proc { |server_string|
           if server_string =~ /^You sense that your surroundings are calm|^There is no justice/
@@ -71,11 +72,13 @@ module EO
         }
         DownstreamHook.add("#{Script.current.name}_check_justice", action)
         put 'justice status'
-        until !justice.nil?
+        (seconds * 100).times do
+          break unless justice.nil?
+
           sleep 0.01
         end
         DownstreamHook.remove("#{Script.current.name}_check_justice")
-        return justice
+        justice.nil? || justice
       end
 
       # The spell to cast at what is in the room: of those known and
@@ -97,8 +100,8 @@ module EO
           spell = Spell[disabler[:num]]
           spell.known? and spell.affordable? and ((mana - spell.mana_cost) >= min_mana.to_i)
         }
-        return nil if (candidates.nil? or candidates.empty?) # no justice check if no disablers
         return { :num => custom } if custom.is_a?(Integer) && Spell[custom].known? && Spell[custom].affordable?
+        return nil if (candidates.nil? or candidates.empty?) # no justice check if no disablers
         # filter spells that are safe in town if you're in town
         justice = justice?
         if justice
