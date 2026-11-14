@@ -15,10 +15,13 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.18.3
+           version: 2.18.4
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.4 (2026-11-14)
+    - eloot puts items away, and loots them into a bag, through libeo's EO::Loot::Pickup; it still
+      pauses for you when every bag is full. Needs libeo 0.55.0
   v2.18.3 (2026-11-14)
     - eloot skins through libeo's EO::Skinning::Pass, the edged group and then the blunt one as
       before. Needs libeo 0.54.0
@@ -386,8 +389,8 @@ before_dying { ELoot.release_room_lease(eloot_load_token) }
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.54.0')
-EO.require('0.54.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.55.0')
+EO.require('0.55.0')
 Script.require_lich_version!
 
 require 'yaml'
@@ -3299,152 +3302,56 @@ module ELoot # Inventory methods, over libeo's Hands and Containers
       end
     end
 
+    # libeo's pickup (EO::Loot::Pickup), over what is eloot's own: how an item
+    # is put in a bag, how a bag is opened, how a command is sent.
+    def self.pickup
+      EO::Loot::Pickup.new(ELoot.data, hands: Inventory, command: ELoot.method(:get_command),
+                                       inventory: Sell.method(:check_inventory), wait_for_disk: ELoot.method(:wait_for_disk))
+    end
+
     def self.single_drag(item, phase_thing = true, on_full: :pause, room_made: false) # drags single item into container
       ELoot.msg(type: "debug", text: "item: #{item.inspect} | on_full: #{on_full}")
 
-      stored = false
-      return if item&.name == "Empty"
-      return if Inventory.single_drag_box(item)
-
-      # Try sacks in order of priority: item-specific, default, overflow containers (in order)
-      containers = ELoot.data.stow.route(item)
-
-      containers.each_with_index do |bag, index|
-        if stunned?
-          ELoot.msg(type: "debug", text: "single_drag: character stunned, waiting for it to clear")
-          wait_while { stunned? }
-        end
-        next if ELoot.data.stow.full?(bag)
-
-        if bag.nil?
-          case index
-          when 0
-            # Skip if item-specific container not set (this is normal)
-          when 1
-            ELoot.msg(type: "yellow", text: " No default container identified. This shouldn't happen.")
-            ELoot.msg(type: "yellow", text: "   Check your STOW settings. Exiting")
-            exit
-          else
-            # Overflow container not identified (this is normal if not all overflow containers are set)
-            overflow_num = index - 1
-            ELoot.msg(type: "info", text: " Skipping overflow container #{overflow_num}. No container identified.")
-          end
-        else
-          result = Inventory.store_item(bag, item)
-          if result
-            ELoot.box_phase(item) if phase_thing
-            stored = true
-            break
-          end
-        end
-      end
-
-      # Nowhere had the room: move a box aside to make some, once, and try again
-      if !stored && !room_made && ELoot.in_hand?(item) && ELoot.data.stow.make_room(item)
-        return Inventory.single_drag(item, phase_thing, on_full: on_full, room_made: true)
-      end
-
-      # If item wasn't stored, pause and address
-      unless stored
-        ELoot.refuse_room_operation!('continue with full containers; make space and retry')
-        if Room.current.tags.any?(/locksmith|locksmith pool/i) && (gold_ingot = [GameObj.right_hand, GameObj.left_hand].find { |obj| obj.name =~ /gold ingot/ })
-          Sell.handle_ingot(gold_ingot)
-        elsif on_full == :signal
-          # Caller (box looting during a locksmith pool return) handles the recovery.
-          ELoot.msg(type: "debug", text: "single_drag: all containers full, signaling :full for #{item.respond_to?(:name) ? item.name : item.inspect}")
-          return :full
-        else
-          if ELoot.data.sacks_full.keys.count > 1
-            ELoot.data.sacks_full.each do |container, information|
-              ELoot.msg(type: "info", text: " Sacks Full[#{container}]: #{information}")
-            end
-          end
-          ELoot.msg(type: "info", text: " Failed to store the #{item.name}.")
-          ELoot.msg(type: "info", text: " Pausing the script to handle it yourself")
-          ELoot.msg(type: "info", text: " ;unpause #{Script.current.name} after addressing to continue!")
-
-          Script.current.pause
-
-          # The player made space by hand, so the full-container tracking is stale. Without
-          # this every later store skips those containers and pauses again immediately.
-          ELoot.data.sacks_full = { "last cleared" => [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, Script.current.vars[0], "unpause"] }
-          ELoot.reset_disk_full
-          # and so are the bag weights taken before the pause: every put is tried from here
-          ELoot.data.stow.observe(nil)
-          return Inventory.single_drag(item, phase_thing) if ELoot.in_hand?(item)
-        end
+      case Inventory.pickup.drag(item, phase: phase_thing, room_made: room_made)
+      when :no_default then exit
+      when :no_room then Inventory.drag_failed(item, phase_thing, on_full)
       end
     end
 
-    def self.single_drag_box(item)
-      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
-
-      return false unless item.type == 'box'
-      return false unless ELoot.data.settings[:use_disk] || ELoot.data.settings[:use_disk_group]
-      return false unless ELoot.data.disk_full.value?(false)
-      unless ELoot.data.settings[:use_disk_group]
-        return false if ELoot.data.disk.nil? || ELoot.data.disk_full[Char.name]
-      end
-
-      # Only wait if the characters disk exists
-      ELoot.wait_for_disk unless ELoot.data.disk.nil?
-
-      put = lambda do |disk, box|
-        # clearly full by its item count or 500 lbs: not tried
-        limit = disk.name.to_s.include?(Char.name) ? EO::Carry.disk_limit : 8
-        next false unless ELoot.data.stow.disk_room?(disk, box, limit: limit)
-        next true if Inventory.store_item(disk, box)
-
-        # inform user it didn't fit
-        ELoot.msg(type: "info", text: " The #{box} won't fit in the #{disk.name} disk. Trying a different disk.") if ELoot.data.disk_full.size > 1
-        false
-      end
-      return true if EO::Boxes.to_disk(item, full: ELoot.data.disk_full, put: put, group: ELoot.data.settings[:use_disk_group])
-
-      ELoot.msg(type: "info", text: " The #{item} won't fit in any disk(s). Trying a different container.")
-      return false
-    end
-
-    def self.single_loot(item) # loots a single item
-      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
-      return if item.nil?
-
-      # loot item will fallback to the default sack but if both are full we need to loot manually
-      bag = StowList.stow_list[item.type.to_sym]
-      bag = nil if ELoot.data.stow.full?(bag)
-      bag ||= StowList.stow_list[:default]
-      bag = nil if ELoot.data.stow.full?(bag)
-
-      unless bag
-        Inventory.single_drag(item)
-        return
-      end
-
-      lines = ELoot.get_command("loot ##{item.id}", ELoot.data.put_regex)
-
-      if lines.any? { |line| line =~ /<\/inv>You can't put your <a exist=".*?" noun=".*?">.*?<\/a> in the <a exist="(\d+)" noun=".*?">.*?<\/a>.  It's closed!/ }
-        bag_id = $1
-        bag = GameObj.inv.find { |i| i.id == bag_id }
-        if ELoot.data.stow.closes_itself?(bag)
-          ELoot.data.stow.learn(:auto_close, bag)
-          Inventory.open_single_container(bag)
+    # No bag took the item, not even after a box was moved aside.
+    def self.drag_failed(item, phase_thing, on_full)
+      ELoot.refuse_room_operation!('continue with full containers; make space and retry')
+      if Room.current.tags.any?(/locksmith|locksmith pool/i) && (gold_ingot = [GameObj.right_hand, GameObj.left_hand].find { |obj| obj.name =~ /gold ingot/ })
+        Sell.handle_ingot(gold_ingot)
+      elsif on_full == :signal
+        # Caller (box looting during a locksmith pool return) handles the recovery.
+        ELoot.msg(type: "debug", text: "single_drag: all containers full, signaling :full for #{item.respond_to?(:name) ? item.name : item.inspect}")
+        return :full
+      else
+        if ELoot.data.sacks_full.keys.count > 1
+          ELoot.data.sacks_full.each do |container, information|
+            ELoot.msg(type: "info", text: " Sacks Full[#{container}]: #{information}")
+          end
         end
+        ELoot.msg(type: "info", text: " Failed to store the #{item.name}.")
+        ELoot.msg(type: "info", text: " Pausing the script to handle it yourself")
+        ELoot.msg(type: "info", text: " ;unpause #{Script.current.name} after addressing to continue!")
+
+        Script.current.pause
+
+        # The player made space by hand, so the full-container tracking is stale. Without
+        # this every later store skips those containers and pauses again immediately.
+        ELoot.data.sacks_full = { "last cleared" => [Time.now.strftime('%Y-%m-%d %H:%M:%S'), Room.current.id, Script.current.vars[0], "unpause"] }
+        ELoot.reset_disk_full
+        # and so are the bag weights taken before the pause: every put is tried from here
+        ELoot.data.stow.observe(nil)
+        return Inventory.single_drag(item, phase_thing) if ELoot.in_hand?(item)
       end
-
-      20.times {
-        return true if (!ELoot.in_hand?(item) && StowList.stow_list[item.type.to_sym].contents.to_a.map(&:id).include?(item.id))
-        return true if (!ELoot.in_hand?(item) && StowList.stow_list[:default].contents.to_a.map(&:id).include?(item.id))
-        return true if (!ELoot.in_hand?(item) && item.type =~ /skin/)
-
-        sleep 0.1
-      }
-
-      # edge case of treasure system mismatch
-      return true if Sell.check_inventory.any? { |obj| obj.id == item.id }
-
-      # still here so just loot it manually
-      Inventory.single_drag(item)
     end
+
+    def self.single_drag_box(item) = Inventory.pickup.drag_box(item)
+
+    def self.single_loot(item) = Inventory.pickup.loot(item) # loots a single item
   end # End of Inventory
 end
 
@@ -6772,6 +6679,7 @@ module ELoot
     library.extend(RoomScopedWait)
   end
   EO::Stow.include(RoomScopedWait)
+  EO::Loot::Pickup.include(RoomScopedWait)
   @room_api_versions ||= {}
   @room_api_versions[Script.current.name] = ELoot.get_script_version
 end
