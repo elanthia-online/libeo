@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.50.0')             the version the script was built against
+EO.require('0.51.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -45,12 +45,12 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/cleanse/afflictions.rb` | `EO::Cleanse::Afflictions`: poison and disease, magical debuffs, a root or press, a stun, a web or bind, each cured the first way the policy allows; settling a room before a recovery |
 | `eo/cleanse/disarms.rb` | `EO::Cleanse::Disarms`: the disarms not yet recovered, kept across restarts; RECOVER ITEM searching, a bonded weapon's return, the spirit servant, prying a webbed weapon, a floated weapon, the Sanctum's clench |
 | `eo/cleanse/traps.rb` | `EO::Cleanse::Traps`: hive traps searched out and disarmed, the itchy curse's safe room and wait, the Sanctum vat |
-| `eo/herbs/table.rb` | `EO::Herbs::Table`: every herb, where it is sold, what it treats and its doses; the stock targets; the two tiers of blood |
-| `eo/herbs/injuries.rb` | `EO::Herbs::Injuries`: the herb type a character's wounds call for next, what a dead character or an escort needs |
-| `eo/herbs/doses.rb` | `EO::Herbs::Doses::Monitor`: the doses left in each herb and potion, learned from the game as they are used, bought and bundled |
-| `eo/herbs/sack.rb` | `EO::Herbs::Sack`: the herb sack: opening it, its contents by form, a Survivalist's Kit's, those of something in the room, putting a herb in and taking one out |
-| `eo/herbs/heal.rb` | `EO::Herbs::Heal`: the herb to use for a type, the spells that help, eating or drinking it |
-| `eo/herbs/shop.rb` | `EO::Herbs::Shop`: the herbalist's menu, ordering and buying, prices, what a place sells and the sack holds for a heading, bundling |
+| `eo/herbs/table.rb` | `EO::Herbs::Table`: every herb: where it is sold, its name, the wound it cures, a shop menu's short name, the doses a bought one holds |
+| `eo/herbs/injuries.rb` | `EO::Herbs::Injuries`: the next herb type a character's wounds want, by the worst first or only what stops casting; another character's wounds from APPRAISE; an escort's from LOOK |
+| `eo/herbs/doses.rb` | `EO::Herbs::Doses`: the doses left in each item, counted from what the game says as herbs are eaten, measured, poured, bought and bundled |
+| `eo/herbs/sack.rb` | `EO::Herbs::Sack`: the herb sack: finding it, opening and reading it, a Survivalist's Kit, taking an herb out and putting it back |
+| `eo/herbs/heal.rb` | `EO::Herbs::Heal`: healing with herbs until nothing is left to heal or to heal with; handing herbs to the dead and to an escort |
+| `eo/herbs/shop.rb` | `EO::Herbs::Shop`: the herbalist's menu and prices, buying, bundling, what is in stock and stocking to a count or a share of the kit |
 | `eo/guild/tables.rb` | `EO::Guild::Tables`: the Adventurer's Guild's towns, people and their rooms, what they say, and the kinds of task by name; `EO::Guild::Error`, raised where a task cannot go on |
 | `eo/guild/policy.rb` | `EO::Guild::TaskPolicy`: which tasks a character takes, and why one is handed back |
 | `eo/guild/npcs.rb` | `EO::Guild::NPCs`: someone in the room by name, the taskmaster to ask (Seldit searched for on Sailor's Grief), a town's guard rooms |

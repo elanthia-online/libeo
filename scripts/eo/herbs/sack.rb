@@ -2,271 +2,322 @@
 
 module EO
   module Herbs
-    # The herb sack: a container the character carries, a Survivalist's Kit,
-    # or something in the room that herbs are in, on, under or behind.
-    # Opening it, reading what it holds by form, and putting herbs in and
-    # taking them out.
-    #
-    # Commands go through the running script's helpers (EO.use). The helpers
-    # this needs: result(text, pattern) answering one line, and a lines
-    # helper, lines(text, pattern), answering the lines of a command sent
-    # quietly.
-    module Sack
-      module_function
+    # The container the herbs live in: finding it, opening it, what is in
+    # it by form, putting herbs in and taking them out, and the
+    # Survivalist's Kit with its doses and distiller.
+    class Sack
+      # Raised when the sack will not take another item.
+      class Full < StandardError; end
 
-      # An OPEN answer that means this opened it, so it wants closing after.
+      OPEN = Regexp.union(
+        /You throw back/i, /You open/i, /Oh no! It's already/i, /You pick at the knot/i, /already open/i,
+        /is open already/i, /You unfasten/i, /You glance around suspiciously/i, /^What were you referring to\?/i,
+        /^I could not find what you were referring to\./i, /You pull the long strips of leather/i,
+        /With a flick of your wrist/i, /Sliding the lever on the side/i, /You rub your hand/i,
+        /There doesn't seem to be any way/i, /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i,
+        /crumbles? and decays? away/, /Myriad spectral moths pull a cloakwing/, /<exposeContainer|<container/i
+      )
+      # An OPEN answer that means we opened it, so it wants closing after.
       NEEDS_CLOSED = Regexp.union(
-        /You throw back/i,
-        /You open/i,
-        /You pick at the knot/i,
-        /You unfasten/i,
-        /With a quick glance over your shoulder/i,
-        /You pull the long strips of leather/i,
-        /With a flick of your wrist/i,
-        /Sliding the lever on the side/i,
-        /You rub your hand/i,
-        /Myriad spectral moths pull a cloakwing moth/
+        /You throw back/i, /You open/i, /You pick at the knot/i, /You unfasten/i, /With a quick glance over your shoulder/i,
+        /You pull the long strips of leather/i, /With a flick of your wrist/i, /Sliding the lever on the side/i,
+        /You rub your hand/i, /Myriad spectral moths pull a cloakwing moth/
       )
-
-      CLOSE = Regexp.union(
-        /^You (?:reach over your \w+ and )?close/,
-        /^That is already closed/,
-        /As you push/,
-        /You tie/
+      LOOK = Regexp.union(
+        /Peering into the <a exist=.*? noun="toolkit">/i, /That is closed/i, /is shut too tightly to see its contents/i,
+        /In the(.*?)you see/i, /In the(.*?):/i, /There is nothing/i, /You glance/i, /^Attached to a.*keyring/i, /.*?[.*?]:/i,
+        %r{The <a exist="\d+" noun="\w+">[^<]+</a> has (?:an? <a exist="\d+" noun="\w+">[^<]+</a> |nothing )?in.*scabbard and (?:an? <a exist="\d+" noun="\w+">[^<]+</a> |nothing )?in.*scabbard\.}i,
+        /^I could not find what you were referring to\./i, /Hidden within the depths of a cloakwing moth greatcloak/,
+        /<exposeContainer|<dialogData|<container/i
       )
-
-      # Every answer to putting a herb away, bundling included.
+      CLOSE = Regexp.union(/^You (?:reach over your \w+ and )?close/, /^That is already closed/, /As you push/, /You tie/)
       PUT = Regexp.union(
         /^You (?:put|(?:discreetly )?tuck|attach|toss|attempt to shield your|place|.* place|slip|wipe off the blade and sheathe|absent-mindedly drop|carefully add|find an incomplete bundle|untie your drawstring pouch)/,
-        /^The .+ is already a bundle/,
-        /^Your bundle would be too large if you tried to add that/,
-        /^The .+ is too large to be bundled\./,
+        /^The .+ is already a bundle/, /^Your bundle would be too large if you tried to add that/, /^The .+ is too large to be bundled\./,
         /^As you place your .+ inside your .+, you notice another .+ inside the .+ and carefully arrange the two .+ into a neat bundle\./,
         /If you wish to continue, throw the item away again within fifteen seconds/,
-        /you feel pleased with yourself at having cleaned up the surrounding area/,
-        /over your shoulder/,
-        /two items in that location/,
-        /wear three functional items/,
-        /^Your .*? won't fit in .*?\.$/,
-        /You add/,
-        /You find a suitable/,
+        /you feel pleased with yourself at having cleaned up the surrounding area/, /over your shoulder/, /two items in that location/,
+        /wear three functional items/, /^Your .*? won't fit in .*?\.$/, /You add/, /You find a suitable/,
         /^Your .+ is already fully stocked with (?:solid|liquid) \w+\.  You put .+ in your .+\.$/
       )
-
-      # Every answer to taking a herb out.
       GET = Regexp.union(
         /^You (?:shield the opening of .*? from view as you |discreetly |carefully |deftly|just )?(?:remove|pick up|draw|grab|reach|slip|tuck|retrieve|already have|unsheathe|detach|swap)/,
-        /^Get what\?$/,
-        /^Why don't you leave some for others\?$/,
-        /^You need a free hand/,
-        /^You already have that/,
-        /You just poured yourself/,
-        /You retrieve/,
-        /You break off/
+        /^Get what\?$/, /^Why don't you leave some for others\?$/, /^You need a free hand/, /^You already have that/,
+        /You just poured yourself/, /You retrieve/, /You break off/
       )
-
-      # The game's refusal to give more from a shared container.
+      # What a container that will not open or show its contents answers.
+      SHUT = /That is closed\.|It appears to be locked\./
+      WONT_FIT = /^Your .*? won't fit in .*?\.$/
       ENOUGH = /Why don't you leave some for others?/
-
+      NOTE = /^(?:note|scrip|chit)$/
+      KIT_CONTENTS = %r{(In|On|Under|Behind) .*?exist="(%s)" noun="(.*?)">(.*?)</a|There is nothing}
       KIT_DOSES = %r{^(.*?)The.*?exist="(-?\d+)" noun="(.*?)">(.*?)</a> contains DOSEs (.*?)\.}
       KIT_TINCTURES = %r{^(.*?)The.*?exist="(-?\d+)" noun="(.*?)">(.*?)</a> contains TINCTUREs (.*?)\.}
-      KIT_ITEM = %r{(:?) <a exist="(.*?)" noun="(.*?)">(.*?)</a> (\(\d+\))}
+      KIT_ITEM = %r{(:?) <a exist="(.*?)" noun="(.*?)">(.*?)</a> \((.*?)\)}
 
-      # @param container [GameObj]
-      # @return [Boolean] whether the character carries it
-      def carried?(container)
-        GameObj.inv.find { |obj| obj.id =~ /#{container.id}/ } ? true : false
+      attr_reader :obj, :preposition, :tier
+      attr_accessor :close_after, :survival_kit, :distiller
+
+      # @param obj [GameObj] the container
+      # @param preposition [String] in, on, under or behind
+      def initialize(obj, preposition: 'in')
+        @obj = obj
+        @preposition = preposition.to_s.empty? ? 'in' : preposition
+        @close_after = false
+        @survival_kit = nil
+        @distiller = false
+        @tier = nil
       end
 
-      # A carried container, by a word of its name.
+      def id = @obj.id
+      def name = @obj.name
+      def noun = @obj.noun
+      def to_s = @obj.to_s
+
+      # The container named in the settings, from the inventory.
       #
       # @param name [String]
-      # @return [GameObj, nil]
-      def carried(name)
-        GameObj.inv.find { |obj| obj.name =~ /\b#{name}\b/i }
+      # @return [Sack]
+      # @raise [Guild::Error] when the inventory has no such container
+      def self.find(name)
+        obj = GameObj.inv.find { |o| o.name =~ /\b#{Regexp.escape(name.to_s)}\b/i }
+        raise Guild::Error, "unable to find container \"#{name}\" in your inventory" if obj.nil?
+        new(obj)
       end
 
-      # Something in the room, by a word of its name.
+      # A container by name, in the inventory or in the room (a bench, a
+      # table), with its herbs read the way the game lists them.
       #
       # @param name [String]
-      # @return [GameObj, nil]
-      def in_room(name)
-        (GameObj.room_desc.to_a + GameObj.loot.to_a).find { |obj| obj.name =~ /#{name}/i }
+      # @param preposition [String]
+      # @return [Sack]
+      # @raise [Guild::Error] when nothing by that name is here
+      def self.named(name, preposition: 'in')
+        obj = GameObj.inv.find { |o| o.name =~ /\b#{Regexp.escape(name)}\b/i }
+        return new(obj, preposition: preposition) if obj
+        obj = (GameObj.room_desc.to_a + GameObj.loot.to_a).find { |o| o.name =~ /#{Regexp.escape(name)}/i }
+        raise Guild::Error, "not able to find a #{name}" if obj.nil?
+        new(obj, preposition: preposition)
       end
 
-      # Open a container unless Lich already has what is in it, and look in.
+      # @return [Boolean] whether this is a container in the inventory
+      def carried?
+        GameObj.inv.any? { |o| o.id == @obj.id }
+      end
+
+      # ANALYZE the sack: a Survivalist's Kit has a tier and may have the
+      # Liquid Extractor. Sets survival_kit, tier and distiller.
       #
-      # @param sack [GameObj]
-      # @yield when the OPEN is what opened it, so it wants closing after
-      # @return [Symbol, nil] :locked, else nil
-      def open(sack)
-        return if sack.nil? || sack.empty?
-        return if GameObj.containers.keys.include?(sack.id) && sack.contents.is_a?(Array)
+      # @return [Boolean] whether it is a kit
+      def analyze!
+        lines = EO.command("analyze ##{id}", /You analyze/, silent: true, quiet: true)
+        if lines.any? { |l| l =~ /is a Survivalist's Kit, which is a specialized container/ }
+          @survival_kit = true
+          @tier = Regexp.last_match(1).to_i if lines.any? { |l| l =~ %r{Capacity: (\d+)/5 } }
+          @distiller = lines.grep(/has the Liquid Extractor unlock/).any?
+        else
+          @survival_kit = false
+          @distiller = false
+        end
+        @survival_kit
+      end
 
-        result = EO.lines("open ##{sack.id}", Containers::OPEN)
-        yield if result.grep(NEEDS_CLOSED).any? && block_given?
+      # The doses to keep of each type, scaled to a percent of capacity: a
+      # kit's by its tier, an ordinary sack's from the defaults.
+      #
+      # @param percent [Numeric] 0 to 100
+      # @return [Hash{String => Integer}]
+      def stock_targets(percent)
+        percent = [percent.to_f, 100].min
+        if @survival_kit
+          amount = (((@tier.to_i * 25) + 25) * (percent / 100)).to_i
+          Table::DEFAULT_DOSES.transform_values { amount }
+        else
+          Table::DEFAULT_DOSES.transform_values { |v| (v.to_f * (percent / 100)).to_i }
+        end
+      end
 
+      # Open the sack if it is closed, remembering to close it after when
+      # we were the one to open it.
+      #
+      # @return [Symbol] :open, :locked, or :empty
+      def open
+        # contents known is not open under the inventory feed, which lists a closed sack's too
+        return :open if GameObj.containers.keys.include?(id) && @obj.contents.is_a?(Array) && Containers.closed?(@obj) != true
+        result = EO.command("open ##{id}", Regexp.union(OPEN, SHUT), silent: true, quiet: true)
+        @close_after = true if result.grep(NEEDS_CLOSED).any?
         return :locked if result.grep(/It appears to be locked./).any?
-
-        lines = EO.lines("look in ##{sack.id}", Containers::LOOK)
-        return if lines.grep(/You glance|There is nothing/i).any?
-
+        lines = EO.command("look in ##{id}", LOOK, silent: true, quiet: true)
+        return :empty if lines.grep(/You glance|There is nothing/i).any?
         20.times do
-          break if GameObj.containers.keys.include?(sack.id) && sack.contents.is_a?(Array)
-
+          break if GameObj.containers.keys.include?(id) && @obj.contents.is_a?(Array)
           sleep 0.1
         end
-        nil
+        :open
       end
 
-      # Sort what a container holds into what is drunk and what is eaten.
-      # Only what Lich types as a herb counts.
-      #
-      # @param contents [Array<GameObj>]
-      # @return [Hash{Symbol => Array<GameObj>}] :drinkable, :edible and :all
-      def by_form(contents)
-        items = { drinkable: [], edible: [], all: [] }
-        contents.each do |h|
-          next unless h.type == 'herb'
+      def close
+        dothistimeout("close ##{id}", 5, CLOSE)
+      end
 
-          items[h.name =~ Table::DRINKABLE ? :drinkable : :edible].push(h)
-          items[:all].push(h)
+      # The herbs in the sack, by form: drinkable, edible, all. A carried
+      # sack is read from what Lich knows is inside; a kit lists its doses;
+      # a room container is looked at by its preposition.
+      #
+      # @return [Hash{Symbol => Array<GameObj>}]
+      # @raise [Guild::Error] for a locked room container
+      def contents
+        if carried?
+          open
+          analyze! if @survival_kit.nil?
+          return kit_contents if @survival_kit
+          by_form(@obj.contents.to_a)
+        else
+          by_form(room_contents)
+        end
+      end
+
+      # @api private
+      def by_form(items)
+        herbs = items.select { |h| h.type == 'herb' }
+        { drinkable: herbs.select { |h| Table.drinkable?(h.name) },
+          edible: herbs.reject { |h| Table.drinkable?(h.name) },
+          all: herbs }
+      end
+
+      # A kit's LOOK lists DOSEs and TINCTUREs with counts; the counts go to
+      # Doses and the items come back by form.
+      def kit_contents
+        result = EO.command("look in ##{id}", Regexp.new(format(KIT_CONTENTS.source, id)), silent: true, quiet: true).join(' ')
+        items = { drinkable: [], edible: [], all: [] }
+        { edible: KIT_DOSES, drinkable: KIT_TINCTURES }.each do |form, pattern|
+          next unless result =~ pattern
+          Regexp.last_match(5).scan(KIT_ITEM).each do |_, exist, noun, name, count|
+            item = GameObj.new_inv(exist, noun, name, id.to_s)
+            Doses[exist] = count.to_i
+            items[form] << item
+            items[:all] << item
+          end
+        end
+        GameObj[id].contents.to_a.each do |h|
+          next unless Table::KNOWN.any? { |e| e[:name] == h.name }
+          form = Table.drinkable?(h.name) ? :drinkable : :edible
+          items[form] << h unless items[form].include?(h)
+          items[:all] << h unless items[:all].include?(h)
         end
         items
       end
 
-      # What a Survivalist's Kit holds: its DOSEs and TINCTUREs, which LOOK
-      # lists with counts, and any loose herbs in it besides.
-      #
-      # @param kit [GameObj]
-      # @return [Hash{Symbol => Array<GameObj>}] :drinkable, :edible and :all
-      def kit_contents(kit)
-        result = EO.lines("look in ##{kit.id}", %r{(In|On|Under|Behind) .*?exist="(#{kit.id})" noun="(.*?)">(.*?)</a|There is nothing}).join(' ')
-        contents = { drinkable: [], edible: [], all: [] }
-
-        { edible: KIT_DOSES, drinkable: KIT_TINCTURES }.each do |form, pattern|
-          next unless result =~ pattern
-
-          Regexp.last_match(5).scan(KIT_ITEM).each do |_what, exist, noun, name|
-            contents[form].push(GameObj.new_inv(exist, noun, name, kit.id.to_s))
-            contents[:all].push(GameObj.new_inv(exist, noun, name, kit.id.to_s))
-          end
-        end
-
-        loose = GameObj[kit.id].contents
-        unless loose.empty?
-          known = Table::KNOWN.map { |item| item[:name] }.uniq
-          loose.each do |h|
-            next unless known.include?(h.name)
-
-            form = h.name =~ Table::DRINKABLE ? :drinkable : :edible
-            contents[form].push(h) unless contents[form].include?(h)
-            contents[:all].push(h) unless contents[:all].include?(h)
-          end
-        end
-
-        contents
-      end
-
-      # The herbs in, on, under or behind something in the room, read by
-      # LOOK. A closed one is opened and looked in again.
-      #
-      # @param sack [GameObj]
-      # @param preposition [String] 'in', 'on', 'under' or 'behind'
-      # @yield when an OPEN is what opened it
-      # @return [Array<GameObj>, Symbol] the herbs the table knows, or
-      #   :locked
-      def room_contents(sack, preposition, &opened)
-        listing = {}
-
+      # @api private
+      def room_contents
+        listing = nil
+        opened = false
         loop do
-          result = EO.lines("look #{preposition} ##{sack.id}", %r{(In|On|Under|Behind) .*?exist="(#{sack.id})" noun="(.*?)">(.*?)</a|There is nothing}).join(' ')
-
+          result = EO.command("look #{@preposition} ##{id}", Regexp.union(Regexp.new(format(KIT_CONTENTS.source, id)), SHUT), silent: true, quiet: true).join(' ')
           case result
-          when %r{Under .*?exist="(-?\d+)" noun="(.*?)">(.*?)</a>(?::| you see )(.*?)$}
-            listing['under'] = Regexp.last_match(4)
-            break
-          when %r{Behind .*?exist="(-?\d+)" noun="(.*?)">(.*?)</a>(?::| you see )(.*?)$}
-            listing['behind'] = Regexp.last_match(4)
-            break
-          when %r{On .*?exist="(-?\d+)" noun="(.*?)">(.*?)</a>(?::| you see )(.*?)$}
-            listing['on'] = Regexp.last_match(4)
-            break
-          when %r{In .*?exist="(-?\d+)" noun="(.*?)">(.*?)</a>(?::| you see )(.*?)$}
-            listing['in'] = Regexp.last_match(4)
+          when %r{(?:Under|Behind|On|In) .*?exist="(-?\d+)" noun="(.*?)">(.*?)</a>(?::| you see )(.*?)$}
+            listing = Regexp.last_match(4)
             break
           when /That is closed./
-            break unless preposition == 'in'
-            return :locked if Sack.open(sack, &opened) == :locked
+            break unless @preposition == 'in'
+            # opened: look again, once. One that stays closed would have this ask forever
+            state = open
+            raise Guild::Error, "not able to look in #{name}: it is locked" if state == :locked
+            break if opened || state != :open
+            opened = true
           else
             break
           end
         end
-
-        contents = []
-        # nothing was listed when the look said none of these
-        listing[preposition].to_s.scan(%r{<a exist="(.*?)" noun="(.*?)">(.*?)</a>}).each do |exist, noun, name|
-          contents.push(GameObj.new_inv(exist, noun, name, sack.id.to_s))
-        end
-
-        contents.select { |obj| Table::KNOWN.find { |herb| herb[:name] =~ /#{obj.name}/ } }
+        listing.to_s.scan(%r{<a exist="(.*?)" noun="(.*?)">(.*?)</a>}).map do |exist, noun, item_name|
+          GameObj.new_inv(exist, noun, item_name, id.to_s)
+        end.select { |o| Table::KNOWN.any? { |e| e[:name] =~ /#{Regexp.escape(o.name)}/ } }
       end
 
-      # Put an item in, on, under or behind a container.
+      # Put an item in the sack.
       #
-      # @param item_id [String]
-      # @param container_id [String]
-      # @param preposition [String, nil] 'in' when none is given
+      # @param item [GameObj, String] the item, or its id
       # @return [String, nil] the game's answer
-      def put(item_id, container_id, preposition = nil)
-        preposition = 'in' if preposition.to_s.empty?
-        EO.result("put ##{item_id} #{preposition} ##{container_id}", PUT)
+      # @raise [Full] when it will not fit
+      def store(item)
+        item_id = item.respond_to?(:id) ? item.id : item
+        result = EO.result("put ##{item_id} #{@preposition} ##{id}", PUT)
+        raise Full, "the #{noun} is full" if result =~ WONT_FIT
+        result
       end
 
-      # Take a herb out into a free hand, freeing one first.
+      # Put an herb taken out earlier back, so the next one has a hand; one
+      # the sack will not take goes where STOW puts it.
       #
       # @param herb [GameObj]
-      # @return [Boolean, Symbol, nil] true when the answer shows it is
-      #   something drunk; :enough when the game will give no more from
-      #   here; else nil
+      # @return [void]
+      def put_back(herb)
+        begin
+          store(herb)
+        rescue Full
+          nil
+        end
+        fput "stow ##{herb.id}" if [GameObj.right_hand.id, GameObj.left_hand.id].include?(herb.id)
+      end
+
+      # Take an herb out into a free hand.
+      #
+      # @param herb [GameObj]
+      # @return [Boolean] whether the item is drunk (its name says so)
+      # @raise [Guild::Error] when the game says enough has been eaten from here
       def take(herb)
         free_hand
-
         to = GameObj.right_hand.id.nil? ? 'right' : 'left'
         result = EO.result("_drag ##{herb.id} #{to}", GET)
-
-        if result =~ Table::DRINKABLE
-          true
-        elsif result =~ ENOUGH
-          :enough
-        end
+        raise Guild::Error, "you have eaten enough from the #{name}" if result =~ ENOUGH
+        result =~ Table::DRINKABLE ? true : false
       end
 
-      # Make a hand free by STOW, unless one is empty on an arm that can be
-      # used: the right when it is full and usable or the left arm is beyond
-      # use, else the left.
-      #
-      # @return [void]
+      # Make a hand free, preferring the one a wound has not crippled.
       def free_hand
-        right_ok = [::Wounds.rightArm, ::Wounds.rightHand, ::Scars.rightArm, ::Scars.rightHand].max < 3
-        left_ok = [::Wounds.leftArm, ::Wounds.leftHand, ::Scars.leftArm, ::Scars.leftHand].max < 3
+        right_ok = [Wounds.rightArm, Wounds.rightHand, Scars.rightArm, Scars.rightHand].max < 3
+        left_ok = [Wounds.leftArm, Wounds.leftHand, Scars.leftArm, Scars.leftHand].max < 3
         return if (GameObj.right_hand.id.nil? && right_ok) || (GameObj.left_hand.id.nil? && left_ok)
-
-        left_gone = [::Wounds.leftArm, ::Wounds.leftHand, ::Scars.leftArm, ::Scars.leftHand].max == 3
         waitrt?
-        if GameObj.right_hand.id && (right_ok || left_gone)
-          free_hands(right: true)
+        if GameObj.right_hand.id && (right_ok || !left_ok)
+          fput "stow #{GameObj.right_hand}" if checkright
         else
-          free_hands(left: true)
+          fput "stow #{GameObj.left_hand}" if checkleft
         end
       end
 
-      # STOW what the hands hold.
+      # Whether a hand holds a known herb; that item.
       #
-      # @return [void]
-      def free_hands(right: false, left: false, both: false)
-        fput "stow #{GameObj.right_hand}" if (right || both) && checkright
-        fput "stow #{GameObj.left_hand}" if (left || both) && checkleft
+      # @return [GameObj, nil]
+      def self.herb_in_hand
+        [GameObj.right_hand, GameObj.left_hand].find { |o| !o.name.to_s.empty? && Table.herb?(o.name) }
+      end
+
+      # A bank note in a hand or in the sack.
+      def note
+        [GameObj.right_hand, GameObj.left_hand].find { |o| o.noun =~ NOTE } || @obj.contents.to_a.find { |o| o.noun =~ NOTE }
+      end
+
+      # A kit's distiller: point it at a solid herb that has no liquid
+      # form yet, else at the liquid that is lowest.
+      #
+      # @return [String, nil] what the extractor was set to, nil when nothing was done
+      def distill
+        return nil unless @distiller && @survival_kit
+        lines = EO.command("ANALYZE ##{id}", /You analyze|You can't seem to do that\./, silent: true, quiet: true)
+        return nil if lines.grep(/You can't seem to do that\./).any?
+        text = lines.join(' ')
+        if text =~ %r{The extractor is currently targeting <pushBold/>(.*?)<popBold/>, with around (.*?) remaining}
+          Lich::Messaging.msg('info', " The extractor is currently targeting #{Regexp.last_match(1)}. Nothing to do.")
+          return nil
+        end
+        solids = text =~ KIT_DOSES ? Regexp.last_match(5).scan(KIT_ITEM).to_h { |_, _e, _n, n, c| [n, c.to_i] } : {}
+        liquids = text =~ KIT_TINCTURES ? Regexp.last_match(5).scan(KIT_ITEM).to_h { |_, _e, _n, n, c| [n, c.to_i] } : {}
+        target = (solids.keys - liquids.keys).first
+        target ||= liquids.select { |h, _| solids.key?(h) }.min_by { |_, c| c }&.first if solids.any?
+        return nil if target.nil?
+        fput "point ##{id} at dose #{target}"
+        target
       end
     end
   end

@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.50.0')
-    EO.require('0.50.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.51.0')
+    EO.require('0.51.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,17 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.50.0
+       version: 0.51.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.51.0 (2026-11-13)
+    - EO::Herbs is the one from Nisugi/libeo, each part holding the whole of what it is
+      about and sending through the library's own helpers: Heal (the healing loop, the
+      hand-over to the dead and to an escort), Shop (the menu, buying, bundling, the stock
+      count, stocking), Sack, Doses, Injuries and Table
+    - kept from this library: an escort's limb wounds are read only from a line that names
+      a leg, arm or hand
   v0.50.0 (2026-11-13)
     - EO::Cleanse is the one from Nisugi/libeo: a Policy holds the choices the settings
       make, and each cure is the whole of it, the first way the policy allows

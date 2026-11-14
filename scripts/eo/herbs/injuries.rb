@@ -2,20 +2,147 @@
 
 module EO
   module Herbs
-    # What needs healing: the type of herb the character's own wounds call
-    # for next, and what another's wounds call for from how the game describes
-    # them.
+    # What the character's wounds want: the next herb type to use and
+    # whether there is anything to heal; and what another character's
+    # wounds look like from outside. Whether spells can still be cast is
+    # Lich's Injured.able_to_cast?.
     module Injuries
       module_function
 
       AREAS = %w[head neck torso limbs nerves].freeze
-      # The areas in the order looked at when only what stops casting, or
-      # shooting, is treated.
-      FIGHTING_AREAS = %w[limbs head nerves torso].freeze
 
-      # How LOOK describes an escort's wounds, and the herbs each takes: a
-      # major wound takes its herb and then the minor one, the worst twice.
-      ESCORT = {
+      # @return [Boolean] wounded, scarred or short of health enough to heal
+      def hurt?
+        AREAS.any? { |a| Wounds.send(a).positive? || Scars.send(a).positive? } || (Char.health + 7) < Char.max_health
+      end
+
+      # The herb type to use next, by the worst thing wrong, or nil when
+      # nothing is. skip lists areas (and 'blood', 'poison', 'disease') with
+      # no herb for them, so they are not asked again.
+      #
+      # @param skip [Array<String>]
+      # @param skip_scars [Boolean] leave level-one scars alone
+      # @param spellcast_only [Boolean] only what stops casting: head, eyes, nerves, arms
+      # @param ranged_only [Boolean] only what stops a bow: arms
+      # @return [String, nil]
+      def next_type(skip: [], skip_scars: false, spellcast_only: false, ranged_only: false)
+        return 'blood' if Char.percent_health < 50 && !skip.include?('blood')
+        return 'poison' if checkpoison && !skip.include?('poison')
+        return 'disease' if checkdisease && !skip.include?('disease')
+
+        type = if spellcast_only || ranged_only
+                 casting_type(skip, spellcast_only)
+               else
+                 general_type(skip, skip_scars)
+               end
+        return type if type
+        return 'blood' if (Char.health + 7) < Char.max_health && !skip.include?('blood')
+        nil
+      end
+
+      # @api private
+      def general_type(skip, skip_scars)
+        areas = AREAS - skip
+        areas.each { |a| return "major #{Table::AREAS[a]} wound" if Wounds.send(a) > 1 }
+        areas.each { |a| return "minor #{Table::AREAS[a]} wound" if Wounds.send(a) == 1 }
+        return 'severed limb' if Scars.limbs == 3 && !skip.include?('limbs')
+        return 'missing eye' if (Scars.reye == 3 || Scars.leye == 3) && !skip.include?('torso')
+        areas.each { |a| return "major #{Table::AREAS[a]} scar" if Scars.send(a) > 1 }
+        areas.each { |a| return "minor #{Table::AREAS[a]} scar" if Scars.send(a) == 1 && !skip_scars } unless skip_scars
+        nil
+      end
+
+      # @api private
+      def casting_type(skip, spellcast)
+        arms = %w[leftArm leftHand rightArm rightHand]
+        checks = { 'limbs' => arms }
+        checks.merge!('head' => ['head'], 'torso' => %w[leftEye rightEye], 'nerves' => ['nsys']) if spellcast
+        (%w[limbs head nerves torso] - skip).each do |area|
+          parts = checks[area] or next
+          worst = parts.map { |p| Wounds.send(p) }.max
+          return "major #{Table::AREAS[area]} wound" if worst > 1
+          return "minor #{Table::AREAS[area]} wound" if worst == 1
+        end
+        return 'severed limb' if arms.map { |p| Scars.send(p) }.max == 3 && !skip.include?('limbs')
+        return 'missing eye' if spellcast && [Scars.rightEye, Scars.leftEye].max == 3 && !skip.include?('torso')
+        (%w[limbs head nerves torso] - skip).each do |area|
+          parts = checks[area] or next
+          return "major #{Table::AREAS[area]} scar" if parts.map { |p| Scars.send(p) }.max > 1
+        end
+        nil
+      end
+
+      # Which wound types the character has, by name.
+      #
+      # @return [Hash{String => Boolean}]
+      def status
+        limbs_w = [Wounds.rhand, Wounds.rarm, Wounds.rleg, Wounds.lhand, Wounds.larm, Wounds.lleg]
+        limbs_s = [Scars.rhand, Scars.rarm, Scars.rleg, Scars.lhand, Scars.larm, Scars.lleg]
+        {
+          'poison'            => checkpoison,
+          'disease'           => checkdisease,
+          'blood'             => (Char.health + 7) < Char.max_health,
+          'minor head wound'  => [Wounds.head, Wounds.neck].include?(1),
+          'major head wound'  => [Wounds.head, Wounds.neck].max > 1,
+          'minor head scar'   => [Scars.head, Scars.neck].include?(1),
+          'major head scar'   => [Scars.head, Scars.neck].max > 1,
+          'minor nerve wound' => Wounds.nerves == 1,
+          'major nerve wound' => Wounds.nerves > 1,
+          'minor nerve scar'  => Scars.nerves == 1 && Wounds.nerves.zero?,
+          'major nerve scar'  => Scars.nerves > 1 && Wounds.nerves.zero?,
+          'minor organ wound' => [Wounds.chest, Wounds.torso, Wounds.back].include?(1),
+          'major organ wound' => [Wounds.chest, Wounds.torso, Wounds.back].max > 1,
+          'minor organ scar'  => [Scars.chest, Scars.torso, Scars.back].include?(1),
+          'major organ scar'  => [Scars.chest, Scars.torso, Scars.back].max > 1,
+          'missing eye'       => [Scars.reye, Scars.leye].max > 2,
+          'minor limb wound'  => limbs_w.include?(1),
+          'major limb wound'  => limbs_w.max > 1,
+          'minor limb scar'   => limbs_s.include?(1),
+          'major limb scar'   => limbs_s.include?(2),
+          'severed limb'      => limbs_s.include?(3),
+          'raisedead'         => checkdead,
+          'lifekeep'          => checkdead,
+        }
+      end
+
+      # Another character's wounds from APPRAISE, as herb types to pour on
+      # them. The bleeding wounds first; with +full+, the rest.
+      #
+      # @param lines [Array<String>] the APPRAISE answer
+      # @param full [Boolean]
+      # @return [Array<String>]
+      def appraise(lines, full: false)
+        found = []
+        add = ->(type, pattern) { found << type if lines.any? { |l| l =~ pattern } }
+        add.call('major head wound', /minor lacerations about the head|bleeding from the head|moderate bleeding from (?:his|her) neck|severe head trauma and bleeding from the ears|snapped bones and serious bleeding from the neck/)
+        add.call('major organ wound', /deep lacerations|deep gashes and serious bleeding/)
+        add.call('major limb wound', /a completely severed|a fractured and bleeding/)
+        return found unless full
+
+        add.call('major organ wound', /a (blinded|swollen) (right|left) eye/)
+        add.call('major nerve wound', /a case of (uncontrollable|sporadic) convulsions/)
+        add.call('minor head wound', /minor bruises about the head|minor bruises on (?:his|her) neck/)
+        add.call('minor organ wound', /minor cuts and bruises on (?:his|her) (chest|abdomen|back)|a bruised (right|left) eye/)
+        add.call('minor limb wound', /some minor cuts and bruises on (?:his|her) (right|left)/)
+        add.call('minor nerve wound', /a strange case of muscle twitching/)
+        return found unless found.empty?
+
+        add.call('major head scar', /several facial scars|old mutilation wounds about (?:his|her) head|some old neck wounds|terrible scars from some serious neck injury/)
+        add.call('major nerve scar', /constant muscle spasms|a very difficult time with muscle control/)
+        add.call('major organ scar', /several painful-looking scars across|terrible, permanent mutilation of|severe bruises and swelling around/)
+        add.call('missing eye', /a missing (right|left) eye/)
+        add.call('major limb scar', /a mangled (right|left) (leg|arm|hand)/)
+        add.call('severed limb', /a missing (right|left) (leg|arm|hand)/)
+        add.call('minor head scar', /a scar across (?:his|her) (face|neck)/)
+        add.call('minor nerve scar', /developed slurred speech/)
+        add.call('minor organ scar', /an old battle scar across (?:his|her) (chest|abdominal area|back)|a black-and-blue (right|left) eye/)
+        add.call('minor limb scar', /old battle scars on (?:his|her) (right|left) (leg|arm|hand)/)
+        found
+      end
+
+      # An escort client's wounds from LOOK, as the herbs to hand over, in
+      # order.
+      ESCORT_INJURIES = {
         /severe head trauma and bleeding from the ears/                            => ['major head wound', 'major head wound', 'minor head wound'],
         /minor lacerations about the head and a possible mild concussion/          => ['major head wound', 'minor head wound'],
         /snapped bones and serious bleeding from the neck/                         => ['major head wound', 'major head wound', 'minor head wound'],
@@ -38,198 +165,13 @@ module EO
         /minor cuts and bruises on (?:his|her) back/                               => ['minor organ wound'],
         /a bruised (right|left) eye/                                               => ['minor organ wound'],
         /some minor cuts and bruises on (?:his|her) (right|left) (?:leg|arm|hand)/ => ['minor limb wound'],
-        /a strange case of muscle twitching/                                       => ['minor nerve wound']
+        /a strange case of muscle twitching/                                       => ['minor nerve wound'],
       }.freeze
 
-      # The type of herb the character's condition calls for next: blood
-      # when under half health, then poison and disease, wounds before
-      # scars and major before minor, and blood again when anything is
-      # missing from health.
-      #
-      # @param skip [Array<String>] types and areas to pass over
-      # @param skip_scars [Boolean] leave minor scars
-      # @param spellcast_only [Boolean] treat only what stops casting
-      # @param ranged_only [Boolean] treat only what stops shooting
-      # @return [String, nil] nil when nothing is called for
-      def next_type(skip: [], skip_scars: false, spellcast_only: false, ranged_only: false)
-        areas = Table::AREAS
-        herb_type = nil
-        herb_type = 'blood' if Char.percent_health < 50 && !skip.include?('blood')
-        herb_type = 'poison' if herb_type.nil? && checkpoison && !skip.include?('poison')
-        herb_type = 'disease' if herb_type.nil? && checkdisease && !skip.include?('disease')
-        unless spellcast_only || ranged_only
-          unless herb_type
-            (AREAS - skip).each do |area|
-              if ::Wounds.send(area) > 1
-                herb_type = "major #{areas[area]} wound"
-                break
-              end
-            end
-          end
-          unless herb_type
-            (AREAS - skip).each do |area|
-              if ::Wounds.send(area) == 1
-                herb_type = "minor #{areas[area]} wound"
-                break
-              end
-            end
-          end
-          herb_type = 'severed limb' if herb_type.nil? && ::Scars.limbs == 3 && !skip.include?('limbs')
-          herb_type = 'missing eye' if herb_type.nil? && (::Scars.reye == 3 || ::Scars.leye == 3) && !skip.include?('torso')
-          unless herb_type
-            (AREAS - skip).each do |area|
-              if ::Scars.send(area) > 1
-                herb_type = "major #{areas[area]} scar"
-                break
-              end
-            end
-          end
-          unless herb_type
-            (AREAS - skip).each do |area|
-              if ::Scars.send(area) == 1 && !skip_scars
-                herb_type = "minor #{areas[area]} scar"
-                break
-              end
-            end
-          end
-        end
-        if spellcast_only || ranged_only
-          unless herb_type
-            (FIGHTING_AREAS - skip).each do |area|
-              worst = fighting_wound(area, spellcast_only)
-              next if worst.nil?
-
-              if worst > 1
-                herb_type = "major #{areas[area]} wound"
-                break
-              elsif worst == 1
-                herb_type = "minor #{areas[area]} wound"
-                break
-              end
-            end
-          end
-          herb_type = 'severed limb' if herb_type.nil? && [::Scars.rightHand, ::Scars.rightArm, ::Scars.leftHand, ::Scars.leftArm].max == 3 && !skip.include?('limbs')
-          herb_type = 'missing eye' if spellcast_only && herb_type.nil? && [::Scars.rightEye, ::Scars.leftEye].max == 3 && !skip.include?('torso')
-          unless herb_type
-            (FIGHTING_AREAS - skip).each do |area|
-              worst = fighting_scar(area, spellcast_only)
-              next if worst.nil?
-
-              if worst > 1
-                herb_type = "major #{areas[area]} scar"
-                break
-              end
-            end
-          end
-        end
-        herb_type = 'blood' if herb_type.nil? && (Char.health + 7) < Char.max_health && !skip.include?('blood')
-        herb_type
-      end
-
-      # The worst wound in an area that bears on fighting: the limbs are the
-      # arms and hands; the head, the eyes (under 'torso') and the nerves
-      # count only for casting.
-      #
-      # @api private
-      # @return [Integer, nil] nil for an area that does not count
-      def fighting_wound(area, spellcast_only)
-        if spellcast_only && area == 'head' then ::Wounds.head
-        elsif spellcast_only && area == 'torso' then [::Wounds.leftEye, ::Wounds.rightEye].max
-        elsif spellcast_only && area == 'nerves' then ::Wounds.nsys
-        elsif area == 'limbs' then [::Wounds.leftArm, ::Wounds.leftHand, ::Wounds.rightArm, ::Wounds.rightHand].max
-        end
-      end
-
-      # The same of scars.
-      #
-      # @api private
-      def fighting_scar(area, spellcast_only)
-        if spellcast_only && area == 'head' then ::Scars.head
-        elsif spellcast_only && area == 'torso' then [::Scars.leftEye, ::Scars.rightEye].max
-        elsif spellcast_only && area == 'nerves' then ::Scars.nsys
-        elsif area == 'limbs' then [::Scars.leftArm, ::Scars.leftHand, ::Scars.rightArm, ::Scars.rightHand].max
-        end
-      end
-
-      # What a dead character needs, from the lines of an APPRAISE: the
-      # bleeding wounds; with +full+, the other wounds too, and when there
-      # are none of either, the scars.
-      #
-      # @param lines [Array<String>]
-      # @param full [Boolean]
-      # @return [Array<String>] the types
-      def appraise(lines, full: false)
-        needs = []
-        seen = ->(pattern) { lines.any? { |l| l =~ pattern } }
-
-        needs.push('major head wound') if seen.call(/minor lacerations about the head|bleeding from the head|moderate bleeding from (?:his|her) neck|severe head trauma and bleeding from the ears|snapped bones and serious bleeding from the neck/)
-        needs.push('major organ wound') if seen.call(/deep lacerations|deep gashes and serious bleeding/)
-        needs.push('major limb wound') if seen.call(/a completely severed|a fractured and bleeding/)
-
-        return needs unless full
-
-        needs.push('major organ wound') if seen.call(/a (blinded|swollen) (right|left) eye/)
-        needs.push('major nerve wound') if seen.call(/a case of (uncontrollable|sporadic) convulsions/)
-        needs.push('minor head wound') if seen.call(/minor bruises about the head|minor bruises on (?:his|her) neck/)
-        needs.push('minor organ wound') if seen.call(/minor cuts and bruises on (?:his|her) (chest|abdomen|back)|a bruised (right|left) eye/)
-        needs.push('minor limb wound') if seen.call(/some minor cuts and bruises on (?:his|her) (right|left)/)
-        needs.push('minor nerve wound') if seen.call(/a strange case of muscle twitching/)
-        return needs unless needs.empty?
-
-        needs.push('major head scar') if seen.call(/several facial scars|old mutilation wounds about (?:his|her) head|some old neck wounds|terrible scars from some serious neck injury/)
-        needs.push('major nerve scar') if seen.call(/constant muscle spasms|a very difficult time with muscle control/)
-        needs.push('major organ scar') if seen.call(/several painful-looking scars across|terrible, permanent mutilation of|severe bruises and swelling around/)
-        needs.push('missing eye') if seen.call(/a missing (right|left) eye/)
-        needs.push('major limb scar') if seen.call(/a mangled (right|left) (leg|arm|hand)/)
-        needs.push('severed limb') if seen.call(/a missing (right|left) (leg|arm|hand)/)
-
-        needs.push('minor head scar') if seen.call(/a scar across (?:his|her) (face|neck)/)
-        needs.push('minor nerve scar') if seen.call(/developed slurred speech/)
-        needs.push('minor organ scar') if seen.call(/an old battle scar across (?:his|her) (chest|abdominal area|back)|a black-and-blue (right|left) eye/)
-        needs.push('minor limb scar') if seen.call(/old battle scars on (?:his|her) (right|left) (leg|arm|hand)/)
-
-        needs
-      end
-
-      # What an escort needs, from the line LOOK gives of them.
-      #
-      # @param look [String]
-      # @return [Array<String>] the types, in the order to hand them over
-      def escort(look)
-        ESCORT.each_with_object([]) { |(pattern, types), needs| needs.concat(types) if look =~ pattern }
-      end
-
-      # The character's condition, type by type.
-      #
-      # @return [Hash{String => Boolean}]
-      def status
-        w = ::Wounds
-        s = ::Scars
-        {
-          'poison'            => checkpoison,
-          'disease'           => checkdisease,
-          'blood'             => (Char.health + 7) < Char.max_health,
-          'minor head wound'  => [w.head, w.neck].include?(1),
-          'major head wound'  => [w.head, w.neck].max > 1,
-          'minor head scar'   => [s.head, s.neck].include?(1),
-          'major head scar'   => [s.head, s.neck].max > 1,
-          'minor nerve wound' => w.nerves == 1,
-          'major nerve wound' => w.nerves > 1,
-          'minor nerve scar'  => s.nerves == 1 && w.nerves.zero?,
-          'major nerve scar'  => s.nerves > 1 && w.nerves.zero?,
-          'minor organ wound' => [w.chest, w.torso, w.back].include?(1),
-          'major organ wound' => [w.chest, w.torso, w.back].max > 1,
-          'minor organ scar'  => [s.chest, s.torso, s.back].include?(1),
-          'major organ scar'  => [s.chest, s.torso, s.back].max > 1,
-          'missing eye'       => [s.reye, s.leye].max > 2,
-          'minor limb wound'  => [w.rhand, w.rarm, w.rleg, w.lhand, w.larm, w.lleg].include?(1),
-          'major limb wound'  => [w.rhand, w.rarm, w.rleg, w.lhand, w.larm, w.lleg].max > 1,
-          'minor limb scar'   => [s.rhand, s.rarm, s.rleg, s.lhand, s.larm, s.lleg].include?(1),
-          'major limb scar'   => [s.rhand, s.rarm, s.rleg, s.lhand, s.larm, s.lleg].include?(2),
-          'severed limb'      => [s.rhand, s.rarm, s.rleg, s.lhand, s.larm, s.lleg].include?(3),
-          'raisedead'         => checkdead,
-          'lifekeep'          => checkdead
-        }
+      # @param look [String] the LOOK answer for the client
+      # @return [Array<String>] herb types, in the order to hand them over
+      def escort_injuries(look)
+        ESCORT_INJURIES.flat_map { |pattern, types| look =~ pattern ? types : [] }
       end
     end
   end
