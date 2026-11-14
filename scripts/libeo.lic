@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.19.0')
-    EO.require('0.19.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.20.0')
+    EO.require('0.20.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.19.0
+       version: 0.20.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.20.0 (2026-11-13)
+    - EO::Wander, from ewander 2.0.1: a creature by name (find_target, hostile?,
+      target_npc!), the rooms visited (wander_rooms), and one step (wander!,
+      wander_standard!, wander_gsiv_confluence!, wander_other_confluence!,
+      track_confluence_landmarks!)
   v0.19.0 (2026-11-13)
     - EO::Guild::Disablers, from echild 1.20.4: the disabling spells (table), being able
       to cast (can_cast?), whether there is justice (justice?), the spell for what is
@@ -189,7 +194,7 @@ parts = %w[
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
   guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
-  guild/disablers guild/rescue
+  guild/disablers guild/rescue wander
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
