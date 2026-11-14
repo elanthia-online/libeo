@@ -15,7 +15,7 @@ module EO
 
     # Every answer to taking something out or drawing it.
     GET = Regexp.union(
-      /^You (?:shield the opening of .*? from view as you |discreetly |carefully |deftly |slowly |quickly )?(?:remove|draw|equip|grab|reach|slip|tuck|retrieve|already have|unsheathe|detach|swap|sling|withdraw)/,
+      /^You (?:shield the opening of .*? from view as you |discreetly |carefully |deftly |slowly |quickly )?(?:remove|pick up|draw|equip|grab|reach|slip|tuck|retrieve|already have|unsheathe|detach|swap|sling|withdraw)/,
       /^With subtle movements, you sneak a hand/,
       /^Get what\?$/,
       /^Why don't you leave some for others\?$/,
@@ -51,15 +51,18 @@ module EO
     OVERLOADED = /You are unable to handle the additional load/
 
     # @param obj [GameObj]
-    # @return [Boolean] whether a hand holds it. An object with no id reads as
-    #   held whenever a hand is empty, an empty hand having no id either.
+    # @return [Boolean] whether a hand holds it. Nothing, and an object with no
+    #   id, is in neither hand.
     def holding?(obj)
+      return false if obj.nil? || obj.id.nil?
+
       [GameObj.right_hand.id, GameObj.left_hand.id].include?(obj.id)
     end
 
     # Make a hand free. Nothing is done when one already is and its arm can
     # be used. Otherwise the left is emptied when it is favoured and usable,
-    # or when the right arm is beyond use; else the right.
+    # or when the right arm is beyond use; else the right. With both arms
+    # beyond use neither is.
     #
     # @param favor_left [Boolean]
     # @param empty [Proc] given :left or :right, puts away what that hand holds
@@ -74,14 +77,12 @@ module EO
 
       waitrt?
 
-      right_damaged = [Wounds.rightArm, Wounds.rightHand, Scars.rightArm, Scars.rightHand].max == 3
+      if (favor_left && left_usable) || !right_usable
+        return :crippled unless left_usable
 
-      if (favor_left && left_usable) || right_damaged
         empty.call(:left)
-      elsif right_usable
-        empty.call(:right)
       else
-        return :crippled
+        empty.call(:right)
       end
       :free
     end
@@ -95,8 +96,8 @@ module EO
     #   could not find it), or :failed (no such answer, and not in hand
     #   after five seconds)
     def take(item, to)
-      line = EO.result("_drag ##{item.id} #{to}")
       refused = Regexp.union(MISSING, OVERLOADED)
+      line = EO.result("_drag ##{item.id} #{to}", Regexp.union(GET, refused))
 
       20.times do
         return :held if holding?(item)
@@ -104,8 +105,8 @@ module EO
         sleep 0.1
       end
 
-      # the first line back can be room chatter instead of the drag's
-      # answer, so an unanswered drag gets as long again as a sale does
+      # a drag the game did not answer in time gets as long again as a
+      # sale does
       unless line =~ refused
         30.times do
           return :held if holding?(item)
