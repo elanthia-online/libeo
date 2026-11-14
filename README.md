@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.36.0')             the version the script was built against
+EO.require('0.37.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -56,6 +56,7 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/guild/disablers.rb` | `EO::Guild::Disablers`: spells that stop creatures without killing them: which can be cast now, the best for what is in the room, the cast |
 | `eo/guild/rescue.rb` | `EO::Guild::Rescue`: a lost child: finding it, where it lives and the guards there, a room that is a danger to it, who to report to, the way out of the Maaghara Labyrinth |
 | `eo/wander.rb` | `EO::Wander`: one step to the adjacent room visited least recently, by the map or through the Elemental Confluence, and finding and targeting a creature by name |
+| `eo/brooch.rb` | `EO::Brooch`: the quintuple orb brooch: rubbing an orb, or chaos when it gives that orb, with the day's rubs tallied so ANALYZE is seldom asked; `EO.eastern_day` |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
