@@ -217,7 +217,7 @@ module EO
         Lich::Gemstone::Mana.pulse(1040) if Spell[1040].known?
 
         spell_1040_ready = Spell[1040].known? && Spell[1040].affordable?
-        berserk_ready = berserk && CMan.known?('Berserk') && Char.stamina >= 21
+        berserk_ready = berserk && CMan.available?('Berserk')
         beseech_ready = beseech && Spell[1635].known? && Spell[1635].affordable?
         escape_ready = Feat.available?('escapeartist', min_rank: 5) && Char.stamina >= 15
 
@@ -225,15 +225,15 @@ module EO
       end
 
       # Get out of a web or bind by the first there is: 1040, berserk,
-      # beseech, Escape Artist. Berserk is used when it is known and there
-      # is the stamina, whether or not it was allowed for web_escape?.
+      # beseech, Escape Artist. Berserk is used when it can be, whether or
+      # not it was allowed for web_escape?.
       #
       # @param beseech [Boolean] beseech (1635) is allowed
       # @return [void]
       def break_web(beseech:)
         if Spell[1040].known? && Spell[1040].affordable?
           fput 'shout 1040'
-        elsif CMan.known?('Berserk') && Char.stamina >= 21
+        elsif CMan.available?('Berserk')
           self.berserk
         elsif beseech && Spell[1635].known? && Spell[1635].affordable?
           fput 'beseech'

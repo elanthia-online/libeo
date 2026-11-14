@@ -60,12 +60,15 @@ RSpec.describe EO::Cleanse do
 
   describe EO::Cleanse::Hazards do
     let(:web) { Struct.new(:id).new('7') }
-    let(:skills) { { cleave: false, thieve: false, stamina: 50 } }
+    let(:skills) { { cleave: false, thieve: false } }
 
     before do
       state = skills
-      stub_const('CMan', Class.new { define_singleton_method(:known?) { |name| state[name == 'Spell Cleave' ? :cleave : :thieve] } })
-      stub_const('Char', Class.new { define_singleton_method(:stamina) { state[:stamina] } })
+      log = fputs
+      stub_const('CMan', Class.new do
+        define_singleton_method(:available?) { |name| state[name == 'Spell Cleave' ? :cleave : :thieve] }
+        define_singleton_method(:use) { |name, target| log << [name, target] }
+      end)
     end
 
     it 'casts the spell at the hazard when it can be afforded, asking for a mana pulse first' do
@@ -79,14 +82,14 @@ RSpec.describe EO::Cleanse do
       expect(spell.casts.size).to eq(1)
     end
 
-    it 'cleaves without a spell, thieves without cleave, and needs the stamina' do
+    it 'cleaves without a spell, thieves without cleave, and does neither when Lich says it cannot' do
       skills.merge!(cleave: true, thieve: true)
       described_class.clear(web, nil)
       skills[:cleave] = false
       described_class.clear(web, nil)
-      skills[:stamina] = 9
+      skills[:thieve] = false
       described_class.clear(web, nil)
-      expect(fputs).to eq(['cman scleave #7', 'cman sthieve #7'])
+      expect(fputs).to eq([['Spell Cleave', '#7'], ['Spell Thieve', '#7']])
     end
 
     it 'blows mist away by incanting 912, or casting 612 at it' do

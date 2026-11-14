@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.23.0')             the version the script was built against
+EO.require('0.24.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
