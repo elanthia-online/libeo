@@ -124,7 +124,7 @@ end
 # The specs written against lent helpers, by file name. The two stand-ins
 # below are theirs; a spec that came with the library's own helpers makes
 # its own.
-LENT_HELPER_SPECS = %w[cleanse_recovery cleanse herb_heal herb_sack herbs chain helpers posture].freeze
+LENT_HELPER_SPECS = %w[herb_heal herb_sack herbs chain helpers posture].freeze
 
 def lent_helper_spec?(example)
   LENT_HELPER_SPECS.include?(File.basename(example.metadata[:file_path], '_spec.rb'))

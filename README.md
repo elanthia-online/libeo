@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.49.0')             the version the script was built against
+EO.require('0.50.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -40,12 +40,11 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, reading a jar, the stash inventory by looking or from a premium locker manifest, filling and shaking |
 | `eo/appraisal.rb` | `EO::Appraisal`: ask a shop what an item is worth and read the answer |
 | `eo/casting.rb` | `EO::Casting`: casting a spell at a target and reading the answer (hindrance retried, with a recheck before each retry), the multicast limit, making mana by a society's power or waiting for it (`Resources`), stamina, another character's active spells, manna bread summoned, eaten and dropped |
-| `eo/cleanse/tables.rb` | `EO::Cleanse`: the debuffs and room hazards by name, the spell a character has for each job, TARGET and its answers |
-| `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: a web, globe or cloud got rid of by spell, Spell Cleave or Spell Thieve; acidic mist blown away; a runestone broken |
-| `eo/cleanse/traps.rb` | `EO::Cleanse::Traps`: the Hive's traps searched out and disarmed; the itchy curse's safe place and wait |
-| `eo/cleanse/disarms.rb` | `EO::Cleanse::Disarms`: a weapon back in hand, the list of disarms not yet recovered (kept across restarts), reading RECOVER ITEM |
-| `eo/cleanse/afflictions.rb` | `EO::Cleanse::Afflictions`: disease and poison cured, a root or press retreated from, debuffs dispelled, a stun or a web got out of, a room quieted |
-| `eo/cleanse/recovery.rb` | `EO::Cleanse::Recovery`: a lost weapon got back: the spirit servant, a bonded weapon, RECOVER ITEM, prying from webbing, a floated weapon, the Sanctum's clench |
+| `eo/cleanse/tables.rb` | `EO::Cleanse`: the dispellable debuffs, the hazards and TARGET's answers, the `Policy`, the spell this character has for a job, whether the wounds allow a cast (the Sigil of Determination cast when it helps) |
+| `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: clouds, magic globes, webs and runestones in the room: find one, target it, dispel, cleave or thieve it (counted only when the game says it hit the wards), break a runestone |
+| `eo/cleanse/afflictions.rb` | `EO::Cleanse::Afflictions`: poison and disease, magical debuffs, a root or press, a stun, a web or bind, each cured the first way the policy allows; settling a room before a recovery |
+| `eo/cleanse/disarms.rb` | `EO::Cleanse::Disarms`: the disarms not yet recovered, kept across restarts; RECOVER ITEM searching, a bonded weapon's return, the spirit servant, prying a webbed weapon, a floated weapon, the Sanctum's clench |
+| `eo/cleanse/traps.rb` | `EO::Cleanse::Traps`: hive traps searched out and disarmed, the itchy curse's safe room and wait, the Sanctum vat |
 | `eo/herbs/table.rb` | `EO::Herbs::Table`: every herb, where it is sold, what it treats and its doses; the stock targets; the two tiers of blood |
 | `eo/herbs/injuries.rb` | `EO::Herbs::Injuries`: the herb type a character's wounds call for next, what a dead character or an escort needs |
 | `eo/herbs/doses.rb` | `EO::Herbs::Doses::Monitor`: the doses left in each herb and potion, learned from the game as they are used, bought and bundled |
