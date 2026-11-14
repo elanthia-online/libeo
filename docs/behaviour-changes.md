@@ -47,8 +47,7 @@ script upstream had them; they are not listed here.
 **PR** is the pull request of this stack in which the difference first appeared, found from
 the history of the code that makes the row true. Where two or more are given, the first is
 the library code and the later ones are the script's use of it, or a later change that
-extended the difference. A row with `round 2` or `round 3` is a review fix whose PR is not
-opened yet.
+extended the difference. A row with #62, #63 or #64 is a review fix, made in the review rounds on top of the stack.
 
 Two Lich facts sit behind many judgements. `NilClass#method_missing` returns
 nil, so most places where upstream called a method on nil did nothing and did
@@ -124,12 +123,12 @@ These recur; the script tables do not repeat the detail.
 | `EO.at?` also accepts "1234" and "u1234"; false, not an error, in an unknown room | rule | #53 |
 | `EO::Settings.save_profile`: creates the directory, unwraps CharSettings proxies, keeps a frozen copy for other scripts | fix + feature | #39 |
 | An empty profile file falls back to defaults | fix | #39 |
-| A profile file that cannot be read (cut short, garbled) is moved to `<name>.bad` with a warning that names it, and the script starts on its defaults; a profile is written through a temporary file and renamed | feature | round 2 |
+| A profile file that cannot be read (cut short, garbled) is moved to `<name>.bad` with a warning that names it, and the script starts on its defaults; a profile is written through a temporary file and renamed | feature | #63 |
 | `;<script> list` sorts a copy, not the live arrays | fix | #39 |
 | `;<script> settings`: errors reworded; a decimal value accepted | message + fix | #39 |
 | The setup class removes its old instance methods on each run | fix | #54, #55, #56, #58, #59 |
 | `EO.stand` and `EO.kneel`: five tries, where scripts tried until it worked | rule | #29 |
-| `EO.command` and `EO.result` send a command again only for the whole line "...wait N seconds." (the command did not run). Upstream also did for any "Roundtime: N sec." line, which a command that ran leaves after it, and so could send an action twice | fix | round 3 |
+| `EO.command` and `EO.result` send a command again only for the whole line "...wait N seconds." (the command did not run). Upstream also did for any "Roundtime: N sec." line, which a command that ran leaves after it, and so could send an action twice | fix | #64 |
 | `Lich::Gemstone::Mana.pulse`: `waitrt?` first, anchored patterns, 2 s | swap | #21 |
 | `Injured.able_to_cast?`: one rank-2 arm or hand now casts; eyes totalling 3 now block; rank-1 scars are ignored; sends `_injury` | swap | #23 |
 | `Stance.change('defensive')`: sends from guarded and under Frenzy; one attempt | swap | #22 |
@@ -214,9 +213,9 @@ These recur; the script tables do not repeat the detail.
 | 61 | `;eloot settings <key> ...` is matched before `pool` and `debug`: a setting or value with those words is saved, not run as a pool trip or a debug toggle | fix | #62 |
 | 62 | Selling a bundle of skins stops when a skin is left in hand, or after three unanswered BUNDLE REMOVE commands (upstream repeated without end) | rule | #62 |
 | 63 | A wear refused with "You can't wear that" returns `:cant` and the script goes on (upstream exited) | rule | #62 |
-| 64 | With no skinning weapon listed and an empty right hand, eloot says so; it said it was using the right hand and skinned nothing | fix | round 2 |
-| 65 | A LOCKER INFO that got no answer is asked again (upstream kept the nothing for the run) | fix | round 3 |
-| 66 | Taking an item into "a hand" picks the right hand when it is free and usable, else the left; upstream picked the right whenever it was empty, so a crippled right arm made the drag fail after a five second wait | fix | round 2 |
+| 64 | With no skinning weapon listed and an empty right hand, eloot says so; it said it was using the right hand and skinned nothing | fix | #63 |
+| 65 | A LOCKER INFO that got no answer is asked again (upstream kept the nothing for the run) | fix | #64 |
+| 66 | Taking an item into "a hand" picks the right hand when it is free and usable, else the left; upstream picked the right whenever it was empty, so a crippled right arm made the drag fail after a five second wait | fix | #63 |
 
 The command-line dispatch is the same text apart from row 61, which moves one
 branch ahead of two others. About 2,100 of the 2,250 lines in Sell are
@@ -266,8 +265,8 @@ now done in-process.
 | 34 | Garrote recovery and the Bard song stop on the "child already here" path | feature | #56 |
 | 35 | Location names regex-escaped; the boundary list de-duplicated | rule | #56 |
 | 36 | Removed from `EBounty`, `Task` and `EBounty.data`: about 40 methods and readers | removed | #51, #56 |
-| 37 | A guard's rescue and lost-heirloom replies are answers; a guard who does not answer sends the visit to the next guard (upstream raised on nil, and its pattern matched neither reply, so each ask waited out its timeout) | fix | round 2 |
-| 38 | The setup window's hint for the escort script says escortgo2, the default (upstream's window said ego) | message | round 3 |
+| 37 | A guard's rescue and lost-heirloom replies are answers; a guard who does not answer sends the visit to the next guard (upstream raised on nil, and its pattern matched neither reply, so each ask waited out its timeout) | fix | #63 |
+| 38 | The setup window's hint for the escort script says escortgo2, the default (upstream's window said ego) | message | #64 |
 
 ## ewaggle
 
@@ -290,7 +289,7 @@ The setup window, command line, target handling and cast passes are unchanged.
 | 13 | The armor-buff stamina check answers ready for any zero-mana spell (no effect today) | unclear | #8 |
 | 14 | Removed: `word_wrap`, `check_mana_col`, `check_mana_gos`, `check_mana_voln`, `col_move`, `safe_to_wrack` | removed | #47, #55 |
 | 15 | Debug line dropped from SPELL ACTIVE parsing | message | #55 |
-| 16 | A character the game does not answer SPELL ACTIVE for in time is skipped with a message (upstream cast every spell at them, as if they had none) | fix | round 3 |
+| 16 | A character the game does not answer SPELL ACTIVE for in time is skipped with a message (upstream cast every spell at them, as if they had none) | fix | #64 |
 
 ## eherbs
 
@@ -340,7 +339,7 @@ The herb table is identical: all 247 entries match upstream by mechanical diff.
 | 40 | An escort's limb wounds are read only from a line that names a leg, arm or hand (upstream's pattern matched any line with "arm" or "hand" in it) | fix | #30 |
 | 41 | Deader on a living character prints "Healdown finished" and restores the hands | rule + message | #59 |
 | 42 | Deader and escort in-hand match by substring; free-hand messages reworded | message | #59 |
-| 43 | Healing a dead player ends on an unanswered pour or after 20 passes, saying so; bundling potions pours at most ten times and asks with a timeout (upstream repeated without end) | rule | round 2 |
+| 43 | Healing a dead player ends on an unanswered pour or after 20 passes, saying so; bundling potions pours at most ten times and asks with a timeout (upstream repeated without end) | rule | #63 |
 | 44 | Lich minimum 5.9.0 -> 5.22.0; the old-Lich message is gone and nothing checks the version at start (see row 4) | rule | #49 |
 
 ## ecleanse
@@ -377,7 +376,7 @@ window are intact. The walks force go2, as upstream's did.
 | 25 | Vat room not on the map: a message, no pause (upstream ran go2 with no target) | fix | #58 |
 | 26 | Hive SEARCH answers `:exhausted` straight after the third try | rule | #58 |
 | 27 | Quiet commands are not sent again on "Roundtime" | rule | #58 |
-| 28 | The servant's recovery stops the songs cast for the disarm (upstream left 1011 up, and 213 unless SENSE showed peace) | fix | round 2 |
+| 28 | The servant's recovery stops the songs cast for the disarm (upstream left 1011 up, and 213 unless SENSE showed peace) | fix | #63 |
 
 ## escortgo2
 
@@ -420,7 +419,7 @@ Every route of upstream's table is present with the same commands.
 | 12 | A bad room argument falls back to the nearest dropoff | fix | #56 |
 | 13 | Messages; the hook renamed `_justice`; ties on mana cost by `min_by` | message | #56 |
 | 14 | A number inside an option (`--disabler=617`, `--test:owl2`) is not taken as the destination room | fix | #62 |
-| 15 | TARGET RANDOM waits five seconds for its answer, and learns only the hostile names the game refuses; upstream waited without end and learned every NPC in the room, the child included, and saved them | fix | round 3 |
+| 15 | TARGET RANDOM waits five seconds for its answer, and learns only the hostile names the game refuses; upstream waited without end and learned every NPC in the room, the child included, and saved them | fix | #64 |
 | 16 | Lich minimum none -> 5.22.0, in the header only: nothing checks the version at start | rule | #45 |
 
 ## ewander
