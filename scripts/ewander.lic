@@ -18,9 +18,13 @@
      game: Gemstone
      tags: movement
  required: Lich >= 5.22.0
-  version: 2.2.0
+  version: 2.3.0
 
   changelog:
+    2.3.0 (2026-11-13):
+      - the step is libeo's whole (EO::Wander.step: the Elemental Confluence its own way,
+        anywhere else EO.wander), with picking a named creature and learning what TARGET
+        accepts; this script keeps its settings and its loop. Needs libeo 0.49.0
     2.2.0 (2026-11-13):
       - settings live in the character's ewander.yaml profile, so other scripts can read
         them (EO::Settings.read(:ewander)); the first run copies them from CharSettings
@@ -65,11 +69,12 @@
 
 =end
 
-# Script.loadlib loads libeo once a session; a copy older than this script
-# needs is run again.
+# A libeo loaded earlier in this Lich session may be older than this script
+# needs; load it again unless the one loaded is new enough.
+# Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.43.0')
-EO.require('0.43.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.49.0')
+EO.require('0.49.0')
 
 module EWander
   # ---------------------------------------------------------------------------
@@ -114,6 +119,21 @@ module EWander
       store['boundary']     = []
       store['untargetable'] = []
       store['targetable']   = []
+    end
+  end
+
+  # Moving, the Confluence and picking a creature are libeo's (EO::Wander).
+  module Movement
+    module_function
+
+    def wander_rooms
+      $wander_rooms ||= []
+    end
+
+    def wander!
+      # an eloot loot grab in progress finishes before the next step
+      wait_while { ($loot_grab_list.length.to_i > 0) || $loot_working }
+      sleep Settings.delay unless EO::Wander.step(wander_rooms, avoid: Settings.boundary)
     end
   end
 
@@ -255,8 +275,8 @@ module EWander
     # Wander stopping for any hostile NPC (no name args given)
     def wander_any_target
       loop do
-        EO::Wander.wander!(boundary: Settings.boundary, delay: Settings.delay)
-        start_npcs = npcs = GameObj.targets
+        Movement.wander!
+        npcs = GameObj.targets
         npcs = npcs.reject { |npc| Settings.untargetable.include?(npc.name) }
 
         if !Claim.mine?
@@ -264,18 +284,9 @@ module EWander
         elsif npcs.any? { |npc| Settings.targetable.include?(npc.name) }
           break
         else
-          clear
-          target_result = dothistimeout('target random', 5, /^Could not find a valid target\.$|^You are now targeting/)
-          if target_result =~ /^You are now targeting \w+ (.*)\.$/
-            target_name = $1
-            Settings.targetable.push(target_name) unless Settings.targetable.include?(target_name)
-            break
-          elsif target_result == 'Could not find a valid target.'
-            if GameObj.targets == start_npcs
-              npcs.each { |npc| Settings.untargetable.push(npc.name) unless Settings.untargetable.include?(npc.name) }
-            end
-            sleep Settings.delay
-          end
+          break if EO::Wander.target_random!(npcs, targetable: Settings.targetable, untargetable: Settings.untargetable)
+
+          sleep Settings.delay
         end
       end
     end
@@ -292,12 +303,12 @@ module EWander
         end
 
         # Pre-move: check for matching NPC before wandering (catches spawns mid-room)
-        found_npc = EO::Wander.find_target(names)
+        found_npc = EO::Wander.find(names)
         if found_npc
           if EO::Wander.hostile?(found_npc)
             # Hostile NPC - only stop if we have valid claim
             if Claim.mine?
-              EO::Wander.target_npc!(found_npc)
+              EO::Wander.target!(found_npc)
               break
             end
           else
@@ -306,7 +317,7 @@ module EWander
           end
         end
 
-        EO::Wander.wander!(boundary: Settings.boundary, delay: Settings.delay)
+        Movement.wander!
 
         # Post-move: matching PC detected -> stop
         if GameObj.pcs.any? { |pc| pc.noun =~ pc_regex }
@@ -314,11 +325,11 @@ module EWander
         end
 
         # Post-move: look for matching NPC
-        found_npc = EO::Wander.find_target(names)
+        found_npc = EO::Wander.find(names)
         if found_npc
           if EO::Wander.hostile?(found_npc)
             if Claim.mine?
-              EO::Wander.target_npc!(found_npc)
+              EO::Wander.target!(found_npc)
               break
             else
               sleep Settings.delay

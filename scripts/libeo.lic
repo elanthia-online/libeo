@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.48.0')
-    EO.require('0.48.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.49.0')
+    EO.require('0.49.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,17 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.48.0
+       version: 0.49.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.49.0 (2026-11-13)
+    - EO::Wander is the one from Nisugi/libeo: step(visited, avoid:) takes a step wherever
+      the character is, find, hostile?, target! and target_random! choose and target a
+      creature. Wander.next_room is gone; the step outside the Confluence is EO.wander
+      (eo/travel.rb), which EO::Casting and EO::Guild::Heirloom already use
+    - kept from this library: a Confluence step starts over ten times at most, and does
+      not move when LOOK is not answered or shows no exits
   v0.48.0 (2026-11-13)
     - EO::Guild is the one from Nisugi/libeo, each part holding the whole of what it is
       about and sending through the library's own helpers: Taskmaster and Assignments (the

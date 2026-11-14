@@ -4,168 +4,90 @@ require_relative 'eo_helper'
 require_relative '../../scripts/eo/wander'
 
 RSpec.describe EO::Wander do
-  let(:npc) { Struct.new(:id, :name, :noun, :status) }
-  let(:state) { { npcs: [], targets: [], loot: [], room: nil, title: '[Somewhere]', game: 'GSIV', exits: [], moves: {}, look: nil } }
-  let(:log) { [] }
+  let(:npc) { Struct.new(:id, :name, :noun, :status, keyword_init: true) }
 
-  before do
-    now = state
-    out = log
+  def room_with(*npcs, targets: npcs)
     stub_const('GameObj', Class.new do
-      define_singleton_method(:npcs) { now[:npcs].empty? ? nil : now[:npcs] }
-      define_singleton_method(:targets) { now[:targets] }
-      define_singleton_method(:loot) { now[:loot].empty? ? nil : now[:loot] }
+      define_singleton_method(:npcs) { npcs }
+      define_singleton_method(:targets) { targets }
     end)
-    stub_const('Room', Class.new { define_singleton_method(:current) { now[:room] } })
-    stub_const('XMLData', Class.new do
-      define_singleton_method(:game) { now[:game] }
-      define_singleton_method(:room_exits) { now[:exits] }
-    end)
-    {
-      fput: ->(cmd) { out << cmd }, waitrt?: -> {}, sleep: ->(time) { out << [:sleep, time] },
-      checkroom: -> { now[:title] }, wait_while: ->(&_block) {}, status_tags: -> {},
-      dothistimeout: ->(_cmd, _time, _pattern) { now[:look] },
-      move: lambda { |way|
-        out << [:move, way]
-        to = now[:moves][way]
-        to == false ? false : (now[:room] = to if to)
-      }
-    }.each { |name, body| described_class.define_singleton_method(name, &body) }
-    $wander_rooms = nil
-    $mapdb_confluence_wayto = nil
-    $mapdb_confluence_last_dir = nil
   end
 
-  after do
-    %i[fput waitrt? sleep checkroom wait_while status_tags dothistimeout move].each { |m| described_class.singleton_class.remove_method(m) }
-    $wander_rooms = $mapdb_confluence_wayto = $mapdb_confluence_last_dir = nil
-    $mapdb_confluence_hot_pit = $mapdb_confluence_cold_tranquility = nil
+  it 'picks the first named creature in priority order, skipping pets, limbs and the dead' do
+    kobold = npc.new(id: '1', name: 'a kobold', noun: 'kobold', status: '')
+    troll = npc.new(id: '2', name: 'a troll', noun: 'troll', status: '')
+    room_with(npc.new(id: '3', name: 'animated skeleton', noun: 'skeleton', status: ''),
+              npc.new(id: '4', name: 'a kraken arm', noun: 'arm', status: ''),
+              npc.new(id: '5', name: 'a dead troll', noun: 'troll', status: 'dead'), kobold, troll)
+    expect(described_class.find(%w[troll kobold])).to eq(troll)
+    expect(described_class.find(%w[skeleton arm])).to be_nil
+    expect(described_class.find(%w[nothing])).to be_nil
   end
 
-  describe '.find_target' do
-    it 'finds a live creature by name, the earlier name first' do
-      state[:npcs] = [npc.new('1', 'a kobold', 'kobold'), npc.new('2', 'a greater orc', 'orc'), npc.new('3', 'a lesser orc', 'orc', 'dead')]
-      expect(described_class.find_target(%w[orc kobold]).id).to eq('2')
-      expect(described_class.find_target(['lesser orc'])).to be_nil
-      expect(described_class.find_target(['troll'])).to be_nil
-    end
-
-    it 'passes over animated creatures and body parts, but for slush and the named kraken tentacles' do
-      state[:npcs] = [npc.new('1', 'animated kobold', 'kobold'), npc.new('2', 'a kraken tentacle', 'tentacle')]
-      expect(described_class.find_target(%w[kobold tentacle])).to be_nil
-      state[:npcs] = [npc.new('3', 'animated slush', 'slush'), npc.new('4', 'a ghostly kraken tentacle', 'tentacle')]
-      expect(described_class.find_target(['slush']).id).to eq('3')
-      expect(described_class.find_target(['tentacle']).id).to eq('4')
-    end
-
-    it 'finds nothing in an empty room' do
-      expect(described_class.find_target(['orc'])).to be_nil
-    end
+  it 'keeps animated slush and a named kraken tentacle' do
+    slush = npc.new(id: '6', name: 'animated slush', noun: 'slush', status: '')
+    tentacle = npc.new(id: '7', name: 'an ancient kraken tentacle', noun: 'tentacle', status: '')
+    room_with(slush, tentacle)
+    expect(described_class.find(['slush'])).to eq(slush)
+    expect(described_class.find(['tentacle'])).to eq(tentacle)
   end
 
-  it 'targets a creature only when it is hostile' do
-    orc = npc.new('2', 'a greater orc', 'orc')
-    guard = npc.new('5', 'a town guard', 'guard')
-    state[:targets] = [orc]
+  it 'tells hostile creatures from town folk' do
+    guard = npc.new(id: '8', name: 'a town guard', noun: 'guard', status: '')
+    orc = npc.new(id: '9', name: 'an orc', noun: 'orc', status: '')
+    room_with(guard, orc, targets: [orc])
     expect(described_class.hostile?(orc)).to be(true)
-    expect(described_class.target_npc!(orc)).to be(true)
-    expect(described_class.target_npc!(guard)).to be(false)
-    expect(log).to eq(['target #2'])
+    expect(described_class.hostile?(guard)).to be(false)
   end
 
-  describe '.wander_standard!' do
-    let(:room_type) { Struct.new(:id, :wayto, :timeto) }
-
-    before { state[:room] = room_type.new(1, { '2' => 'north', '3' => 'east', '4' => 'west' }, {}) }
-
-    it 'steps to a room not yet visited, then to the one visited longest ago, never across a boundary' do
-      $wander_rooms = ['2']
-      described_class.wander!(boundary: ['4'], delay: 1.0)
-      described_class.wander!(boundary: ['4'], delay: 1.0)
-      expect(log).to eq([[:move, 'east'], [:move, 'north']])
-      expect($wander_rooms).to eq(%w[3 2])
+  describe 'Confluence' do
+    it 'moves a landmark here, clears it when gone, and leaves it otherwise' do
+      c = described_class::Confluence
+      expect(c.landmark(nil, 5, true)).to eq(5)
+      expect(c.landmark(5, 5, false)).to be_nil
+      expect(c.landmark(7, 5, false)).to eq(7)
     end
 
-    it 'waits the delay when there is nowhere to go' do
-      described_class.wander_standard!(boundary: %w[2 3 4], delay: 2.5)
-      expect(log).to eq([[:sleep, 2.5]])
-    end
+    context 'when the exits it read are stale' do
+      let(:confluence) { described_class::Confluence }
+      let(:moves) { [] }
 
-    it "knows a closed way by the map's own kind of proc, which is one by its class alone" do
-      string_proc = Class.new do
-        def class = Proc
-        def call = nil
-      end.new
-      state[:room].timeto['2'] = string_proc
-      state[:room].timeto['3'] = string_proc
-      expect(described_class.next_room(state[:room], [], [])).to eq('4')
-    end
+      before do
+        stub_const('XMLData', Class.new { def self.room_exits = ['north'] })
+        here = Struct.new(:id).new(23_282)
+        stub_const('Room', Class.new { define_singleton_method(:current) { here } })
+        sent = moves
+        confluence.define_singleton_method(:move) { |way| (sent << way) && false }
+        %i[status_tags waitrt?].each { |m| confluence.define_singleton_method(m) { nil } }
+        $mapdb_confluence_wayto = nil
+        $mapdb_confluence_last_dir = nil
+      end
 
-    it 'does not step where a scripted time says there is no going, and calls a scripted way' do
-      state[:room].timeto['2'] = proc {}
-      state[:room].timeto['3'] = proc { 5 }
-      state[:room].wayto['3'] = proc { log << :called }
-      described_class.wander_standard!(boundary: ['4'], delay: 1.0)
-      expect(log).to eq([:called])
-    end
-  end
+      after do
+        %i[move status_tags waitrt?].each { |m| confluence.singleton_class.remove_method(m) }
+        $mapdb_confluence_wayto = $mapdb_confluence_last_dir = nil
+      end
 
-  describe 'in the Elemental Confluence' do
-    let(:room_type) { Struct.new(:id) }
+      it 'takes an exit LOOK shows' do
+        allow(confluence).to receive(:dothistimeout).and_return('<compass><dir value="e"/></compass>')
+        confluence.mapped_step([])
+        confluence.turning_step
+        expect(moves).to eq(%w[north e north e])
+      end
 
-    before { state[:title] = '[Elemental Confluence]' }
+      it 'does not move when LOOK is not answered or shows none' do
+        allow(confluence).to receive(:dothistimeout).and_return(nil, '<compass></compass>')
+        confluence.mapped_step([])
+        confluence.turning_step
+        expect(moves).to eq(%w[north north])
+      end
 
-    it 'in GSIV learns where an exit leads, and notes the landmarks seen there' do
-      state[:room] = room_type.new(23282)
-      state[:exits] = %w[north east]
-      state[:moves]['north'] = room_type.new(23283)
-      state[:loot] = [Struct.new(:name).new('gaping bottomless pit')]
-      described_class.wander!(boundary: [], delay: 1.0)
-      expect($mapdb_confluence_wayto[23282]).to eq({ 'north' => 23283, 'east' => nil })
-      expect($wander_rooms).to eq([23283])
-      expect($mapdb_confluence_hot_pit).to eq(23283)
-    end
-
-    it 'in GSIV gives the step up when the room keeps shifting under it' do
-      state[:room] = room_type.new(23282)
-      shifts = 0
-      allow(XMLData).to receive(:room_exits) { (shifts += 1).odd? ? %w[north] : %w[south] }
-      described_class.wander!(boundary: [], delay: 1.0)
-      expect(log).to be_empty
-      expect(shifts).to be < 50
-    end
-
-    it 'moves nowhere when a look after a failed move shows no exits' do
-      state[:game] = 'GSF'
-      state[:exits] = %w[north]
-      state[:moves]['north'] = false
-      described_class.wander!(boundary: [], delay: 1.0)
-      expect(log).to eq([[:move, 'north']])
-    end
-
-    it 'forgets a landmark that is no longer where it was, hot side or cold' do
-      $mapdb_confluence_cold_tranquility = 5
-      $mapdb_confluence_hot_pit = 23283
-      described_class.track_confluence_landmarks!(room_type.new(5))
-      described_class.track_confluence_landmarks!(room_type.new(23283))
-      expect([$mapdb_confluence_cold_tranquility, $mapdb_confluence_hot_pit]).to eq([nil, nil])
-    end
-
-    it 'in another game takes the next exit round the compass from the way it came in' do
-      state[:game] = 'GSF'
-      state[:exits] = %w[north south west]
-      $mapdb_confluence_last_dir = 'north'
-      described_class.wander!(boundary: [], delay: 1.0)
-      expect(log).to eq([[:move, 'west']])
-    end
-
-    it 'in another game looks again when the exits were stale' do
-      state[:game] = 'GSF'
-      state[:exits] = %w[north]
-      state[:moves]['north'] = false
-      state[:look] = '<compass><dir value="e"/></compass>'
-      described_class.wander!(boundary: [], delay: 1.0)
-      expect(log).to eq([[:move, 'north'], [:move, 'e']])
+      it 'starts a step over ten times at most' do
+        tries = 0
+        allow(confluence).to receive(:move) { (tries += 1) && raise('the room shifted') }
+        expect { confluence.mapped_step([]) }.not_to raise_error
+        expect(tries).to eq(confluence::RESTARTS + 1)
+      end
     end
   end
 end
