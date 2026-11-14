@@ -2,177 +2,208 @@
 
 module EO
   module Guild
-    # Spells that stop creatures without killing them, for getting past a
-    # room with someone in tow: which the character can cast now, the best
-    # of them for what is in the room, and the cast.
+    # Choosing and casting a disabling spell on whatever is in the room,
+    # while something that cannot fight (a rescued child, an escort client)
+    # is being walked somewhere.
     module Disablers
       module_function
 
-      # A creature already in no state to attack.
-      DISABLED = /dead|prone|lying down|stunned|sleeping|webbed|calm|sitting|frozen/
-      # Effects that keep the character from casting.
-      DEBUFFS = ['Bind', 'Corrupt Essence', 'Calm', 'Mind Jolt', 'Net', 'Silenced', 'Sleep', 'Web'].freeze
+      # The spells, whether each is allowed under town justice, and whether
+      # it hits one target or every one. 504 reaches every target with
+      # enough Elemental Lore, Air; see .multi_target?.
+      TABLE = [
+        { num: 135,  town_safe: false, single_target: false },
+        { num: 201,  town_safe: true,  single_target: true },
+        { num: 213,  town_safe: true,  single_target: false },
+        { num: 316,  town_safe: false, single_target: false },
+        { num: 410,  town_safe: false, single_target: false },
+        { num: 501,  town_safe: true,  single_target: true },
+        { num: 504,  town_safe: true,  single_target: :air_lore },
+        { num: 505,  town_safe: true,  single_target: true },
+        { num: 519,  town_safe: true,  single_target: true },
+        { num: 619,  town_safe: false, single_target: false },
+        { num: 706,  town_safe: true,  single_target: true },
+        { num: 709,  town_safe: false, single_target: false },
+        { num: 912,  town_safe: true,  single_target: false },
+        { num: 1005, town_safe: true,  single_target: true },
+        { num: 1011, town_safe: true,  single_target: false },
+        { num: 1207, town_safe: true,  single_target: true },
+        { num: 1219, town_safe: false, single_target: false },
+        { num: 1608, town_safe: false, single_target: false },
+      ].freeze
 
-      # The disabling spells: whether each may be cast where there is
-      # justice, and whether it stops one creature only. Call Wind (504)
-      # takes the whole room from twenty ranks of air lore.
-      #
-      # @return [Array<Hash>] each with :num, :town_safe and :single_target
-      def table
-        [
-          { :num => 135,  :town_safe => false, :single_target => false },
-          { :num => 201,  :town_safe => true,  :single_target => true },
-          { :num => 213,  :town_safe => true,  :single_target => false },
-          { :num => 316,  :town_safe => false, :single_target => false },
-          { :num => 410,  :town_safe => false, :single_target => false },
-          { :num => 501,  :town_safe => true,  :single_target => true },
-          { :num => 504,  :town_safe => true,  :single_target => Skills.elair >= 20 ? false : true },
-          { :num => 505,  :town_safe => true,  :single_target => true },
-          { :num => 519,  :town_safe => true,  :single_target => true },
-          { :num => 619,  :town_safe => false, :single_target => false },
-          { :num => 706,  :town_safe => true,  :single_target => true },
-          { :num => 709,  :town_safe => false, :single_target => false },
-          { :num => 912,  :town_safe => true,  :single_target => false },
-          { :num => 1005, :town_safe => true,  :single_target => true },
-          { :num => 1011, :town_safe => true,  :single_target => false },
-          { :num => 1207, :town_safe => true,  :single_target => true },
-          { :num => 1219, :town_safe => false, :single_target => false },
-          { :num => 1608, :town_safe => false, :single_target => false },
-        ]
+      # The two sanctuaries work on everything and are taken over any cheaper
+      # spell when there is more than one target.
+      PREFERRED_MULTI = [213, 1011].freeze
+
+      # Spells a creature shrugs off, by name; the spell is dropped for it.
+      # 410 and 709 do not reach griffins, which fly. 706 is Tenebrous
+      # Tether now, not Mind Jolt, so Mind Jolt's resisters are gone.
+      SINGLE_TARGET_EXCLUSIONS = {
+        501 => /\b(?:glacei|corpse|wraith|elemental|ghost)\b/,
+        505 => /\b(?:glacei|elemental|wraith)\b/,
+        410 => /\b(?:glacei|griffin|grifflet|elemental)\b/,
+        709 => /\b(?:glacei|griffin|grifflet|elemental)\b/,
+        201 => /\b(?:grimswarm|construct)\b/,
+      }.freeze
+      MULTI_TARGET_EXCLUSIONS = { 410 => /\b(?:glacei|wraith|elemental|cold guardian)\b/ }.freeze
+
+      # A creature already out of the fight needs no disabling.
+      DISABLED = /dead|prone|lying down|stunned|sleeping|webbed|calm|sitting|frozen/
+
+      # Debuffs under which a cast is not attempted.
+      BLOCKING_DEBUFFS = ['Bind', 'Corrupt Essence', 'Calm', 'Mind Jolt', 'Net', 'Silenced', 'Sleep', 'Web'].freeze
+
+      # enabled: cast disablers at all. min_mana: never spend below this.
+      # forced: a spell number to use instead of choosing, or nil.
+      # untargetable: creature names TARGET refused; the list is the
+      # driver's and grows as the walk learns more.
+      Policy = Struct.new(:enabled, :min_mana, :forced, :untargetable, keyword_init: true) do
+        def initialize(enabled: true, min_mana: 0, forced: nil, untargetable: [])
+          super(enabled: enabled, min_mana: min_mana.to_i, forced: forced.is_a?(Integer) && forced.positive? ? forced : nil,
+                untargetable: untargetable)
+        end
       end
 
-      # Whether the character is in a state to cast: not stunned or dead,
-      # without the wounds that stop a cast (Lich's Injured.able_to_cast?),
-      # and under none of DEBUFFS.
+      # @param num [Integer]
+      # @return [Boolean] whether the spell can reach every target
+      def multi_target?(entry)
+        case entry[:single_target]
+        when :air_lore then Skills.elair >= 20
+        else !entry[:single_target]
+        end
+      end
+
+      # Whether a cast is worth attempting: not stunned or dead, the wounds
+      # allow it (Lich's Injured, Sigil of Determination included), none of
+      # the blocking debuffs.
       #
       # @return [Boolean]
       def can_cast?
-        return false if stunned? or dead?
+        return false if stunned? || dead?
         return false unless Lich::Gemstone::Injured.able_to_cast?
-        # need effect names for "Terrified", "Unconscious", "Staggered", and whatever else I'm missing
-        debuffs_prevent_cast = !(Effects::Debuffs.to_h.keys & DEBUFFS).empty?
-        return false if debuffs_prevent_cast
-        return true
+        (Effects::Debuffs.to_h.keys & BLOCKING_DEBUFFS).empty?
       end
 
-      # Ask JUSTICE STATUS, keeping its answer off the screen.
+      # Seconds JUSTICE STATUS is given to answer.
+      JUSTICE_WAIT = 5
+
+      # Whether town justice watches this room, from JUSTICE STATUS. The
+      # answer is caught by a hook so it never reaches the client.
       #
-      # @param seconds [Numeric] how long to wait for the answer
-      # @return [Boolean] whether there is justice here; true when no answer
-      #   came, so that only what is safe in town is cast
-      def justice?(seconds = 5)
-        justice = nil
-        action = proc { |server_string|
-          if server_string =~ /^You sense that your surroundings are calm|^There is no justice/
-            justice = (server_string =~ /You sense that your surroundings are calm/ ? true : false)
+      # @return [Boolean] true too when nothing answered in JUSTICE_WAIT seconds
+      def justice?
+        answer = nil
+        hook = "#{Script.current.name}_justice"
+        DownstreamHook.add(hook, proc { |line|
+          if line =~ /^You sense that your surroundings are calm|^There is no justice/
+            answer = line =~ /surroundings are calm/ ? true : false
             nil
           else
-            server_string
+            line
           end
-        }
-        DownstreamHook.add("#{Script.current.name}_check_justice", action)
+        })
         put 'justice status'
-        (seconds * 100).times do
-          break unless justice.nil?
+        (JUSTICE_WAIT * 100).times do
+          break unless answer.nil?
 
           sleep 0.01
         end
-        DownstreamHook.remove("#{Script.current.name}_check_justice")
-        justice.nil? || justice
+        # no answer counts as justice, so only spells safe in town are chosen
+        answer.nil? || answer
+      ensure
+        DownstreamHook.remove(hook)
       end
 
-      # The spell to cast at what is in the room: of those known and
-      # affordable, safe for the place and fit for the number and kind of
-      # creatures, the cheapest. Against more than one creature Sanctuary
-      # (213) or Song of Peace (1011) is taken at any cost.
+      # The spells the character could cast now within the policy's mana.
       #
-      # @param min_mana [Integer] mana to have left after the cast
-      # @param custom [Integer, false] a spell to use whenever it is known
-      #   and affordable
-      # @param untargetable [Array<String>] names of creatures not counted
-      # @param skip_can_cast [Boolean] choose without asking can_cast?
-      # @return [Hash, nil] an entry of the table, or only :num for the
-      #   custom spell; nil when there is none
-      def best(min_mana:, custom:, untargetable:, skip_can_cast: false)
-        return nil if can_cast? == false and skip_can_cast == false
-        # find all eligible spells
-        candidates = table.find_all { |disabler|
-          spell = Spell[disabler[:num]]
-          spell.known? and spell.affordable? and ((mana - spell.mana_cost) >= min_mana.to_i)
-        }
-        return { :num => custom } if custom.is_a?(Integer) && Spell[custom].known? && Spell[custom].affordable?
-        return nil if (candidates.nil? or candidates.empty?) # no justice check if no disablers
-        # filter spells that are safe in town if you're in town
-        justice = justice?
-        if justice
-          candidates = candidates.find_all { |disabler|
-            disabler[:town_safe] == true
-          }
+      # @param policy [Policy]
+      # @return [Array<Hash>] TABLE entries
+      def affordable(policy)
+        TABLE.select do |entry|
+          spell = Spell[entry[:num]]
+          spell.known? && spell.affordable? && (mana - spell.mana_cost) >= policy.min_mana
         end
-
-        # filter out single target spells if more than 1 target
-        npcs = GameObj.targets.find_all { |npc| !untargetable.include?(npc.name) and npc.status !~ DISABLED }
-        if npcs.size > 1
-          candidates = candidates.find_all { |i| !i[:single_target] }
-
-          # multi target filtering section
-          candidates = candidates.find_all { |i| i[:num] != 410 } if GameObj.npcs.any? { |i| i.name =~ /\b(?:glacei|wraith|elemental|cold guardian)\b/ }
-
-          # pick the preferred sanctuary spells - regardless of cost
-          preferred = candidates.find { |i| i[:num].to_s =~ /213|1011/ }
-          return preferred unless preferred.nil?
-        else
-          name = npcs[0] ? npcs[0].name : nil
-          # single target filtering section
-          candidates = candidates.find_all { |i| i[:num] != 501 } if name =~ /\b(?:glacei|corpse|wraith|elemental|ghost)\b/
-          candidates = candidates.find_all { |i| i[:num] != 505 } if name =~ /\b(?:glacei|elemental|wraith)\b/
-          candidates = candidates.find_all { |i| i[:num] != 410 } if name =~ /\b(?:glacei|griffin|grifflet|elemental)\b/
-          candidates = candidates.find_all { |i| i[:num] != 709 } if name =~ /\b(?:glacei|griffin|grifflet|elemental)\b/
-          candidates = candidates.find_all { |i| i[:num] != 706 } if name =~ /\b(?:glacei|construct|elemental|brawler|protector|psionicist|fanatic)\b/
-          candidates = candidates.find_all { |i| i[:num] != 201 } if name =~ /\b(?:grimswarm|construct)\b/
-        end
-
-        # order spells with least mana cost
-        candidates = candidates.sort { |a, b|
-          (Spell[a[:num]].mana_cost) <=> (Spell[b[:num]].mana_cost)
-        }
-
-        return candidates.first
       end
 
-      # TARGET RANDOM, and wait for what it says.
+      # @param policy [Policy]
+      # @return [Boolean] whether any disabler could be cast, wounds aside
+      def any?(policy)
+        !affordable(policy).empty?
+      end
+
+      # The targets that still need disabling.
       #
-      # @return [Boolean] whether there is now a target
-      def target_random
+      # @param policy [Policy]
+      # @return [Array<GameObj>]
+      def live_targets(policy)
+        GameObj.targets.to_a.reject { |npc| policy.untargetable.include?(npc.name) || npc.status.to_s =~ DISABLED }
+      end
+
+      # The spell to cast now, or nil: the forced one if set and castable,
+      # else the cheapest that is allowed here (town justice), reaches
+      # every target when there are several, and that the target does not
+      # shrug off. The justice check is skipped when nothing is castable.
+      #
+      # @param policy [Policy]
+      # @param targets [Array<GameObj>] from .live_targets
+      # @param wounds [Boolean] check .can_cast? first
+      # @return [Integer, nil] the spell number
+      def best(policy, targets: live_targets(policy), wounds: true)
+        return nil if wounds && !can_cast?
+        # before the table is looked at: a forced spell need not be in it
+        if policy.forced && Spell[policy.forced].known? && Spell[policy.forced].affordable?
+          return policy.forced
+        end
+        candidates = affordable(policy)
+        return nil if candidates.empty?
+        candidates = candidates.select { |e| e[:town_safe] } if justice?
+
+        if targets.size > 1
+          candidates = candidates.select { |e| multi_target?(e) }
+          MULTI_TARGET_EXCLUSIONS.each do |num, names|
+            candidates = candidates.reject { |e| e[:num] == num } if GameObj.npcs.to_a.any? { |n| n.name =~ names }
+          end
+          preferred = candidates.find { |e| PREFERRED_MULTI.include?(e[:num]) }
+          return preferred[:num] if preferred
+        elsif (npc = targets.first)
+          SINGLE_TARGET_EXCLUSIONS.each do |num, names|
+            candidates = candidates.reject { |e| e[:num] == num } if npc.name =~ names
+          end
+        end
+        candidates.min_by { |e| Spell[e[:num]].mana_cost }&.fetch(:num)
+      end
+
+      # TARGET RANDOM, learning the names the game refuses so they are not
+      # tried again.
+      #
+      # @param policy [Policy] its untargetable list grows
+      # @return [Boolean] whether something was targeted
+      def target!(policy)
         put 'target random'
         while (line = get)
           if line =~ /Could not find a valid target\./
+            policy.untargetable.push(*GameObj.npcs.to_a.map(&:name))
+            policy.untargetable.uniq!
             return false
           elsif line =~ /You are now targeting/
             return true
           end
         end
+        false
       end
 
-      # Cast a spell chosen by best. Song of Peace (1011) is renewed when
-      # it is already up.
+      # Cast the spell; a Bard's Song of Peace is renewed when already up.
       #
-      # @param candidate [Hash] with :num
-      # @return [Boolean] whether it was Song of Peace, which is to be
-      #   stopped when the work is done
-      def cast(candidate)
-        spell = Spell[candidate[:num]]
-        if spell.num == 1011
+      # @param num [Integer]
+      # @return [void]
+      def cast!(num)
+        spell = Spell[num]
+        if num == 1011
           fput 'spell active'
-          if spell.active?
-            fput 'renew 1011'
-          else
-            spell.cast
-          end
-          true
+          spell.active? ? fput('renew 1011') : spell.cast
         else
           spell.cast
-          false
         end
       end
     end

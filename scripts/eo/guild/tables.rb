@@ -1,37 +1,44 @@
 # frozen_string_literal: true
 
 module EO
-  # The Adventurer's Guild: its tasks, the people who give and take them,
-  # and the work each task asks for.
+  # The Adventurer's Guild: the tasks, the people who give them, and doing them.
   module Guild
-    # What the guild's tasks are made of: the towns, the people and how the
-    # game names them, what they say, and the name each kind of task goes by
-    # in a character's settings.
+    # Raised where a task cannot go on: the driver decides what to do (rest
+    # and stop, retry, report).
+    class Error < StandardError; end
+
+    # Nobody to ask: the search for the NPC already had its tries, so the
+    # dialogue's own retry does not ask for it again.
+    class NotFound < Error; end
+
+    # Game facts: where the guild's people are and what they say.
     module Tables
       module_function
 
-      # The Bounty parser's name for a task, to the name a character's
-      # settings know that kind of task by.
-      TASK_TYPES = {
-        :bandit_assignment   => "kill_bandits",
-        :bandit              => "kill_bandits",
-        :creature_assignment => "kill_creatures",
-        :cull                => "culling",
-        :dangerous           => "boss_culling",
-        :escort              => "escort",
-        :gem_assignment      => "gem_collecting",
-        :gem                 => "gem_collecting",
-        :heirloom_assignment => "heirloom_both",
-        :heirloom            => "heirloom_both",
-        :herb_assignment     => "foraging",
-        :herb                => "foraging",
-        :rescue_assignment   => "rescue",
-        :rescue              => "rescue",
-        :skin_assignment     => "skinning",
-        :skin                => "skinning"
+      # Lich's Bounty task type to ebounty's bounty_types setting name.
+      CROSSWALK = {
+        bandit_assignment: 'kill_bandits',
+        bandit: 'kill_bandits',
+        creature_assignment: 'kill_creatures',
+        cull: 'culling',
+        dangerous: 'boss_culling',
+        escort: 'escort',
+        gem_assignment: 'gem_collecting',
+        gem: 'gem_collecting',
+        heirloom_assignment: 'heirloom_both',
+        heirloom: 'heirloom_both',
+        herb_assignment: 'foraging',
+        herb: 'foraging',
+        rescue_assignment: 'rescue',
+        rescue: 'rescue',
+        skin_assignment: 'skinning',
+        skin: 'skinning',
       }.freeze
 
-      # What a taskmaster says when asked about a bounty.
+      # Every bounty_types name a settings file may list.
+      BOUNTY_TYPES = %w[boss_culling culling heirloom_loot skinning heirloom_search foraging rescue escort kill_bandits gem_collecting].freeze
+
+      # What the taskmaster says to ASK ABOUT BOUNTY.
       TASKMASTER_RESPONSES = Regexp.union(
         /The local gem dealer, .*, has an order to fill and wants our help./,
         /The local furrier .* has an order to fill and wants our help./,
@@ -45,60 +52,7 @@ module EO
         /Who are you trying to ask/
       ).freeze
 
-      # The furrier of each town, as the room shows them.
-      FURRIER_NAMES = Regexp.union(
-        /Bramblefist/i,
-        /Delosa/i,
-        /dwarven clerk/i,
-        /furrier/i,
-        /patchwork flesh merchant/i
-      ).freeze
-
-      # The gem dealer of each town.
-      JEWELER_NAMES = Regexp.union(
-        /areacne/i,
-        /Brindlestoat/i,
-        /dwarven clerk/i,
-        /gem dealer/i,
-        /jeweler/i,
-        /plump purple-robed trader/i,
-        /Zirconia/i
-      ).freeze
-
-      # The herbalist or healer of each town.
-      HERBALIST_NAMES = Regexp.union(
-        /Akrash/i,
-        /alchemist/i,
-        /brother Barnstel/i,
-        /famed baker Leaftoe/i,
-        /healer/i,
-        /herbalist/i,
-        /Libram Greenleaf/i,
-        /Maraene/i,
-        /merchant Kelph/i,
-        /old Mistress Lomara/i,
-        /scarred Agarnil kris/i,
-        /Sparkfinger/i,
-        /spectral quartermaster/i
-      ).freeze
-
-      # The herbalist's room in each town, as "u" and its uid.
-      HERBALIST_UIDS = [
-        'u4043601',    # Icemule Trace
-        'u1015',       # Wehnimer's Landing
-        'u3003056',    # Kharam-Dzu
-        'u14103400',   # Ta'Vaalor
-        'u13104200',   # Ta'Illistim
-        'u4740011',    # Solhaven
-        'u2101052',    # River's Rest
-        'u13010004',   # Zul Logoth
-        'u7118358',    # Kraken's Fall
-        'u7503253',    # Hinterwilds
-        'u3201291',    # Mist Harbor
-        'u7150621',    # Sailor's Grief
-      ].freeze
-
-      # What a guard says when asked about a bounty.
+      # What a guard says to ASK ABOUT BOUNTY.
       GUARD_RESPONSES = Regexp.union(
         /suppress bandit activity|bandits you encounter/,
         /particularly dangerous|cull their numbers|(?!.*bandit)suppress .* activity/,
@@ -110,34 +64,30 @@ module EO
         /You have completed your task/
       ).freeze
 
-      # Every answer FORAGE gives.
-      FORAGE_RESULT = Regexp.union(
-        /^You begin to forage around when suddenly you feel a burning sensation in your hand\.$/,
-        /^You begin to forage around when your hand comes into contact with something that stabs you in the finger\.$/,
-        /^You forage/,
-        /^You fumble about so badly in your search that you can only hope no one was watching you\.$/,
-        /^You make so much noise that only the dead would not notice you thrashing about in your unsuccessful search\.$/,
-        /^You stumble about in a fruitless attempt at foraging\.$/,
-        /you are unable to find anything useful/,
-        /^As you carefully forage around you (?:can find no (?:hint|trace)|see no evidence) of what you are looking for(?: right now, though you are fairly certain this is where it can be found)?\.(?:  You briefly wonder if it could even thrive in this place\.)?/,
-        /^As you forage around you suddenly feel a sharp pain/,
-      ).freeze
+      # A guard's "nothing for you" answers, which send the asker to the next guard room.
+      GUARD_NOTHING = /I don't have any tasks for you right now|Try bugging me later|Who are you trying to ask\?/.freeze
 
-      # The answers that mean the hand was hurt.
-      FORAGE_INJURY = Regexp.union(
-        /^You begin to forage around when your hand comes into contact with something that stabs you in the finger./,
-        /^As you forage around you suddenly feel a sharp pain in your/,
-        /suddenly you feel a burning sensation in your hand/
-      ).freeze
+      # Who counts as a guard in an advguard room. River's Rest asks the purser.
+      GUARD_NAMES = /(?:guard|sergeant|guardsman|sentry|tavernkeeper|alchemist|Malovor)/i.freeze
 
-      # Every answer to taking something out.
-      GET_RESULT = /^You (?:shield the opening of .*? from view as you |discreetly |carefully |deftly )?(?:remove|draw|grab|reach|slip|tuck|retrieve|already have|unsheathe|detach|swap)|^Get what\?$|^Why don't you leave some for others\?$|^You need a free hand|^You already have that/
+      FURRIER_NAMES = Regexp.union(/Bramblefist/i, /Delosa/i, /dwarven clerk/i, /furrier/i, /patchwork flesh merchant/i).freeze
 
-      # Every answer to putting something away.
-      PUT_RESULT = /^You (?:put|(?:discreetly )?tuck|attach|toss|attempt to shield your|place|.* place|slip|wipe off the blade and sheathe|absent-mindedly drop|carefully add|find an incomplete bundle|untie your drawstring pouch)|^The .+ is already a bundle|^Your bundle would be too large if you if you tried to add that|^The .+ is too large to be bundled\.|^As you place your .+ inside your .+, you notice another .+ inside the .+ and carefully arrange the two .+ into a neat bundle\.|If you wish to continue, throw the item away again within fifteen seconds|you feel pleased with yourself at having cleaned up the surrounding area|over your shoulder|two items in that location|wear three functional items|^Your .*? won't fit in .*?\.$/
+      JEWELER_NAMES = Regexp.union(/areacne/i, /Brindlestoat/i, /dwarven clerk/i, /gem dealer/i, /jeweler/i,
+                                   /plump purple-robed trader/i, /Zirconia/i).freeze
 
-      # The room that stands for each town a task can name, as "u" and its
-      # uid. Sailor's Grief (Contempt) is not here: see town_uids.
+      HERBALIST_NAMES = Regexp.union(/Akrash/i, /alchemist/i, /brother Barnstel/i, /famed baker Leaftoe/i, /healer/i,
+                                     /herbalist/i, /Libram Greenleaf/i, /Maraene/i, /merchant Kelph/i,
+                                     /old Mistress Lomara/i, /scarred Agarnil kris/i, /Sparkfinger/i,
+                                     /spectral quartermaster/i).freeze
+
+      # The herbalist's room in each town, as uids. No map tag marks them.
+      HERBALIST_ROOM_UIDS = %w[
+        u4043601 u1015 u3003056 u14103400 u13104200 u4740011
+        u2101052 u13010004 u7118358 u7503253 u3201291 u7150621
+      ].freeze
+
+      # The town square uid for each town name a task can carry.
+      # Contempt (Sailor's Grief) differs between GS4 and GSF, see .town_uid.
       TOWN_UIDS = {
         'Icemule Trace'      => 'u4042150',
         'Kharam-Dzu'         => 'u3001025',
@@ -150,33 +100,85 @@ module EO
         "Ta'Vaalor"          => 'u14100047',
         "Wehnimer's Landing" => 'u7120',
         'Zul Logoth'         => 'u13006016',
-        'Cold River'         => 'u7503205'
+        'Cold River'         => 'u7503205',
       }.freeze
 
-      # Sailor's Grief's room, in Shattered and elsewhere.
-      CONTEMPT_UIDS = { 'GSF' => 'u7150607' }.freeze
-      CONTEMPT_UID = 'u7150608'
-
-      # The rooms of Sailor's Grief, on deck then below, where its taskmaster
-      # wanders.
+      # Sailor's Grief: the taskmaster is First Mate Seldit, who wanders these rooms.
       SAILORS_GRIEF_UIDS = [
-        7_150_601, 7_150_602, 7_150_603, 7_150_604, 7_150_605,
-        7_150_606, 7_150_607, 7_150_608, 7_150_609, 7_150_610,
-        7_150_611, 7_150_612, 7_150_613, 7_150_614, 7_150_615,
-        7_150_616, 7_150_617, 7_150_621, 7_150_622
+        7150601, 7150602, 7150603, 7150604, 7150605, 7150606, 7150607, 7150608, 7150609, 7150610,
+        7150611, 7150612, 7150613, 7150614, 7150615, 7150616, 7150617, 7150621, 7150622,
       ].freeze
-      # The Hinterwilds guild room, where the taskmaster is Halfwhistle.
-      HINTERWILDS_GUILD_UID = 7_503_207
 
-      # @param game [String] the game's code
-      # @return [Hash{String => String}] every town to its room
-      def town_uids(game = XMLData.game)
-        TOWN_UIDS.merge('Contempt' => CONTEMPT_UIDS.fetch(game, CONTEMPT_UID))
+      # Hinterwilds: the guild's taskmaster is Halfwhistle.
+      HINTERWILDS_GUILD_UID = 7503207
+
+      # Hinterwilds: the tavernkeeper guard moves, so ask the alchemist instead.
+      HINTERWILDS_MOVING_GUARD_UIDS = %w[7503252 7503251].freeze
+      HINTERWILDS_GUARD_ROOM = 'u7503253'
+
+      # Escort tasks: the pickup wording and the destination town, to a trip name
+      # such as "landing_to_icemule" that the escort_types setting lists.
+      ESCORT_PICKUPS = {
+        'the area just inside the Sapphire Gate'                   => 'illy',
+        'the area just inside the North Gate'                      => 'landing',
+        'the south end of North Market'                            => 'solhaven',
+        'the area just north of the South Gate, past the barbican' => 'icemule',
+        "the Kresh'ar Deep monument"                               => 'zul',
+        'the area just inside the Amaranth Gate'                   => 'vaalor',
+      }.freeze
+
+      ESCORT_DROPOFFS = {
+        "Wehnimer's Landing" => 'landing',
+        'Icemule Trace'      => 'icemule',
+        'Zul Logoth'         => 'zul',
+        'Solhaven'           => 'solhaven',
+        "Ta'Vaalor"          => 'vaalor',
+        "Ta'Illistim"        => 'illy',
+      }.freeze
+
+      # What FORAGE answers.
+      FORAGE_RESULT = Regexp.union(
+        /^You begin to forage around when suddenly you feel a burning sensation in your hand\.$/,
+        /^You begin to forage around when your hand comes into contact with something that stabs you in the finger\.$/,
+        /^You forage/,
+        /^You fumble about so badly in your search that you can only hope no one was watching you\.$/,
+        /^You make so much noise that only the dead would not notice you thrashing about in your unsuccessful search\.$/,
+        /^You stumble about in a fruitless attempt at foraging\.$/,
+        /you are unable to find anything useful/,
+        /^As you carefully forage around you (?:can find no (?:hint|trace)|see no evidence) of what you are looking for(?: right now, though you are fairly certain this is where it can be found)?\.(?:  You briefly wonder if it could even thrive in this place\.)?/,
+        /^As you forage around you suddenly feel a sharp pain/
+      ).freeze
+
+      # A forage that hurt.
+      FORAGE_INJURY = Regexp.union(
+        /^You begin to forage around when your hand comes into contact with something that stabs you in the finger./,
+        /^As you forage around you suddenly feel a sharp pain in your/,
+        /suddenly you feel a burning sensation in your hand/
+      ).freeze
+
+      # Picking something up worked, or could not.
+      GET_RESULT = /^You (?:shield the opening of .*? from view as you |discreetly |carefully |deftly )?(?:remove|draw|grab|reach|slip|tuck|retrieve|already have|unsheathe|detach|swap)|^Get what\?$|^Why don't you leave some for others\?$|^You need a free hand|^You already have that/.freeze
+
+      # Putting something away worked, or could not.
+      PUT_RESULT = /^You (?:put|(?:discreetly )?tuck|attach|toss|attempt to shield your|place|.* place|slip|wipe off the blade and sheathe|absent-mindedly drop|carefully add|find an incomplete bundle|untie your drawstring pouch)|^The .+ is already a bundle|^Your bundle would be too large if you if you tried to add that|^The .+ is too large to be bundled\.|^As you place your .+ inside your .+, you notice another .+ inside the .+ and carefully arrange the two .+ into a neat bundle\.|If you wish to continue, throw the item away again within fifteen seconds|you feel pleased with yourself at having cleaned up the surrounding area|over your shoulder|two items in that location|wear three functional items|^Your .*? won't fit in .*?\.$/.freeze
+
+      # @param town [String] a town name as the Bounty parser reports it
+      # @return [String, nil] the town square's uid
+      def town_uid(town)
+        return (XMLData.game == 'GSF' ? 'u7150607' : 'u7150608') if town == 'Contempt'
+        TOWN_UIDS[town]
       end
 
-      # @return [Array<Integer>] the herbalists' rooms that are on the map
+      # @param town [String]
+      # @return [Room, nil] the town square
+      def town_room(town)
+        uid = town_uid(town)
+        uid && Room[uid]
+      end
+
+      # @return [Array<Integer>] the herbalist rooms the map knows, as ids
       def herbalist_rooms
-        HERBALIST_UIDS.map { |uid| Room[uid]&.id }.compact.select(&:positive?)
+        HERBALIST_ROOM_UIDS.map { |uid| Room[uid]&.id.to_i }.select(&:positive?)
       end
     end
   end

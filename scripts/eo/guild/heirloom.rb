@@ -2,89 +2,141 @@
 
 module EO
   module Guild
-    # Searching for a lost heirloom: the spells before a search, the search
-    # and what it turns up, and the step to the next room.
-    #
-    # The options are a character's heirloom options: a list of names such
-    # as "use_213" and "run".
-    #
-    # Commands go through the running script's helpers (EO.use). The helpers
-    # this needs: result(text, pattern) answering one line, and wait().
+    # Heirloom search tasks: wander the task's area, SEARCH every room, stow
+    # the heirloom when it turns up.
     module Heirloom
       module_function
 
-      # A task whose heirloom has been found.
+      # The heirloom_options setting: which helper spells to cast, whether
+      # to run from creatures, whether to pick up with the right hand.
+      Policy = Struct.new(:options, keyword_init: true) do
+        def initialize(options: [])
+          super(options: Array(options).map(&:to_s))
+        end
+
+        def use?(key) = options.include?(key.to_s)
+      end
+
+      # What the task text says once the item is found.
       LOCATED = /You have located/
 
-      # The spells cast before a search, those the options allow.
+      # Search the area until the task says the heirloom is located.
       #
-      # @param options [Array<String>]
-      # @param creatures [Array<GameObj>] what Mass Calm (619) has been cast
-      #   on already; added to
+      # @param item [String] the heirloom as the task names it
+      # @param start [Integer, String] the first room
+      # @param boundaries [Array<String>] room ids not to cross
+      # @param policy [Policy]
+      # @param loot [Proc] run the loot script when the room has loot
       # @return [void]
-      def spells(options, creatures)
-        Forage.cast(213) if Stats.prof =~ /Cleric|Empath/i && options.include?('use_213') && !Forage.sanctuary?
-        Forage.cast(1011) if options.include?('use_1011') && !Forage.song_of_peace?
-        Forage.cast(709) if options.include?('use_709') && !GameObj.targets.any? { |c| c.name =~ /arm/ } && !GameObj.targets.empty?
-
-        Forage.cast(402) if !Effects::Buffs.active?('Presence') && options.include?('use_402')
-        Forage.cast(506) if !Effects::Buffs.active?('Celerity') && !Effects::Cooldowns.active?('Celerity') && options.include?('use_506')
-        Forage.cast(919) if !Effects::Buffs.active?("Wizard's Shield") && !Effects::Cooldowns.active?("Wizard's Shield") && options.include?('use_919')
-        Forage.cast(140) if !Effects::Buffs.active?('Wall of Force') && !Effects::Cooldowns.active?('Wall of Force') && options.include?('use_140')
-        Forage.cast(1035) if !Effects::Buffs.active?('Song of Tonis') && options.include?('use_1035')
-
-        return unless !GameObj.targets.empty? && options.include?('use_619')
-
-        targets = GameObj.targets.reject { |w| creatures.any? { |c| c.id == w.id } }
-        Forage.cast(619) if targets.length.positive?
-        creatures.concat(targets)
-        sleep 0.5
-        waitcastrt?
-      end
-
-      # Kneel, SEARCH with the hands empty, stand, and put away what the
-      # search put in the right hand, or the heirloom if it lies on the ground.
-      #
-      # @param item [String] the heirloom, as a pattern for its name
-      # @return [void]
-      def search(item)
-        EO.kneel
-
-        empty_hands if checkleft || checkright
-
-        fput 'search'
-        EO.settle
-
-        EO.stand
-
-        if checkright
-          EO.result("stow ##{GameObj.right_hand.id}", Tables::PUT_RESULT)
-        else
-          heirloom = GameObj.loot.find { |obj| obj.name =~ /#{item}/ }
-
-          if heirloom
-            EO.result("_drag ##{heirloom.id} right", Tables::GET_RESULT)
-            EO.result("stow ##{heirloom.id}", Tables::PUT_RESULT)
-          end
+      def search(item:, start:, boundaries:, policy:, loot:)
+        creatures = []
+        visited = []
+        begin
+          boundaries = boundaries.map { |r| EO.room_id(r).to_s }
+        rescue EO::UnknownRoom => e
+          raise Error, e.message
         end
+
+        if policy.use?(:use_right)
+          EO.result('flag righthand on', /You will attempt to pick up treasure using your right hand/)
+        end
+        EO.go2(start)
+        Lich::Gemstone::Stance.change('defensive')
+
+        loop do
+          unless (GameObj.targets.count.positive? && policy.use?(:run)) || !Claim.mine? || GameObj.loot.any? { |i| i.name =~ /black void/ }
+            Spells.helpers(policy, creatures) unless Map.current.tags.include?('meta:nomagic')
+            EO.kneel
+            empty_hands if checkleft || checkright
+            fput 'search'
+            EO.settle
+            EO.stand
+            EO.settle
+
+            if checkright
+              EO.result("stow ##{GameObj.right_hand.id}", Tables::PUT_RESULT)
+            elsif (found = GameObj.loot.find { |obj| obj.name =~ /#{Regexp.escape(item)}/ })
+              EO.result("_drag ##{found.id} right", Tables::GET_RESULT)
+              EO.result("stow ##{found.id}", Tables::PUT_RESULT)
+            end
+            loot.call if GameObj.loot.length.positive?
+            fill_hands
+          end
+          Spells.stop_sanctuary(policy)
+          break if checkbounty =~ LOCATED
+          wander(boundaries, visited)
+        end
+
+        Spells.stop_peace(policy)
+        fput 'flag righthand off' if policy.use?(:use_right)
       end
 
-      # One step to a neighbouring room not yet visited, else to the one
-      # visited longest ago, never across a boundary.
+      # One step to a room not yet visited, inside the boundaries, else the
+      # least recently visited neighbour.
       #
-      # @param visited [Array<String>] room ids, the latest last; added to
-      # @param boundaries [Array<String>] room ids not to step into
+      # @param boundaries [Array<String>]
+      # @param visited [Array<String>] most recent last; updated
       # @return [void]
-      def wander(visited, boundaries)
-        room = Room.current
-        next_room = Wander.next_room(room, visited, boundaries)
-        visited.delete(next_room)
-        visited.push(next_room)
-        way = room.wayto[next_room]
-        if way.class == String
-          move(way)
-        else
-          way.call
+      def wander(boundaries, visited)
+        EO.wander(visited, avoid: boundaries)
+      end
+
+      # The helper spells foraging and heirloom searching share, each behind
+      # an option.
+      module Spells
+        module_function
+
+        # @param policy [#use?]
+        # @param creatures [Array<GameObj>] already hit with 619, added to
+        # @return [void]
+        def helpers(policy, creatures)
+          if Stats.prof =~ /Cleric|Empath/i && policy.use?(:use_213)
+            lines = EO.command('sense', /You open your soul to the lesser/, silent: true, quiet: true)
+            Spell[213].cast if Spell[213].known? && Spell[213].affordable? && lines.none? { |l| l =~ /An obvious presence of peace saturates the area/ }
+          end
+          if policy.use?(:use_1011)
+            lines = EO.command('spell active', /<dialogData id='Active Spells'/, silent: true, quiet: true)
+            Spell[1011].cast if Spell[1011].known? && Spell[1011].affordable? && lines.grep(/Song of Peace/).none?
+          end
+          if policy.use?(:use_709) && !GameObj.targets.empty? && GameObj.targets.none? { |c| c.name =~ /arm/ }
+            Spell[709].cast if Spell[709].known? && Spell[709].affordable?
+          end
+          cast(402, policy, :use_402) { !Effects::Buffs.active?('Presence') }
+          cast(604, policy, :use_604) { !Effects::Spells.active?("Nature's Bounty") }
+          cast(506, policy, :use_506) { !Effects::Buffs.active?('Celerity') && !Effects::Cooldowns.active?('Celerity') }
+          cast(919, policy, :use_919) { !Effects::Buffs.active?("Wizard's Shield") && !Effects::Cooldowns.active?("Wizard's Shield") }
+          cast(140, policy, :use_140) { !Effects::Buffs.active?('Wall of Force') && !Effects::Cooldowns.active?('Wall of Force') }
+          cast(1035, policy, :use_1035) { !Effects::Buffs.active?('Song of Tonis') }
+          cast(9704, policy, :use_resolve) { !Effects::Buffs.active?('Sigil of Resolve') }
+          return unless !GameObj.targets.empty? && policy.use?(:use_619)
+          targets = GameObj.targets.reject { |w| creatures.any? { |c| c.id == w.id } }
+          Spell[619].cast if Spell[619].known? && Spell[619].affordable? && targets.length.positive?
+          creatures.concat(targets)
+          sleep 0.5
+          waitcastrt?
+        end
+
+        # @param num [Integer] the spell
+        # @param policy [#use?]
+        # @param option [Symbol] the option that turns it on
+        # @yieldreturn [Boolean] whether it is wanted now (not already up)
+        def cast(num, policy, option)
+          return unless policy.use?(option) && Spell[num].known? && Spell[num].affordable? && yield
+          Spell[num].cast
+        end
+
+        # Stop 213 after, so it does not hold the party in place.
+        def stop_sanctuary(policy)
+          return unless Stats.prof =~ /Cleric|Empath/i && policy.use?(:use_213)
+          lines = EO.command('sense', /You open your soul to the lesser/, silent: true, quiet: true)
+          fput 'stop 213' if lines.grep(/An obvious presence of peace saturates the area/).any?
+        end
+
+        # Stop Song of Peace after.
+        def stop_peace(policy)
+          return unless policy.use?(:use_1011)
+          lines = EO.command('spell active', /<dialogData id='Active Spells'/, silent: true, quiet: true)
+          fput 'stop 1011' if lines.grep(/Song of Peace/).any?
         end
       end
     end
