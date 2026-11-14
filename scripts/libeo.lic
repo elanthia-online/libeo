@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.57.0')
-    EO.require('0.57.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.58.0')
+    EO.require('0.58.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.57.0
+       version: 0.58.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.58.0 (2026-11-14)
+    - feature: EO::Loot::Handler, what a looting pass does with the hands and the bags: put_away, drag, free_hand,
+      free_hands, open_single_container, store_item, open_loot_containers, return_hands, and single_drag, single_loot and
+      single_drag_box by the pickup. It never pauses and never ends the script: it answers :full, :no_default,
+      :crippled or :overloaded, and the caller decides. Pass it as the hands of the pickup, the floor and the pass
   v0.57.0 (2026-11-14)
     - feature: EO::Loot::Pass, one looting pass over a room a step at a time: start, step (:skinned, :no_tool,
       :searched, :special, :looted, :no_room or :done), finish and run; a step ends with what it handled put
@@ -418,7 +423,7 @@
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
 parts = %w[
-  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context loot/pickup loot/floor loot/pass skinning skinning/pass selling locksmith locker hoard appraisal casting
+  version command messages travel scripts help settings settings/words settings/table settings/window containers hands town items boxes stow loot loot/context loot/pickup loot/floor loot/pass loot/handler skinning skinning/pass selling locksmith locker hoard appraisal casting
   cleanse/tables cleanse/hazards cleanse/afflictions cleanse/disarms cleanse/traps
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/policy guild/npcs guild/location guild/forage

@@ -20,6 +20,7 @@ module EO
       # What a pass reads and does not change.
       READS = %i[
         loot_exclude_regex loot_keep_regex critter_exclude_regex allowed_special_types look_regex put_regex
+        original_readylist
       ].freeze
 
       attr_accessor(*STATE, *READS)

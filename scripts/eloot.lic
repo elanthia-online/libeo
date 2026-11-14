@@ -15,10 +15,13 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.18.6
+           version: 2.18.7
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.7 (2026-11-14)
+    - eloot frees a hand, takes an item, puts it away, opens its bags and gives the hands back through libeo's
+      EO::Loot::Handler, and still pauses for you when every bag is full. Needs libeo 0.58.0
   v2.18.6 (2026-11-14)
     - eloot runs a looting pass (skin, search, loot the room, hands back) through libeo's EO::Loot::Pass,
       in the same order as before. Needs libeo 0.57.0
@@ -395,8 +398,8 @@ before_dying { ELoot.release_room_lease(eloot_load_token) }
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.57.0')
-EO.require('0.57.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.58.0')
+EO.require('0.58.0')
 Script.require_lich_version!
 
 require 'yaml'
@@ -3099,34 +3102,52 @@ module ELoot # Inventory methods, over libeo's Hands and Containers
       false
     end
 
-    # Put away what is in a hand: a readied weapon to its sheath, else a sack.
-    def self.put_away(hand)
-      return if hand.nil? || hand.id.nil?
-      key = Inventory.ready_item_key(hand)
-      return if key && Inventory.stow_ready_list(key, hand)
-      Inventory.single_drag(hand) if ELoot.in_hand?(hand)
+    # libeo's hands and bags (EO::Loot::Handler), over what is eloot's own: putting
+    # an item away pauses for the player when nothing has room, a skinning tool
+    # put away is noted for the room recovery, and the bags that close themselves
+    # are looked at every half minute.
+    def self.handler
+      EO::Loot::Handler.new(ELoot.data, command: ELoot.method(:get_command), inventory: Sell.method(:check_inventory),
+                                        wait_for_disk: ELoot.method(:wait_for_disk), stow: ->(item) { Inventory.single_drag(item) },
+                                        on_tool_stow: ELoot.method(:record_room_tool_stow),
+                                        autoclosers_due: -> { ELoot.time_between(:autoclosers, 30) })
     end
 
+    # Put away what is in a hand: a readied weapon to its sheath, else a sack.
+    def self.put_away(hand) = Inventory.handler.put_away(hand)
+
     def self.drag(item, to = "hand") # drags things from inventory to a hand
-      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
-      return if item.nil? || item.empty? || item.name == "Empty"
-      case EO::Hands.take(item, to: to.to_sym, stow: ->(hand) { Inventory.put_away(hand) }, favor_left: ELoot.data.settings[:favor_left])
-      when :held then true
+      result = Inventory.handler.drag(item, to)
+      case result
       when :crippled
         ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
         exit
       when :overloaded
         ELoot.msg(type: "yellow", text: " Unable to pick up the #{item.name}. Exiting...")
         exit
-      when :missing
-        StowList.stow_list.each_value { |bag| Inventory.open_single_container(bag) }
-        lost = Sell.check_inventory.find { |obj| obj.id == item.id }
-        return Inventory.drag(lost, to) if lost
-        ELoot.msg(type: "info", text: " Can't find #{item.name}. Looked in all the bags in case it got misplaced.")
-        false
-      else false
+      else result
       end
     end
+
+    def self.free_hand
+      return unless Inventory.handler.free_hand == :crippled
+
+      ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
+      exit
+    end
+
+    def self.free_hands(**which) = Inventory.handler.free_hands(**which)
+
+    def self.open_single_container(sack) = Inventory.handler.open_single_container(sack)
+
+    def self.store_item(bag, item, is_skinner = false) = Inventory.handler.store_item(bag, item, is_skinner)
+
+    def self.check_auto_closer = Inventory.handler.check_auto_closer
+
+    # Open the containers that will receive loot from the loot room or loot item command.
+    def self.open_loot_containers(item) = Inventory.handler.open_loot_containers(item)
+
+    def self.return_hands = Inventory.handler.return_hands(drag: ->(item, side) { Inventory.drag(item, side) })
 
     def self.wear(item)
       ELoot.msg(type: "debug", text: "item: #{item.inspect}")
@@ -3138,54 +3159,6 @@ module ELoot # Inventory methods, over libeo's Hands and Containers
         ELoot.msg(type: "warn", text: " Please grab a short log of what just happened and post it to the scripting discord for debugging")
         exit
       end
-    end
-
-    def self.free_hand
-      return unless EO::Hands.free_hand(stow: ->(hand) { Inventory.put_away(hand) }, favor_left: ELoot.data.settings[:favor_left]) == :crippled
-      ELoot.msg(type: "yellow", text: " Neither hand is usable. Looks like you need an Empath!", space: true)
-      exit
-    end
-
-    def self.free_hands(right: false, left: false, both: false)
-      Inventory.put_away(GameObj.right_hand) if (right || both) && checkright
-      Inventory.put_away(GameObj.left_hand) if (left || both) && checkleft
-    end
-
-    def self.open_single_container(sack)
-      ELoot.msg(type: "debug", text: "sack: #{sack}")
-      return if sack.nil? || sack.empty?
-      container = if sack.is_a?(GameObj)
-                    sack
-                  elsif StowList.stow_list[sack.to_sym]
-                    StowList.stow_list[sack.to_sym]
-                  elsif GameObj[sack]
-                    GameObj[sack]
-                  end
-      if container.nil?
-        ELoot.msg(type: "debug", text: "not able to determine proper GameObj lookup for #{sack.inspect}")
-        return
-      end
-      # contents known is not open under the inventory feed, which lists a closed bag's too
-      if EO::Containers.listed?(container) && EO::Containers.closed?(container) != true
-        ELoot.data.stow.opened(container)
-        return
-      end
-      state = EO::Containers.ensure_open(container)
-      ELoot.data.stow.opened(container) unless state == :unknown
-      return if state == :nothing
-      ELoot.data.sell_containers.push(container) unless ELoot.data.sell_containers.include?(container)
-    end
-
-    def self.store_item(bag, item, is_skinner = false)
-      ELoot.msg(type: "debug", text: "bag: #{bag.inspect} | item: #{item.inspect}")
-      return if item.nil? || item.name == "Empty"
-      pending_stow = ELoot.record_room_tool_stow(item, bag) if is_skinner
-
-      result = ELoot.data.stow.put(bag, item, loose: is_skinner)
-      ELoot.msg(type: "debug", text: "sacks_full(#{bag.name}) - item: #{item.inspect}") if result == :full
-      %i[stored unlootable crumbled].include?(result)
-    ensure
-      pending_stow[:settled] = true if pending_stow && !ELoot.in_hand?(item)
     end
 
     def self.stow_ready_list(ready_item, item) = EO::Hands.stow_ready(ready_item, item)
@@ -3217,14 +3190,6 @@ module ELoot # Inventory methods, over libeo's Hands and Containers
       result
     end
 
-    def self.check_auto_closer
-      return if ELoot.data.settings[:auto_close].empty?
-
-      ELoot.data.settings[:auto_close].each do |bag_name|
-        Inventory.open_single_container(bag_name)
-      end
-    end
-
     def self.clear_hands
       # remember what is in our hands
       ELoot.data.right_hand = GameObj.right_hand
@@ -3253,44 +3218,6 @@ module ELoot # Inventory methods, over libeo's Hands and Containers
 
         Inventory.close_container(sack)
       }
-    end
-
-    def self.open_loot_containers(item)
-      # Method intended for opening containers that will receive loot from the loot room or loot item command
-      ELoot.msg(type: "debug", text: "item: #{item.inspect}")
-
-      # makes sure any auto-closers are open before looting
-      if ELoot.time_between(:autoclosers, 30)
-        Inventory.check_auto_closer
-      end
-
-      # Early return if not keeping closed since they all get opened on startup
-      return unless ELoot.data.settings[:keep_closed]
-
-      ELoot.data.stow.bags_for(item).each { |bag| Inventory.open_single_container(bag) }
-    end
-
-    def self.return_hands
-      # Nothing to do
-      return if ELoot.data.right_hand.id == GameObj.right_hand.id && ELoot.data.left_hand.id == GameObj.left_hand.id
-
-      # Check Right Hand
-      unless ELoot.data.right_hand.id.nil? || ELoot.data.right_hand.id == GameObj.right_hand.id
-        if (ready_item = Inventory.ready_item_key(ELoot.data.right_hand))
-          Inventory.return_ready_list(ready_item, ELoot.data.right_hand)
-        else
-          Inventory.drag(ELoot.data.right_hand, 'right')
-        end
-      end
-
-      # Check Left Hand
-      unless ELoot.data.left_hand.id.nil? || ELoot.data.left_hand.id == GameObj.left_hand.id
-        if (ready_item = Inventory.ready_item_key(ELoot.data.left_hand))
-          Inventory.return_ready_list(ready_item, ELoot.data.left_hand)
-        else
-          Inventory.drag(ELoot.data.left_hand, 'left')
-        end
-      end
     end
 
     # libeo's pickup (EO::Loot::Pickup), over what is eloot's own: how an item
