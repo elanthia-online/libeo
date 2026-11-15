@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.3.0')             the version the script was built against
+EO.require('0.4.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -18,6 +18,9 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/helpers.rb` | `EO.use`: a script lends its own helpers; `EO.command`, `EO.result`, `EO.settle`, `EO.go2` and `EO.say` call the running script's |
 | `eo/containers.rb` | `EO::Containers`: whether Lich has a container's contents, opening one that does not, waiting for contents, reading them fresh, closing |
 | `eo/hands.rb` | `EO::Hands`: what the hands hold, freeing one, taking an item, wearing one, putting one in a container, the READY list's STORE and READY; every outcome comes back as a word |
+| `eo/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a shop in a bounty's town within the region, Four Winds Isle and the way off it, the trash receptacle, the locksmith pool's worker |
+| `eo/items.rb` | `EO::Items`: throwing an item away unless it is marked, phasing a box and bringing it back, lifting a curse, waiting for the disk |
+| `eo/boxes.rb` | `EO::Boxes`: opening a box, looking in, taking its coins, which emptied box is kept |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
