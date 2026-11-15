@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.7.0')             the version the script was built against
+EO.require('0.8.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -28,6 +28,7 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (how he is called, his fee, the pay) and the locksmith pool (the drop-off order, the give, the return, the pool's depth, the rising tip) |
 | `eo/locker.rb` | `EO::Locker`: which rooms hold a character's locker, the last step into a booth, a debt, opening the locker and finding the stash in it |
 | `eo/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, a stash's inventory by looking or from a premium locker's manifest, shaking a jar |
+| `eo/casting.rb` | `EO::Casting`: the multicast count, one cast and what its answer means, having the mana or stamina for it (Sign of Wracking, Sigil of Power, Symbol of Mana), another character's active spells, manna bread |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
