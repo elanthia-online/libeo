@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.23.0')
-    EO.require('0.23.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.24.0')
+    EO.require('0.24.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,14 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.23.0
+       version: 0.24.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.24.0 (2026-11-13)
+    - Spell Cleave, Spell Thieve and Berserk are asked of and used through Lich's CMan
+      (available?, use) in EO::Cleanse::Hazards and EO::Cleanse::Afflictions;
+      Hazards::MANEUVER_STAMINA is gone
   v0.23.0 (2026-11-13)
     - Whether wounds allow a cast is Lich's (Lich::Gemstone::Injured.able_to_cast?):
       EO::Cleanse::Wounds and EO::Herbs::Injuries.able_to_cast? are gone, and

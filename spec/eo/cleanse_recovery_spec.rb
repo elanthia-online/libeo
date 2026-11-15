@@ -102,7 +102,7 @@ RSpec.describe EO::Cleanse::Afflictions do
 
   describe 'a web' do
     before do
-      stub_const('CMan', Class.new { define_singleton_method(:known?) { |_name| false } })
+      stub_const('CMan', Class.new { define_singleton_method(:available?) { |_name| false } })
       stub_const('Feat', Class.new { define_singleton_method(:available?) { |*_, **| false } })
     end
 

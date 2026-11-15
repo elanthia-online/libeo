@@ -8,14 +8,11 @@ module EO
     module Hazards
       module_function
 
-      # Stamina either combat maneuver needs.
-      MANEUVER_STAMINA = 10
+      # @return [Boolean] Spell Cleave can be used now
+      def cleave? = CMan.available?('Spell Cleave')
 
-      # @return [Boolean] Spell Cleave is known and there is the stamina for it
-      def cleave? = CMan.known?('Spell Cleave') && Char.stamina >= MANEUVER_STAMINA
-
-      # @return [Boolean] Spell Thieve is known and there is the stamina for it
-      def thieve? = CMan.known?('Spell Thieve') && Char.stamina >= MANEUVER_STAMINA
+      # @return [Boolean] Spell Thieve can be used now
+      def thieve? = CMan.available?('Spell Thieve')
 
       # Get rid of a web, globe or cloud by the first means there is: the
       # spell, after a mana pulse when it cannot be afforded; else Spell
@@ -30,9 +27,9 @@ module EO
           Lich::Gemstone::Mana.pulse(spell.num)
           spell.cast("at ##{obj.id}") if spell.affordable?
         elsif cleave?
-          fput "cman scleave ##{obj.id}"
+          CMan.use('Spell Cleave', "##{obj.id}")
         elsif thieve?
-          fput "cman sthieve ##{obj.id}"
+          CMan.use('Spell Thieve', "##{obj.id}")
         end
       end
 
