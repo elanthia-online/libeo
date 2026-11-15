@@ -107,6 +107,14 @@ RSpec.describe EO::Loot::Pass do
       )
     end
 
+    it 'searches and loots the floor again when run a second time, as a driver does room after room' do
+      pass.run
+      events.clear
+      pass.run
+      expect(kinds.count { |e| e.first == :search }).to eq(2)
+      expect(kinds.map(&:first)).to include(:room_candidates, :regular_steps)
+    end
+
     it 'remembers what was in each hand and takes the loot stance before anything' do
       pair = hands_now
       pair[0] = thing.new(id: '90', name: 'rapier')
@@ -286,6 +294,18 @@ RSpec.describe EO::Loot::Pass do
       pass.start
       expect(pass.step).to eq(:no_room)
       expect(pass.last.name).to eq('dropped dagger')
+    end
+
+    it 'forgets the last room\'s stranded item when it starts again' do
+      pair = hands_now
+      allow(EO::Loot).to receive(:search) do |_corpse, **|
+        pair[1] = thing.new(id: '15', name: 'dropped dagger', type: 'weapon')
+        [:searched]
+      end
+      pass.start
+      pass.step
+      pass.start
+      expect(pass.last).to be_nil
     end
 
     it 'says it from the ordinary loot that left an item in hand' do

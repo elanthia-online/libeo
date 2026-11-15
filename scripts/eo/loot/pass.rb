@@ -60,6 +60,12 @@ module EO
       #
       # @return [void]
       def start
+        # a pass is run again room after room: nothing of the last one's
+        # corpses or floor carries over
+        @to_search = nil
+        @any_corpses = nil
+        @floor_state = nil
+        @last = nil
         @phase = :done
         if Spell['Berserk'].active?
           say('info', ' Berserk is active and preventing you from looting.')

@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.60.0')
-    EO.require('0.60.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.60.1')
+    EO.require('0.60.1')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,13 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.60.0
+       version: 0.60.1
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.60.1 (2026-11-14)
+    - bugfix: EO::Loot::Pass run again room after room starts each room fresh; it had kept the last room's corpses
+      and floor as done, and skipped searching and looting the next
   v0.60.0 (2026-11-14)
     - feature: EO::Loot.build(settings, say:) returns a looting pass ready to run for a script that is not eloot:
       EO::Loot::Hooks holds the standard hooks the way eloot has them (command, result, inventory, wait_for_disk,
