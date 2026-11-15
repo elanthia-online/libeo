@@ -158,9 +158,8 @@ module EO
       # those the options allow, after kneeling and before the try.
       #
       # @param options [Array<String>]
-      # @param pulse [Proc] given 608, makes a mana pulse when it cannot be afforded
       # @return [void]
-      def ready(options, pulse:)
+      def ready(options)
         magic = !Map.current.tags.include?('meta:nomagic')
 
         if options.include?('use_650') && magic
@@ -173,7 +172,7 @@ module EO
         end
 
         if magic && options.include?('use_608') && Spell[608].known? && !hidden?
-          pulse.call(608)
+          Lich::Gemstone::Mana.pulse(608)
           Spell[608].cast if Spell[608].affordable?
         end
 

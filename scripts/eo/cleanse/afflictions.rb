@@ -79,13 +79,13 @@ module EO
       # @param before [Proc, nil] called before each
       # @return [void]
       def dispel_debuffs(dispel, before: nil)
-        Cleanse.mana_pulse(dispel.num)
+        Lich::Gemstone::Mana.pulse(dispel.num)
 
         DISPELLABLE.each do |debuff|
           next unless Effects::Debuffs.active?(debuff)
 
           before&.call
-          Cleanse.mana_pulse(dispel.num)
+          Lich::Gemstone::Mana.pulse(dispel.num)
 
           fput 'stand' until checkstanding
           EO.settle
@@ -105,17 +105,17 @@ module EO
         swallowed = !(checkroom('The Belly of the Beast').nil? && checkroom('Ooze, Innards').nil?)
 
         if allow[:stunned1040] && Spell[1040].known?
-          Cleanse.mana_pulse(1040)
+          Lich::Gemstone::Mana.pulse(1040)
           means[:stunned1040] = Spell[1040].available?
         end
 
         if allow[:barkskin] && Spell[605].known? && !Effects::Cooldowns.active?('Barkskin: Commune') && !Effects::Cooldowns.active?('Barkskin') && !Spell[605].active? && Skills.slblessings >= 15
-          Cleanse.mana_pulse(605)
+          Lich::Gemstone::Mana.pulse(605)
           means[:barkskin] = Spell[605].available?
         end
 
         if allow[:beseech] && Spell[1635].known?
-          Cleanse.mana_pulse(1635)
+          Lich::Gemstone::Mana.pulse(1635)
           means[:beseech] = Spell[1635].available?
         end
 
@@ -214,7 +214,7 @@ module EO
       # @param beseech [Boolean] beseech (1635) is allowed
       # @return [Boolean]
       def web_escape?(berserk:, beseech:)
-        Cleanse.mana_pulse(1040) if Spell[1040].known?
+        Lich::Gemstone::Mana.pulse(1040) if Spell[1040].known?
 
         spell_1040_ready = Spell[1040].known? && Spell[1040].affordable?
         berserk_ready = berserk && CMan.known?('Berserk') && Char.stamina >= 21
@@ -252,16 +252,16 @@ module EO
       # @return [void]
       def settle_room(use)
         if use[:use_140] && Spell[140].known? && !Effects::Buffs.active?('Wall of Force') && !Effects::Cooldowns.active?('Wall of Force')
-          Cleanse.mana_pulse(140)
+          Lich::Gemstone::Mana.pulse(140)
           Spell[140].cast if Spell[140].affordable?
         elsif use[:use_619] && Spell[619].known?
-          Cleanse.mana_pulse(619)
+          Lich::Gemstone::Mana.pulse(619)
           Spell[619].cast if Spell[619].affordable?
         elsif use[:use_709] && Spell[709].known? && !GameObj.npcs.any? { |c| c.name =~ APPENDAGE }
-          Cleanse.mana_pulse(709)
+          Lich::Gemstone::Mana.pulse(709)
           Spell[709].cast if Spell[709].affordable?
         elsif use[:use_919] && !Effects::Buffs.active?("Wizard's Shield") && !Effects::Cooldowns.active?("Wizard's Shield")
-          Cleanse.mana_pulse(919)
+          Lich::Gemstone::Mana.pulse(919)
           Spell[919].cast if Spell[919].affordable?
         elsif use[:use_9811] && Spell[9811].known?
           Spell[9811].cast

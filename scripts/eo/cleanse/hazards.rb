@@ -27,7 +27,7 @@ module EO
       # @return [void]
       def clear(obj, spell)
         if spell
-          Cleanse.mana_pulse(spell.num)
+          Lich::Gemstone::Mana.pulse(spell.num)
           spell.cast("at ##{obj.id}") if spell.affordable?
         elsif cleave?
           fput "cman scleave ##{obj.id}"

@@ -38,3 +38,13 @@ RSpec.shared_context 'a script lending helpers' do
 
   after { EO.forget(script: 'spec') }
 end
+
+# Lich's Mana.pulse, noting in `pulses` each spell it was asked about.
+RSpec.shared_context 'Lich mana' do
+  let(:pulses) { [] }
+
+  before do
+    asked = pulses
+    stub_const('Lich::Gemstone::Mana', Class.new { define_singleton_method(:pulse) { |spell = nil, **| asked << spell && false } })
+  end
+end

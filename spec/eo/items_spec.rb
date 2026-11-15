@@ -8,6 +8,7 @@ require_relative '../../scripts/eo/boxes'
 
 RSpec.describe EO::Items do
   include_context 'a script lending helpers'
+  include_context 'Lich mana'
 
   let(:thing) { Struct.new(:id, :name, :type, :status, keyword_init: true) }
   let(:empty) { thing.new(id: nil, name: 'Empty') }
@@ -114,10 +115,10 @@ RSpec.describe EO::Items do
       expect(fputs).to be_empty
     end
 
-    it 'tries a mana pulse first when it cannot, and says when that was not enough' do
+    it 'asks for a mana pulse first, and says when 315 still cannot be afforded' do
       spells[315].merge!(known: true, affordable: false)
       expect(described_class.lift_curse(cursed, gauntlet: gauntlet)).to eq(:no_mana)
-      expect(fputs).to eq(['mana pulse'])
+      expect(pulses).to eq([315])
     end
 
     it 'needs nothing done when the gauntlet is on the hand that is empty' do

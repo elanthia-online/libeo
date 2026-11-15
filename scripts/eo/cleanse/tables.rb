@@ -3,8 +3,8 @@
 module EO
   # Cleansing: getting rid of what is done to a character in a fight. This
   # file has what the rest stands on: the debuffs and room hazards by name,
-  # the spell a character has for each job, TARGET and its answers, the mana
-  # pulse, and the list of hazards that would not be targeted.
+  # the spell a character has for each job, TARGET and its answers, and the
+  # list of hazards that would not be targeted.
   module Cleanse
     module_function
 
@@ -34,13 +34,6 @@ module EO
     # The one answer that means a hazard is now targeted.
     TARGETED = /^Suspecting that .+ is the origin of .+, you turn your attention towards \w+!$/
 
-    MANA_PULSE = Regexp.union(
-      /An invigorating rush of mana pulses through you/i,
-      /You are too mentally fatigued to attempt this ability/i,
-      /You're already at full mana./i,
-      /Your mana control skills are not yet advanced/i
-    )
-
     # The spells that do each job, the first a character knows being theirs.
     SPELLS = {
       disease: [113],
@@ -63,17 +56,6 @@ module EO
     def target(obj)
       result = dothistimeout("target ##{obj.id}", 2, TARGET_ANSWERS)
       result.is_a?(String) && result =~ TARGETED ? true : false
-    end
-
-    # MANA PULSE when a known spell cannot be afforded.
-    #
-    # @param spell_id [Integer]
-    # @return [void]
-    def mana_pulse(spell_id)
-      return unless Spell[spell_id].known? && !Spell[spell_id].affordable?
-
-      dothistimeout 'mana pulse', 2, MANA_PULSE
-      sleep 0.2
     end
 
     # Ids of hazards that would not be targeted, so they are not tried
