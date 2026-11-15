@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.17.0')
-    EO.require('0.17.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.18.0')
+    EO.require('0.18.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.17.0
+       version: 0.18.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.18.0 (2026-11-13)
+    - EO::Guild::Escort, from escortgo2 1.0.5: the task and its towns (task, PICKUPS,
+      DROPOFFS, TRAVEL_COST), having the client follow (follow), the nearest of a list
+      of rooms (nearest), being hurt (hurt?), the ambush watch (ambush_watch), and the
+      walk (Walk: hide, haste, protect, check_room, escort_here?, find_path, step,
+      backtrack) with its routes for the hard parts of the roads (ROUTES)
   v0.17.0 (2026-11-13)
     - EO::Guild::Forage, from ebounty 1.13.0: the rooms a herb grows in (rooms), the herbs
       held (held), what FORAGE wants it called (linked_item), the spells and readying
@@ -174,7 +180,7 @@ parts = %w[
   cleanse/wounds cleanse/afflictions cleanse/recovery
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
-  guild/completion guild/forage guild/heirloom
+  guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
