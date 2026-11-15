@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.9.0')             the version the script was built against
+EO.require('0.10.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -33,6 +33,9 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: a web, globe or cloud got rid of by spell, Spell Cleave or Spell Thieve; acidic mist blown away; a runestone broken |
 | `eo/cleanse/traps.rb` | `EO::Cleanse::Traps`: the Hive's traps searched out and disarmed; the itchy curse's safe place and wait |
 | `eo/cleanse/disarms.rb` | `EO::Cleanse::Disarms`: a weapon back in hand, the list of disarms not yet recovered (kept across restarts), reading RECOVER ITEM |
+| `eo/cleanse/wounds.rb` | `EO::Cleanse::Wounds`: whether wounds and scars allow a cast, with and without Sigil of Determination; changing stance |
+| `eo/cleanse/afflictions.rb` | `EO::Cleanse::Afflictions`: disease and poison cured, a root or press retreated from, debuffs dispelled, a stun or a web got out of, a room quieted |
+| `eo/cleanse/recovery.rb` | `EO::Cleanse::Recovery`: a lost weapon got back: the spirit servant, a bonded weapon, RECOVER ITEM, prying from webbing, a floated weapon, the Sanctum's clench |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
