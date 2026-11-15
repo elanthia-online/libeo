@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.10.0')             the version the script was built against
+EO.require('0.11.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -36,6 +36,8 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/cleanse/wounds.rb` | `EO::Cleanse::Wounds`: whether wounds and scars allow a cast, with and without Sigil of Determination; changing stance |
 | `eo/cleanse/afflictions.rb` | `EO::Cleanse::Afflictions`: disease and poison cured, a root or press retreated from, debuffs dispelled, a stun or a web got out of, a room quieted |
 | `eo/cleanse/recovery.rb` | `EO::Cleanse::Recovery`: a lost weapon got back: the spirit servant, a bonded weapon, RECOVER ITEM, prying from webbing, a floated weapon, the Sanctum's clench |
+| `eo/herbs/table.rb` | `EO::Herbs::Table`: every herb, where it is sold, what it treats and its doses; the stock targets; the two tiers of blood |
+| `eo/herbs/injuries.rb` | `EO::Herbs::Injuries`: the herb type a character's wounds call for next, what a dead character or an escort needs, whether wounds allow a spell |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
