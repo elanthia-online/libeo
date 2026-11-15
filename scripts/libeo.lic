@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.16.0')
-    EO.require('0.16.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.17.0')
+    EO.require('0.17.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,18 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.16.0
+       version: 0.17.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.17.0 (2026-11-13)
+    - EO::Guild::Forage, from ebounty 1.13.0: the rooms a herb grows in (rooms), the herbs
+      held (held), what FORAGE wants it called (linked_item), the spells and readying
+      before a try (spells, kneel, ready), the try and its answers (try, FOUND,
+      NOT_HERE, PICKED_OVER, evoke?), putting the find away (stow_found), being hurt
+      (hurt?), leaving a room (leave, stop_song), and handing herbs over (give)
+    - EO::Guild::Heirloom, from ebounty 1.13.0: the spells before a search (spells), the
+      search and what it turns up (search), and the step to the next room (wander)
   v0.16.0 (2026-11-13)
     - EO::Guild::Completion, from ebounty 1.13.0: the rule a hunting script stops on, as
       the Ruby it evaluates (rule), what a skin task asks for and how its skin is named
@@ -166,7 +174,7 @@ parts = %w[
   cleanse/wounds cleanse/afflictions cleanse/recovery
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
-  guild/completion
+  guild/completion guild/forage guild/heirloom
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
