@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.5.0')             the version the script was built against
+EO.require('0.6.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -24,6 +24,8 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/stow.rb` | `EO::Stow`: the bags an item is tried in by the STOW list, and the bags to open before looting |
 | `eo/loot.rb` | `EO::Loot`: what in a room is no loot, whether an item is wanted, searching a dead creature |
 | `eo/skinning.rb` | `EO::Skinning`: which dead to skin and with what kind of tool, getting ready, the skinning, standing up after |
+| `eo/selling.rb` | `EO::Selling`: selling one item to a shop, asking a shop what an item is worth |
+| `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (how he is called, his fee, the pay) and the locksmith pool (the drop-off order, the give, the return, the pool's depth, the rising tip) |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called

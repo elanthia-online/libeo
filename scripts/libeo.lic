@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.5.0')
-    EO.require('0.5.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.6.0')
+    EO.require('0.6.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,19 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.5.0
+       version: 0.6.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.6.0 (2026-11-13)
+    - EO::Selling, from eloot 2.15.0: SELL one item and the refusals (sell), APPRAISE and
+      the figure in its answer (appraise, worth)
+    - EO::Locksmith, from eloot 2.15.0: how the town locksmith is called (town_activator),
+      a box shut or locked (shut?, locked?), the call, the fee and the PAY (call, fee,
+      pay), and the nouns he will not open
+    - EO::Locksmith::Pool, from eloot 2.15.0: the drop-off order (order), the give and the
+      ask for a return (give, ask_return, returned_box), the pool's depth from its list
+      (depth, counts), and the rising tip (tip_for, tip)
   v0.5.0 (2026-11-13)
     - EO::Stow, from eloot 2.15.0: the bags an item is tried in by the STOW list (route),
       the overflow bags in number order (overflow_keys), the bags to open before looting
@@ -61,7 +70,7 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers containers hands town items boxes stow loot skinning]
+parts = %w[version helpers containers hands town items boxes stow loot skinning selling locksmith]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
