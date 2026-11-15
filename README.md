@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.22.0')             the version the script was built against
+EO.require('0.23.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -33,11 +33,10 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: a web, globe or cloud got rid of by spell, Spell Cleave or Spell Thieve; acidic mist blown away; a runestone broken |
 | `eo/cleanse/traps.rb` | `EO::Cleanse::Traps`: the Hive's traps searched out and disarmed; the itchy curse's safe place and wait |
 | `eo/cleanse/disarms.rb` | `EO::Cleanse::Disarms`: a weapon back in hand, the list of disarms not yet recovered (kept across restarts), reading RECOVER ITEM |
-| `eo/cleanse/wounds.rb` | `EO::Cleanse::Wounds`: whether wounds and scars allow a cast, with and without Sigil of Determination |
 | `eo/cleanse/afflictions.rb` | `EO::Cleanse::Afflictions`: disease and poison cured, a root or press retreated from, debuffs dispelled, a stun or a web got out of, a room quieted |
 | `eo/cleanse/recovery.rb` | `EO::Cleanse::Recovery`: a lost weapon got back: the spirit servant, a bonded weapon, RECOVER ITEM, prying from webbing, a floated weapon, the Sanctum's clench |
 | `eo/herbs/table.rb` | `EO::Herbs::Table`: every herb, where it is sold, what it treats and its doses; the stock targets; the two tiers of blood |
-| `eo/herbs/injuries.rb` | `EO::Herbs::Injuries`: the herb type a character's wounds call for next, what a dead character or an escort needs, whether wounds allow a spell |
+| `eo/herbs/injuries.rb` | `EO::Herbs::Injuries`: the herb type a character's wounds call for next, what a dead character or an escort needs |
 | `eo/herbs/doses.rb` | `EO::Herbs::Doses::Monitor`: the doses left in each herb and potion, learned from the game as they are used, bought and bundled |
 | `eo/herbs/sack.rb` | `EO::Herbs::Sack`: the herb sack: opening it, its contents by form, a Survivalist's Kit's, those of something in the room, putting a herb in and taking one out |
 | `eo/herbs/heal.rb` | `EO::Herbs::Heal`: the herb to use for a type, the spells that help, eating or drinking it |

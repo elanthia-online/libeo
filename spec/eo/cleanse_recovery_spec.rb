@@ -2,42 +2,9 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/cleanse/tables'
-require_relative '../../scripts/eo/cleanse/wounds'
 require_relative '../../scripts/eo/cleanse/afflictions'
 require_relative '../../scripts/eo/cleanse/disarms'
 require_relative '../../scripts/eo/cleanse/recovery'
-
-RSpec.describe EO::Cleanse::Wounds do
-  def injuries(marks = {})
-    all = %w[nsys head leftEye rightEye leftArm leftHand rightArm rightHand chest].to_h { |area| [area, { 'wound' => 0, 'scar' => 0 }] }
-    marks.each { |area, mark| all[area.to_s].merge!(mark.transform_keys(&:to_s)) }
-    all
-  end
-
-  it 'allows casting unhurt, and with a wound that does not bear on it' do
-    expect(described_class.allow_cast?(injuries)).to eq([true, true])
-    expect(described_class.allow_cast?(injuries(chest: { wound: 3 }))).to eq([true, true])
-    expect(described_class.allow_cast?(injuries(leftArm: { wound: 1 }))).to eq([true, true])
-  end
-
-  it 'stops casting at rank 2 to the head or nerves, and for an arm and hand past 1 together' do
-    expect(described_class.allow_cast?(injuries(head: { wound: 2 }))).to eq([false, true])
-    expect(described_class.allow_cast?(injuries(leftArm: { wound: 1 }, leftHand: { wound: 1 }))).to eq([false, true])
-    expect(described_class.allow_cast?(injuries(rightArm: { scar: 2 }))).to eq([false, true])
-    expect(described_class.allow_cast?(injuries(leftArm: { wound: 1 }, rightHand: { wound: 1 }))).to eq([true, true])
-  end
-
-  it 'says the sigil cannot help at rank 3' do
-    expect(described_class.allow_cast?(injuries(rightEye: { wound: 3 }))).to eq([false, false])
-  end
-
-  it 'allows more under the sigil: an arm and hand up to 2 together, and nothing at rank 3' do
-    expect(described_class.allow_cast_with_sigil?(injuries(leftArm: { wound: 1 }, leftHand: { wound: 1 }))).to be(true)
-    expect(described_class.allow_cast_with_sigil?(injuries(leftArm: { wound: 2 }, leftHand: { wound: 1 }))).to be(false)
-    expect(described_class.allow_cast_with_sigil?(injuries(head: { wound: 2 }))).to be(true)
-    expect(described_class.allow_cast_with_sigil?(injuries(head: { scar: 3 }))).to be(false)
-  end
-end
 
 RSpec.describe EO::Cleanse::Afflictions do
   include_context 'a script lending helpers'
