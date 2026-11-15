@@ -81,14 +81,7 @@ module EO
       # @return [void]
       def wander(visited, boundaries)
         room = Room.current
-        next_room_options = room.wayto.keys - boundaries
-        next_room_options.delete_if { |room_id| (room.timeto[room_id].class == Proc) and room.timeto[room_id].call.nil? }
-        next_room = next_room_options.find_all { |r| !visited.include?(r) }
-        next_room = if next_room.empty?
-                      visited.find { |r| next_room_options.include?(r) }
-                    else
-                      next_room[rand(next_room.length)]
-                    end
+        next_room = Wander.next_room(room, visited, boundaries)
         visited.delete(next_room)
         visited.push(next_room)
         way = room.wayto[next_room]

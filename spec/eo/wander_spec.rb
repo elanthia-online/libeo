@@ -91,6 +91,16 @@ RSpec.describe EO::Wander do
       expect(log).to eq([[:sleep, 2.5]])
     end
 
+    it "knows a closed way by the map's own kind of proc, which is one by its class alone" do
+      string_proc = Class.new do
+        def class = Proc
+        def call = nil
+      end.new
+      state[:room].timeto['2'] = string_proc
+      state[:room].timeto['3'] = string_proc
+      expect(described_class.next_room(state[:room], [], [])).to eq('4')
+    end
+
     it 'does not step where a scripted time says there is no going, and calls a scripted way' do
       state[:room].timeto['2'] = proc {}
       state[:room].timeto['3'] = proc { 5 }

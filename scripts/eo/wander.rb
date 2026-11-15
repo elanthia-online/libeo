@@ -105,25 +105,34 @@ module EO
       end
     end
 
-    # One step by the map: to an adjacent room not yet visited, else to
-    # the one visited longest ago, never across a boundary. Waits for
-    # looting in progress ($loot_grab_list, $loot_working) before moving.
+    # The room to step to next: an adjacent room not yet visited, any of
+    # them; else the adjacent room visited longest ago. Never one across
+    # a boundary, nor one whose way is closed for now (a scripted exit
+    # whose time answers nil).
+    #
+    # @param room [Room] the room stood in
+    # @param visited [Array<String>] room ids, the latest last
+    # @param boundary [Array<String>] room ids not to step into
+    # @return [String, nil] a room id; nil when there is nowhere to go
+    def next_room(room, visited, boundary)
+      options = room.wayto.keys - boundary
+      # by its class, which the map's StringProc answers as Proc; it is
+      # not one by is_a?
+      options.delete_if { |room_id| (room.timeto[room_id].class == Proc) && room.timeto[room_id].call.nil? }
+
+      unvisited = options.reject { |r| visited.include?(r) }
+      unvisited.empty? ? visited.find { |r| options.include?(r) } : unvisited.sample
+    end
+
+    # One step by the map, to next_room. Waits for looting in progress
+    # ($loot_grab_list, $loot_working) before moving.
     #
     # @param boundary [Array<String>] room ids not to step into
     # @param delay [Numeric] seconds to wait when there is nowhere to go
     # @return [void]
     def wander_standard!(boundary:, delay:)
       room = Room.current
-      next_room_options = room.wayto.keys - boundary
-      next_room_options.delete_if { |room_id| room.timeto[room_id].is_a?(Proc) && room.timeto[room_id].call.nil? }
-
-      unvisited = next_room_options.reject { |r| wander_rooms.include?(r) }
-
-      next_room = if unvisited.empty?
-                    wander_rooms.find { |r| next_room_options.include?(r) }
-                  else
-                    unvisited.sample
-                  end
+      next_room = next_room(room, wander_rooms, boundary)
       return sleep(delay) if next_room.nil?
 
       wander_rooms.delete(next_room)

@@ -4,6 +4,7 @@ require_relative 'eo_helper'
 require_relative '../../scripts/eo/guild/tables'
 require_relative '../../scripts/eo/guild/forage'
 require_relative '../../scripts/eo/guild/heirloom'
+require_relative '../../scripts/eo/wander'
 
 RSpec.describe EO::Guild::Forage do
   include_context 'a script lending helpers'
