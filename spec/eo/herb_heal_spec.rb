@@ -3,6 +3,7 @@
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/herbs/table'
 require_relative '../../scripts/eo/herbs/injuries'
+require_relative '../../scripts/eo/containers'
 require_relative '../../scripts/eo/herbs/sack'
 require_relative '../../scripts/eo/herbs/heal'
 require_relative '../../scripts/eo/herbs/shop'
