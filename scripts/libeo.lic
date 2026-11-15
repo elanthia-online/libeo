@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.1.0')
-    EO.require('0.1.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.2.0')
+    EO.require('0.2.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,17 +18,22 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.1.0
+       version: 0.2.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.2.0 (2026-11-13)
+    - EO.use: a script lends the library its own helpers (command, result, wait, go,
+      say, and any other by name), and EO.command, EO.result, EO.settle, EO.go2 and
+      EO.say call the running script's. Code that moves here from a script goes on
+      sending, waiting, walking and printing that script's way
   v0.1.0 (2026-11-13)
     - the loader and the version gate: EO.require, EO.version
 =end
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version]
+parts = %w[version helpers]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
