@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.18.0')             the version the script was built against
+EO.require('0.19.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -53,6 +53,8 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/guild/heirloom.rb` | `EO::Guild::Heirloom`: the heirloom search: the spells before it, the search and what it turns up, the step to the next room |
 | `eo/guild/escort.rb` | `EO::Guild::Escort`: an escort task and its towns, having the client follow, and the walk: keeping the room clear, hiding and hasting, a step along the path and a step back |
 | `eo/guild/escort_routes.rb` | `EO::Guild::Escort::ROUTES`: the hard parts of the escort roads, each as the walk takes it |
+| `eo/guild/disablers.rb` | `EO::Guild::Disablers`: spells that stop creatures without killing them: which can be cast now, the best for what is in the room, the cast |
+| `eo/guild/rescue.rb` | `EO::Guild::Rescue`: a lost child: finding it, where it lives and the guards there, a room that is a danger to it, who to report to, the way out of the Maaghara Labyrinth |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
