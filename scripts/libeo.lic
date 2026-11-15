@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.14.0')
-    EO.require('0.14.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.15.0')
+    EO.require('0.15.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,18 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.14.0
+       version: 0.15.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.15.0 (2026-11-13)
+    - EO::Guild::Taskmaster, from ebounty 1.13.0: asking for a task, turning one in,
+      having one removed or expedited (ask), whether the task's text changed (changed?),
+      and the boosts and vouchers on hand (boosts?, vouchers?)
+    - EO::Guild::Assignments: the visit to the furrier, herbalist or gem dealer (ask) and
+      to the town's guards, a found heirloom in hand (ask_guards)
+    - EO::Guild::Vetting: whether a task is one the character takes (reject?,
+      unwanted_kinds)
   v0.14.0 (2026-11-13)
     - EO::Guild::Tables, from ebounty 1.13.0: the kinds of task by name (TASK_TYPES), the
       towns and their rooms (TOWN_UIDS, town_uids), the furriers, gem dealers and
@@ -151,7 +159,7 @@ parts = %w[
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
   cleanse/wounds cleanse/afflictions cleanse/recovery
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
-  guild/tables guild/npcs guild/location
+  guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
