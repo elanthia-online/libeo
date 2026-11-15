@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.15.0')             the version the script was built against
+EO.require('0.16.0')             the version the script was built against
 EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 ```
 
@@ -48,6 +48,7 @@ EO.use(command: ..., wait: ...)  the script's own helpers, lent to the library
 | `eo/guild/taskmaster.rb` | `EO::Guild::Taskmaster`: get, turn in, remove and expedite a task; boosts and vouchers |
 | `eo/guild/assignments.rb` | `EO::Guild::Assignments`: the furrier, herbalist and gem dealer visits, and the guards', a found heirloom in hand |
 | `eo/guild/vetting.rb` | `EO::Guild::Vetting`: whether a task is one the character takes |
+| `eo/guild/completion.rb` | `EO::Guild::Completion`: the rule a hunting script stops on when a task is done enough; counting the skins and gems held for a task |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
