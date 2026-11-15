@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.6.0')
-    EO.require('0.6.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.7.0')
+    EO.require('0.7.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,21 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.6.0
+       version: 0.7.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.7.0 (2026-11-13)
+    - EO::Locker, from eloot 2.15.0: a house's locker rooms by the map's tags (che_rooms,
+      che_town_id, town_name), LOCKER INFO's town (info_town), rooms nearest first
+      (nearest_first), the way into a booth and the last step to one (way, booth?,
+      approach, step), what came since a reading (lines_since), a debt (debt), opening
+      the locker and finding the stash in it (open, stash, here, inside?)
+    - EO::Hoard, from eloot 2.15.0: one name for a label and an item (normalize), whether
+      a name is of the kind hoarded (kind?), a stash's inventory by looking in each jar
+      or from a premium locker's manifest (inventory, manifest_town, manifest_inventory,
+      read_jar, refresh), filtering it (filter), the jar for a name and shaking one
+      (jar_of, shake, jar_in_hand)
   v0.6.0 (2026-11-13)
     - EO::Selling, from eloot 2.15.0: SELL one item and the refusals (sell), APPRAISE and
       the figure in its answer (appraise, worth)
@@ -70,7 +81,7 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers containers hands town items boxes stow loot skinning selling locksmith]
+parts = %w[version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
