@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.8.0')
-    EO.require('0.8.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.9.0')
+    EO.require('0.9.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,22 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.8.0
+       version: 0.9.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.9.0 (2026-11-13)
+    - EO::Cleanse, from ecleanse 2.4.0: the debuffs and room hazards by name, the spell a
+      character has for each job (spell), TARGET and its answers (target), the mana
+      pulse (mana_pulse), and the hazards that would not be targeted (BadTargets)
+    - EO::Cleanse::Hazards: getting rid of a web, globe or cloud by spell, Spell Cleave
+      or Spell Thieve (clear), blowing acidic mist away (blow_away), breaking a
+      runestone (shatter)
+    - EO::Cleanse::Traps: the Hive's traps searched out and disarmed (search, disarm,
+      here?), and the itchy curse's safe place and wait (safe_place, wait_out_rash)
+    - EO::Cleanse::Disarms: a weapon back in hand (recovered?, held_ids), the list of
+      disarms not yet recovered, kept across restarts (list, add, remove, remove_room,
+      remove_found, tracked?), and reading RECOVER ITEM (spied_item, same_item?)
   v0.8.0 (2026-11-13)
     - EO::Casting, from ewaggle 2.2.0: the multicast count by mana control
       (max_multicast), one cast and what its answer means (cast), having the mana or
@@ -87,7 +99,10 @@
 
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
-parts = %w[version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard casting]
+parts = %w[
+  version helpers containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
+  cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
+]
 
 base = File.join(SCRIPT_DIR, 'eo')
 verbose = $VERBOSE
