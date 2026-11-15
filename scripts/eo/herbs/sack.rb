@@ -143,12 +143,12 @@ module EO
         return if sack.nil? || sack.empty?
         return if GameObj.containers.keys.include?(sack.id) && sack.contents.is_a?(Array)
 
-        result = EO.helper(:lines).call("open ##{sack.id}", OPEN)
+        result = EO.lines("open ##{sack.id}", OPEN)
         yield if result.grep(NEEDS_CLOSED).any? && block_given?
 
         return :locked if result.grep(/It appears to be locked./).any?
 
-        lines = EO.helper(:lines).call("look in ##{sack.id}", LOOK)
+        lines = EO.lines("look in ##{sack.id}", LOOK)
         return if lines.grep(/You glance|There is nothing/i).any?
 
         20.times do
@@ -181,7 +181,7 @@ module EO
       # @param kit [GameObj]
       # @return [Hash{Symbol => Array<GameObj>}] :drinkable, :edible and :all
       def kit_contents(kit)
-        result = EO.helper(:lines).call("look in ##{kit.id}", %r{(In|On|Under|Behind) .*?exist="(#{kit.id})" noun="(.*?)">(.*?)</a|There is nothing}).join(' ')
+        result = EO.lines("look in ##{kit.id}", %r{(In|On|Under|Behind) .*?exist="(#{kit.id})" noun="(.*?)">(.*?)</a|There is nothing}).join(' ')
         contents = { drinkable: [], edible: [], all: [] }
 
         { edible: KIT_DOSES, drinkable: KIT_TINCTURES }.each do |form, pattern|
@@ -220,7 +220,7 @@ module EO
         listing = {}
 
         loop do
-          result = EO.helper(:lines).call("look #{preposition} ##{sack.id}", %r{(In|On|Under|Behind) .*?exist="(#{sack.id})" noun="(.*?)">(.*?)</a|There is nothing}).join(' ')
+          result = EO.lines("look #{preposition} ##{sack.id}", %r{(In|On|Under|Behind) .*?exist="(#{sack.id})" noun="(.*?)">(.*?)</a|There is nothing}).join(' ')
 
           case result
           when %r{Under .*?exist="(-?\d+)" noun="(.*?)">(.*?)</a>(?::| you see )(.*?)$}

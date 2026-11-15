@@ -73,7 +73,7 @@ module EO
         line = dothistimeout 'tell servant recover', 5, /flickers for a moment and manifests|has no personal recollection/
         return false unless line =~ /flickers for a moment and manifests/
 
-        lines = EO.helper(:lines).call('sense', /You open your soul to the lesser/)
+        lines = EO.lines('sense', /You open your soul to the lesser/)
         fput 'stop 213' if lines.any? { |l| l =~ /An obvious presence of peace saturates the area and a feeling of safety overwhelms you/ }
         true
       end
@@ -197,7 +197,7 @@ module EO
             dispel.cast("at #{item}") if dispel.affordable?
           end
 
-          lines = EO.helper(:lines).call('glance', /You glance/)
+          lines = EO.lines('glance', /You glance/)
           break if lines.any? { |l| l =~ /#{item}/ }
 
           EO.settle

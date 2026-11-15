@@ -19,7 +19,7 @@ module EO
       # @return [Hash{String => String}] each item's name, without its
       #   article, to its number on the menu
       def menu
-        lines = EO.helper(:lines).call('order', %r{<output class="mono"/>|<closeDialog id='dlgCustomize'/>})
+        lines = EO.lines('order', %r{<output class="mono"/>|<closeDialog id='dlgCustomize'/>})
         menu = {}
         lines.each do |line|
           line.scan(%r{<d.*?cmd=["']order ([0-9]+).*?>(.*?)</d>}).each do |item|
@@ -77,7 +77,7 @@ module EO
       # @param number [String] the item's number on the menu
       # @return [Integer, nil]
       def price(number)
-        lines = EO.helper(:lines).call("order #{number}", /You ask/)
+        lines = EO.lines("order #{number}", /You ask/)
         lines.map { |string| string.scan(/\b([\d,]+)\s*(?:silver|silvers)\b/).flatten.first }.compact.first&.gsub(',', '')&.to_i
       end
 
