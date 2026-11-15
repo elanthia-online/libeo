@@ -111,9 +111,7 @@ module EO
         until search_count.eql?(SEARCHES)
           EO.go2(room_id)
 
-          dothistimeout('kneel', 2, /You kneel|You are already/i) until kneeling?
-
-          EO.settle
+          EO.kneel
 
           lines = EO.command('recover item', RECOVER_ANSWERS)
 
@@ -159,8 +157,7 @@ module EO
       # @param hand_fills [Integer]
       # @return [void]
       def restore_hands(hand_fills)
-        fput 'stand' until standing?
-        EO.settle
+        EO.stand
         $fill_hands_actions.push(*$fill_hands_actions.pop(hand_fills).reverse) if hand_fills > 1
         hand_fills.times { fill_hands }
         ReadyList.check(silent: true, quiet: true) unless ReadyList.valid?
@@ -182,14 +179,17 @@ module EO
       end
 
       # Get back a weapon floated out of the hand: dispel what holds it, or
-      # with no dispel just GET it, until it is in hand or a GLANCE shows it.
+      # with no dispel just GET it, until it is in hand or a GLANCE shows it,
+      # ten tries at most.
       #
       # @param known_ids [Array<String>] what the hands held at the loss
       # @param item [String] the noun lost
       # @param dispel [Spell, nil]
       # @return [void]
       def float_back(known_ids, item, dispel)
-        until Disarms.recovered?(known_ids, item)
+        10.times do
+          break if Disarms.recovered?(known_ids, item)
+
           if dispel.nil?
             fput "get #{item}"
           else
@@ -207,12 +207,12 @@ module EO
       end
 
       # CLENCH the weapon back out of the Sanctum creature that took it,
-      # until it is grabbed or the creature is gone.
+      # until it is grabbed or the creature is gone, ten tries at most.
       #
       # @param creature [String]
       # @return [void]
       def clench(creature)
-        loop do
+        10.times do
           result = EO.result("clench #{creature}")
           EO.settle
           break if result =~ /You reach up and grab|I could not find what you were referring to./

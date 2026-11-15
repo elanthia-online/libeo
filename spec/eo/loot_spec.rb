@@ -225,13 +225,13 @@ RSpec.describe EO::Skinning do
       stub_const('Stance', Class.new { define_singleton_method(:current) { 'defensive' } })
       stub_const('GameObj', Class.new { define_singleton_method(:targets) { [] } })
       described_class.define_singleton_method(:standing?) { up.first }
-      described_class.define_singleton_method(:dothistimeout) { |*_| up[0] = true }
+      allow(EO).to receive(:stand) { up[0] = true }
       described_class.stand_up(stance: ->(name) { stances << name })
       expect(stances).to eq(%w[offensive defensive])
       described_class.stand_up(stance: ->(name) { stances << name })
       expect(stances.size).to eq(2)
     ensure
-      %i[standing? dothistimeout].each { |m| described_class.singleton_class.remove_method(m) }
+      described_class.singleton_class.remove_method(:standing?)
     end
   end
 end

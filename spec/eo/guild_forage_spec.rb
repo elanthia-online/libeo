@@ -148,13 +148,12 @@ RSpec.describe EO::Guild::Heirloom do
       define_singleton_method(:loot) { [] }
     end)
     described_class.define_singleton_method(:fput) { |cmd| log << cmd && state[:right] = true }
-    %i[kneeling? standing?].each { |m| described_class.define_singleton_method(m) { true } }
     described_class.define_singleton_method(:checkright) { state[:right] }
     described_class.define_singleton_method(:checkleft) { false }
     described_class.search('silver ring')
     expect(log).to eq(['search'])
-    expect(sent).to eq([:wait, :wait, 'stow #5'])
+    expect(sent).to eq([:wait, 'stow #5'])
   ensure
-    %i[fput kneeling? standing? checkright checkleft].each { |m| described_class.singleton_class.remove_method(m) }
+    %i[fput checkright checkleft].each { |m| described_class.singleton_class.remove_method(m) }
   end
 end
