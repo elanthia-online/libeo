@@ -13,6 +13,8 @@ module EO
 
       # Rounds of asking before giving up.
       ATTEMPTS = 5
+      # Times in a round an ask that nobody was there to hear is made again.
+      REASKS = 3
 
       # What is asked for each purpose, how many times in a round, and
       # whether the asking is done once a task is held (else once none is).
@@ -56,7 +58,9 @@ module EO
 
       # Ask the taskmaster, round after round, until a task is held or none
       # is, as the purpose has it. A round whose asking leaves the task's
-      # text unchanged, or that fails in any way, is tried again.
+      # text unchanged, or that fails in any way, is tried again. An ask
+      # answered "Who are you trying to ask" finds the taskmaster again and
+      # is made again, REASKS times at most in a round.
       #
       # @param type [String] a key of ASKS
       # @param boost_type [String, nil] for 'get', the kind of task to ask
@@ -78,16 +82,22 @@ module EO
             npc = NPCs.taskmaster
             return :no_taskmaster if npc.nil?
 
-            ask_count.times do
+            asks_left = ask_count
+            reasks = 0
+            while asks_left.positive?
               result = fput "ask #{npc} about #{about}"
               if result =~ /Who are you trying to ask/
                 npc = NPCs.taskmaster
                 return :no_taskmaster if npc.nil?
+
+                # nobody heard that one: it is asked again and not counted
+                next if (reasks += 1) <= REASKS
               elsif result =~ /You have already been assigned a task/
                 return :already_assigned
               elsif result =~ /I'm ready to assign you a new task/ && type.eql?('expedite')
                 return :ready
               end
+              asks_left -= 1
               EO.settle
             end
 
