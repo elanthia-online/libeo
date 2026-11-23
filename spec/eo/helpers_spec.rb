@@ -59,10 +59,25 @@ RSpec.describe 'EO.use' do
   end
 
   it "runs the library's own where the script lent none, and the script's where it did" do
-    allow(EO::Own).to receive(:settle).and_return(:own)
-    expect(EO.settle).to eq(:own)
+    waited = []
+    %i[waitrt? waitcastrt?].each { |m| EO.define_singleton_method(m) { waited << m } }
+    allow(EO).to receive(:sleep)
+    EO.settle
+    expect(waited).to eq(%i[waitcastrt? waitrt?])
     EO.use(wait: -> { :lent })
     expect(EO.settle).to eq(:lent)
+    expect(waited.size).to eq(2)
+  ensure
+    %i[waitrt? waitcastrt?].each { |m| EO.singleton_class.remove_method(m) }
+  end
+
+  it 'sends unseen for lines, by the lent lines helper or by its own command' do
+    seen = []
+    stub_const('Lich::Util', Class.new { define_singleton_method(:issue_command) { |text, _pattern, **opts| seen << [text, opts] && ['a line'] } })
+    expect(EO.lines('spell active', /Active/)).to eq(['a line'])
+    expect(seen.first.last).to include(silent: true, quiet: true)
+    EO.use(lines: ->(text, _pattern) { [text] })
+    expect(EO.lines('glance', /You glance/)).to eq(['glance'])
   end
 
   it 'refuses what cannot be called' do
@@ -74,81 +89,5 @@ RSpec.describe 'EO.use' do
     EO.forget
 
     expect(EO.helper?(:wait)).to be(false)
-  end
-end
-
-RSpec.describe EO::Own do
-  let(:sent) { [] }
-  let(:answers) { [] }
-  let(:shown) { [] }
-  let(:state) { { hidden: false, room: Struct.new(:id, :tags).new(5, ['bank']) } }
-
-  before do
-    log = sent
-    queue = answers
-    out = shown
-    now = state
-    stub_const('Script', Class.new do
-      define_singleton_method(:current) { Struct.new(:name).new('spec') }
-      define_singleton_method(:run) { |*args| log << [:run, *args] }
-    end)
-    stub_const('Lich::Util', Class.new { define_singleton_method(:issue_command) { |text, _pattern, **opts| log << [text, opts] && queue.shift } })
-    stub_const('Lich::Messaging', Class.new { define_singleton_method(:msg) { |type, text| out << [type, text] } })
-    stub_const('Room', Class.new { define_singleton_method(:current) { now[:room] } })
-    {
-      dothistimeout: ->(text, _time, _pattern) { log << text && queue.shift }, respond: ->(text) { out << text },
-      sleep: ->(_t) {}, waitrt?: -> { log << :waitrt }, waitcastrt?: -> { log << :waitcastrt },
-      fput: ->(text) { log << text }, hidden?: -> { now[:hidden] }, invisible?: -> { false }
-    }.each { |name, body| described_class.define_singleton_method(name, &body) }
-  end
-
-  after do
-    %i[dothistimeout respond sleep waitrt? waitcastrt? fput hidden? invisible?].each { |m| described_class.singleton_class.remove_method(m) }
-    EO.forget(script: 'spec')
-  end
-
-  it 'collects the lines of an answer, sending the command again after roundtime' do
-    answers.push(['...wait 2 seconds.'], ['In the sack you see a gem.'])
-    expect(EO.command('look in #1', /In the/, silent: true)).to eq(['In the sack you see a gem.'])
-    expect(sent.map { |entry| entry.is_a?(Array) ? entry.first : entry }).to eq(['look in #1', :waitcastrt, :waitrt, 'look in #1'])
-    expect(sent.first.last).to include(silent: true, quiet: false, timeout: 5)
-  end
-
-  it 'sends unseen for lines' do
-    answers.push(['a line'])
-    EO.lines('spell active', /Active/)
-    expect(sent.first.last).to include(silent: true, quiet: true)
-  end
-
-  it 'returns the one line that answers, after any roundtime, a wait or a rash' do
-    answers.push('Wait 3 sec.', 'An uncontrollable urge to scratch the rash overcomes you.', 'You pick up a gem.')
-    expect(EO.result('get #1', /You pick up/)).to eq('You pick up a gem.')
-    expect(sent.count('get #1')).to eq(3)
-    expect(EO.result('get #1', /You pick up/)).to be_nil
-    answers.push('Anything at all.')
-    expect(EO.result('nod')).to eq('Anything at all.')
-  end
-
-  it 'walks with go2 out of hiding, unless already there' do
-    state[:hidden] = true
-    EO.go2('bank')
-    EO.go2(5)
-    EO.go2('furrier')
-    expect(sent).to eq(['unhide', 'unhide', 'unhide', [:run, 'go2', 'furrier --disable-confirm', { quiet: true }]])
-  end
-
-  it 'says a message either way it is asked, a Hash inspected' do
-    EO.say('info', 'one')
-    EO.say(type: 'yellow', text: { a: 1 }, space: true)
-    expect(shown).to eq([%w[info one], '', ['yellow', '{a: 1}'], ''])
-  end
-
-  it 'keeps debug messages for a script that wants them, and shows them as speech' do
-    wanted = false
-    EO.use(debug: -> { wanted })
-    EO.say('debug', 'quiet')
-    wanted = true
-    EO.say(type: 'debug', text: 'heard')
-    expect(shown).to eq([%w[speech heard]])
   end
 end

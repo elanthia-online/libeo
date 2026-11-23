@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.44.0')
-    EO.require('0.44.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.45.0')
+    EO.require('0.45.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.44.0
+       version: 0.45.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.45.0 (2026-11-13)
+    - The library's own helpers are the ones from Nisugi/libeo: EO.command, EO.result,
+      EO.settle and EO.stand (eo/command.rb), EO.say and EO.word_wrap (eo/messages.rb),
+      EO.go2, EO.at?, EO.nearest, EO.visit, EO.wander, EO.room_id, EO.fwi? and
+      EO.fog_wanted? (eo/travel.rb), EO.run_scripts (eo/scripts.rb), EO.help (eo/help.rb).
+      EO::Own is gone. A lent helper (EO.use) still stands in front of them
   v0.44.0 (2026-11-13)
     - EO::Guild::Taskmaster.ask makes an ask again, without counting it, when the answer is
       "Who are you trying to ask", three times at most in a round (REASKS)
@@ -303,7 +309,7 @@
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
 parts = %w[
-  version helpers posture settings settings/words settings/table settings/window containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
+  version command messages travel scripts help helpers posture settings settings/words settings/table settings/window containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
   cleanse/afflictions cleanse/recovery
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
