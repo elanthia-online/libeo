@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.46.0')
-    EO.require('0.46.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.47.0')
+    EO.require('0.47.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.46.0
+       version: 0.47.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.47.0 (2026-11-13)
+    - EO::Casting is the one from Nisugi/libeo: Resources is built by the caller and passed
+      to ready, ready_stamina, summon_bread, eat_bread and drop_bread; cast takes a recheck
+      run before each retry of a hindered cast; the walk to wrack unseen is EO.wander and
+      the walk back EO.go2. Sign of Wracking is still not cast after a walk that found
+      nowhere to cast it unseen
   v0.46.0 (2026-11-13)
     - The modules eloot uses are the ones from Nisugi/libeo, each holding the whole of
       what it is about where it held single steps: EO::Containers, EO::Hands, EO::Town,
