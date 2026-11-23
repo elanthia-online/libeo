@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.37.0')
-    EO.require('0.37.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.38.0')
+    EO.require('0.38.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,16 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.37.0
+       version: 0.38.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.38.0 (2026-11-13)
+    - EO::Chain, new: chaining bounties with a full head. before_turn_in rubs planar and
+      order when their effects are not up; reduce uses one reducer (a long-term boost,
+      the spiritual orb) when the head is over its cap and will not absorb the rest in
+      time; elemental spends chaos's roll when it gives elemental; over_cap?, excess,
+      absorb_per_minute, minutes_to_absorb, reading
   v0.37.0 (2026-11-13)
     - EO::Brooch, new: the quintuple orb brooch. use(orb) rubs the orb while it has a rub
       left today, else chaos when chaos will give it; use_chaos_if(orb); up?(orb);
@@ -267,7 +273,7 @@ parts = %w[
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/npcs guild/location guild/taskmaster guild/assignments guild/vetting
   guild/completion guild/forage guild/heirloom guild/escort guild/escort_routes
-  guild/disablers guild/rescue wander brooch
+  guild/disablers guild/rescue wander brooch chain
 ]
 
 base = File.join(SCRIPT_DIR, 'eo')
