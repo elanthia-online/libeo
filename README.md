@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.41.0')             the version the script was built against
+EO.require('0.42.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -63,6 +63,7 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/brooch.rb` | `EO::Brooch`: the quintuple orb brooch: rubbing an orb, or chaos when it gives that orb, with the day's rubs tallied so ANALYZE is seldom asked; `EO.eastern_day` |
 | `eo/chain.rb` | `EO::Chain`: chaining bounties: the rubs before a turn-in, one reducer after it when the head is over its cap, and the chaos roll when a gem or heirloom task starts |
 | `eo/carry.rb` | `EO::Carry`: what the character can carry before encumbrance and what it carries now, from the formula, the inventory feed's weights and a correction learned from the encumbrance bar; the floating disk's limit |
+| `eo/coordination/` | `EO::Coordination`: opt-in coordination between independent Lich sessions: a bounded loopback transport, read-only observations, discovery, explicitly granted operations, a parser projection. Loading it starts nothing (from eohunter's libeocoordination) |
 
 What lives here is script-side glue that Lich itself should not carry.
 Anything that is a game rule or parser plumbing belongs in Lich and is called
