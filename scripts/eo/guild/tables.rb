@@ -148,7 +148,7 @@ module EO
         /^You make so much noise that only the dead would not notice you thrashing about in your unsuccessful search\.$/,
         /^You stumble about in a fruitless attempt at foraging\.$/,
         /you are unable to find anything useful/,
-        /^As you carefully forage around you (?:can find no (?:hint|trace)|see no evidence) of what you are looking for(?: right now, though you are fairly certain this is where it can be found)?\.(?:  You briefly wonder if it could even thrive in this place\.)?/,
+        /^As you carefully forage around you (?:can )?(?:find no (?:hint|trace)|see no evidence) of what you are looking for/,
         /^As you forage around you suddenly feel a sharp pain/
       ).freeze
 

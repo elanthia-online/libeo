@@ -13,8 +13,8 @@ run in the game.**
 
 | Script | Upstream | Here | PRs |
 |---|---|---|---|
-| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.9 | #52, #54, #65 |
-| ebounty | PR #2579 (1.13.0) | 1.16.2 | #51, #56 |
+| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.10 | #52, #54, #65 |
+| ebounty | PR #2579 (1.13.0) | 1.16.3 | #51, #56 |
 | ewaggle | PR #2580 (2.2.0) | 2.5.1 | #47, #55 |
 | eherbs | PR #2587 (2.3.0) | 2.6.1 | #49, #59 |
 | ecleanse | PR #2588 (2.4.0) | 2.7.1 | #48, #58 |
@@ -23,7 +23,7 @@ run in the game.**
 | ewander | main (2.0.1) | 2.3.0 | #44, #57 |
 
 The upstream side of the first five is the open WebUI pull request for each,
-since that is the version these were built from. The library is libeo 0.62.0. Its own PRs
+since that is the version these were built from. The library is libeo 0.62.1. Its own PRs
 are #1-#43, #50, #53 and #60; libeo 0.46.0 to 0.51.0 arrived with #54 to #59, and this file
 is #61. The fixes that came out of reviewing the stack are #62 and the PRs after it.
 
