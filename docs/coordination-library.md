@@ -49,8 +49,10 @@ projection.close
 ```
 
 It publishes only when the parser has caught up to the newest socket input.
-Queued, currently parsing, disconnected, replaced-worker, or buffered input is
-unknown (`nil`). The hook callbacks are passive: they never send commands or
+Queued, currently parsing, disconnected, or replaced-worker input is unknown
+(`nil`). So is buffered input, when the game instance reports it with
+`input_was_buffered`; Lich 5.24.1 has no such method, so today buffered input
+is not detected. The hook callbacks are passive: they never send commands or
 start work. The projection contains native room, hand, roundtime, posture, and
 health facts together with one connection ID, input sequence, and monotonic
 receipt time. Consumers still own every readiness and movement decision.

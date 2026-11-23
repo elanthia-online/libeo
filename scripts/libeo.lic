@@ -25,8 +25,25 @@
   v0.52.1 (2026-11-14)
     - fix: EO::Hands.wear answers :cant when the game says the item cannot be worn; it
       answered :stuck, which a caller takes for a fault
-    - fix: EO::Brooch ends its ANALYZE at the SYNTAX line; it waited five seconds on every
-      one for a prompt Lich strips
+    - fix: EO::Brooch ends its ANALYZE at its last line, the one that says what the brooch is
+      restricted to; it waited five seconds on every one for a prompt Lich strips
+    - fix: EO::Brooch matches the whisper, rub and ANALYZE lines whole, as the game prints them,
+      not by a few words of them
+    - fix: EO::Hands.take chooses the hand that is free and usable; with the right arm crippled
+      it dragged to the right hand and waited five seconds
+    - fix: EO::Skinning.tool answers nil when no weapon is listed and the right hand is empty
+    - fix: a profile is written through a temporary file; one that cannot be read is moved
+      to <name>.bad with a warning and the script starts on its defaults; one bad profile no
+      longer stops the others being held; dates, times, ranges and sets are read back
+    - fix: the SimuCoin reduction ends in US Eastern time (EO.parse_eastern), not the machine's
+    - fix: EO::Guild::Guards takes a guard's rescue and lost-heirloom replies as answers, and
+      goes on to the next guard when one does not answer
+    - fix: EO::Herbs::Heal.deader ends on an unanswered pour (:timeout) and after 20 passes;
+      EO::Herbs::Shop.pour_into pours at most ten times
+    - fix: EO::Coordination refuses to settle a receipt too big for one frame
+    - fix: libeo install, uninstall and doctor name an unreadable manifest instead of ending
+      in a backtrace; install writes the manifest through a temporary file and removes stale
+      files only after the copies
   v0.52.0 (2026-11-13)
     - EO.use, EO.forget, EO.helper, EO.helper?, EO.lines and EO::NoHelper are gone
       (eo/helpers.rb): no script lends the library a helper any more, and EO.command,

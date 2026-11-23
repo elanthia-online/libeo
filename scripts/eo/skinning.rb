@@ -106,16 +106,20 @@ module EO
     end
 
     # The skinning tool on the READY list: the blunt one for blunt
-    # creatures, else the edged one, else the right hand.
+    # creatures, else the edged one, else what is in the right hand.
     #
     # @param ready [Hash{Symbol => GameObj}] Lich's ReadyList.ready_list
     # @param blunt [Boolean]
-    # @return [GameObj, nil] nil when a blunt tool is wanted and none is listed
+    # @return [GameObj, nil] nil when a blunt tool is wanted and none is listed,
+    #   or an edged one is wanted, none is listed and the right hand is empty
     def tool(ready, blunt:)
       listed = ready[blunt ? :skin_weapon_blunt : :skin_weapon]
       return listed unless listed.to_s.empty?
 
-      blunt ? nil : GameObj.right_hand
+      return nil if blunt
+
+      hand = GameObj.right_hand
+      hand.id.nil? ? nil : hand
     end
 
     # @param ready [Hash{Symbol => GameObj}]

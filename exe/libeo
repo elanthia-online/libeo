@@ -73,7 +73,7 @@ begin
     puts parser
     exit(command.nil? ? 0 : 1)
   end
-rescue LibEO::Install::Error, OptionParser::ParseError => e
+rescue LibEO::Install::Error, OptionParser::ParseError, SystemCallError => e
   warn "libeo: #{e.message}"
   exit 1
 end

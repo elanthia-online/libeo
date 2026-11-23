@@ -301,13 +301,16 @@ module EO
             raise ArgumentError, 'owner tick predates request admission' if owner_tick < entry[:owner_tick]
             raise ArgumentError, 'owner tick regressed' if owner_tick < @last_owner_tick
 
-            entry[:state] = 'settled'
-            entry[:outcome] = outcome
-            entry[:cleanup] = cleanup
-            entry[:reason] = reason&.to_s&.dup&.freeze
-            entry[:result] = Contract.copy(result)
-            entry[:owner_tick] = owner_tick
-            entry[:observed_at] = @clock.call
+            settled = entry.merge(
+              state: 'settled', outcome: outcome, cleanup: cleanup, reason: reason&.to_s&.dup&.freeze,
+              result: Contract.copy(result), owner_tick: owner_tick, observed_at: @clock.call
+            )
+            # a receipt the peer could not read in one frame is not a settlement
+            if JSON.generate(ok: true, payload: receipt(settled)).bytesize + 1 > MAX_FRAME_BYTES
+              raise ArgumentError, 'settlement receipt exceeds the frame limit'
+            end
+
+            entry.update(settled)
             receipt(entry)
           end
         end

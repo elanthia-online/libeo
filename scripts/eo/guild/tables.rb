@@ -58,6 +58,9 @@ module EO
         /particularly dangerous|cull their numbers|(?!.*bandit)suppress .* activity/,
         /SEARCH the area|do a thorough SEARCH/,
         /LOOT the item from its corpse/,
+        # a rescue and a lost heirloom are told in a full line of their own
+        /^[A-Z][^"]+ says, "Ah, so you're from the Adventurer's Guild\?  Yes, we do have a task for you\.  .*is in quite the predicament\..*somewhere to hide\."$/,
+        /^[A-Z][^"]+ says, "Ah, so you're from the Adventurer's Guild\?  Yes, we do have a task for you\.  .*dropped a family heirloom .*retrieve the heirloom, and report back to me\."$/,
         /I don't have any tasks for you right now/,
         /Try bugging me later/,
         /Ah, so you have returned/,

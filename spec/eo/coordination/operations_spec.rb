@@ -91,6 +91,20 @@ RSpec.describe EO::Coordination::Operations do
     expect(receipt).to include(state: 'settled', outcome: 'succeeded', cleanup: 'unknown')
   end
 
+  it 'refuses a settlement whose receipt would not fit one frame, and lets the owner settle again smaller' do
+    client.submit(request_id: 'too-big', operation: 'probe', arguments: { value: 1 })
+    grant.next_request(owner_tick: 1)
+
+    big = Array.new(10) { 'x' * 2000 }
+    expect { grant.settle(request_id: 'too-big', owner_tick: 2, outcome: :succeeded, result: big) }
+      .to raise_error(ArgumentError, /frame limit/)
+    expect(client.result(request_id: 'too-big')[:payload]).to include(state: 'running', outcome: nil)
+
+    small = grant.settle(request_id: 'too-big', owner_tick: 2, outcome: :succeeded, result: ['x' * 2000])
+    expect(small).to include(state: 'settled', outcome: 'succeeded')
+    expect(client.result(request_id: 'too-big')[:payload]).to eq(small)
+  end
+
   it 'returns one retained receipt for lost-response retries and rejects changed arguments' do
     first = client.submit(request_id: 'same-id', operation: 'probe', arguments: { value: 1, note: 'same' })
     duplicate = client.submit(request_id: 'same-id', operation: 'probe', arguments: { note: 'same', value: 1 })

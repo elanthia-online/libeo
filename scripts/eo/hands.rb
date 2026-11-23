@@ -76,7 +76,7 @@ module EO
       when :hand
         return :crippled if free_hand(stow: stow, favor_left: favor_left) == :crippled
 
-        to = GameObj.right_hand.id.nil? ? :right : :left
+        to = free?(:right) ? :right : :left
       when :right then stow.call(GameObj.right_hand) if checkright
       when :left then stow.call(GameObj.left_hand) if checkleft
       end

@@ -10,10 +10,14 @@
           game: Gemstone
           tags: bounty, adventure's guild, advguild, bounties
       required: Lich >= 5.22.0
-       version: 1.16.0
+       version: 1.16.1
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v1.16.1 (2026-11-14)
+    - fix: a guard who tells of a rescue or a lost heirloom is taken as an answer, with no three
+      second wait; a guard who does not answer no longer ends the visit and skips the other
+      guards. Needs libeo 0.52.1
   v1.16.0 (2026-11-13)
     - ebounty sends, waits, walks and speaks through libeo's own helpers and no longer lends
       its own. The guild dialogue is libeo's whole: getting, turning in, removing and
@@ -229,8 +233,8 @@
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.48.0')
-EO.require('0.48.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
+EO.require('0.52.1')
 Script.require_lich_version!
 
 require 'yaml'
