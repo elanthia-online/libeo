@@ -80,19 +80,21 @@ left is its settings, its command line and its own flow.
 
 | Script | Version | What it asks of the library |
 |---|---|---|
-| `scripts/ewander.lic` | 2.2.0 | `EO::Wander`, `EO::Settings` |
-| `scripts/escortgo2.lic` | 1.2.0 | `EO::Guild::Escort`, `EO::Settings` |
-| `scripts/ewaggle.lic` | 2.4.0 | `EO::Casting`, `EO::Settings` |
-| `scripts/ecleanse.lic` | 2.6.0 | `EO::Cleanse`, `EO::Settings` |
-| `scripts/eherbs.lic` | 2.5.0 | `EO::Herbs`, `EO::Settings` |
-| `scripts/ebounty.lic` | 1.15.0 | `EO::Guild`, `EO::Settings` |
-| `scripts/ebounty.lic` | 1.14.0 | `EO::Guild` |
-| `scripts/eloot.lic` | 2.17.0 | `EO::Containers`, `EO::Hands`, `EO::Town`, `EO::Items`, `EO::Loot`, `EO::Skinning`, `EO::Selling`, `EO::Locksmith`, `EO::Locker`, `EO::Hoard` |
-| `scripts/echild.lic` | 1.22.0 | `EO::Guild::Rescue`, `EO::Guild::Disablers`, `EO::Settings` |
+| `scripts/eloot.lic` | 2.18.0 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
+| `scripts/ebounty.lic` | 1.16.0 | `EO::Containers`, `EO::Guild`, `EO::Settings`, `EO::Town`, `EO::UnknownRoom` |
+| `scripts/echild.lic` | 1.23.0 | `EO::Guild::Disablers`, `EO::Guild::Rescue`, `EO::Settings` |
+| `scripts/escortgo2.lic` | 1.3.0 | `EO::Guild`, `EO::Guild::Escort`, `EO::Settings` |
+| `scripts/ewaggle.lic` | 2.5.0 | `EO::Casting`, `EO::Loot`, `EO::Settings` |
+| `scripts/ecleanse.lic` | 2.7.0 | `EO::Cleanse`, `EO::Settings` |
+| `scripts/eherbs.lic` | 2.6.0 | `EO::Guild`, `EO::Herbs`, `EO::Settings`, `EO::Town` |
+| `scripts/ewander.lic` | 2.3.0 | `EO::Settings`, `EO::Wander` |
 
 `spec/scripts_spec.rb` checks that every `EO` method a script names is
 one the library has. The installer does not copy the scripts; they are
 installed as scripts are.
+
+Where a script behaves differently from the one in `elanthia-online/scripts`
+is listed, script by script, in [docs/behaviour-changes.md](docs/behaviour-changes.md).
 
 ## Installing
 
