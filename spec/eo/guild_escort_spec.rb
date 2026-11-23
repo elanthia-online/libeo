@@ -117,6 +117,44 @@ RSpec.describe EO::Guild::Escort do
     lich_names.each { |m| described_class.singleton_class.remove_method(m) }
   end
 
+  describe '.close_portals' do
+    let(:rooms) { Hash.new { |h, id| h[id] = Struct.new(:wayto, :timeto).new({ '9318' => 'go portal' }, { '9318' => 0.2 }) } }
+
+    before do
+      all = rooms
+      listed = map_list
+      stub_const('XMLData', Class.new { define_singleton_method(:game) { 'GSPlat' } })
+      stub_const('Map', Class.new do
+        define_singleton_method(:list) { listed }
+        define_singleton_method(:[]) { |id| all[id] }
+      end)
+    end
+
+    context 'with a map whose portals go by $go2_use_portals' do
+      let(:map_list) do
+        timed = Class.new do
+          def class = Proc
+          def _dump = '$go2_use_portals ? 0.2 : nil'
+        end.new
+        [Struct.new(:timeto).new({ '9318' => timed })]
+      end
+
+      it 'leaves the map as it is' do
+        described_class.close_portals
+        expect(rooms).to be_empty
+      end
+    end
+
+    context 'with a map that has the portals as plain ways' do
+      let(:map_list) { [Struct.new(:timeto).new({ '9318' => 0.2 })] }
+
+      it 'takes them out' do
+        described_class.close_portals
+        expect(rooms[7561].wayto).to be_empty
+      end
+    end
+  end
+
   it 'names the escorting script in the ambush watch' do
     watch = described_class.ambush_watch('escortgo2')
     expect(watch).to include('running?("escortgo2")', '$ego2_my_ambush = true', "\#{$ego2_escort_id}")
@@ -258,6 +296,19 @@ RSpec.describe EO::Guild::Escort do
         w.take_route(:steps, 'south', 'west')
         expect(log).to eq([[:move, 'south'], [:move, 'west']])
         expect(seen).to eq(3)
+      end
+
+      it 'does not go down into the mist when LOOK TRAIL will not say which way it leads' do
+        w = walk
+        w.define_singleton_method(:escort_here?) { true }
+        w.take_route(:misty_trail)
+        expect(log.grep(Array)).to eq([[:move, 'climb boulder']])
+        expect(log.count('look trail')).to eq(3)
+
+        log.clear
+        state[:answers][/look trail/] = 'You peer into the mist and see that the trail heads off to the northeast.'
+        w.take_route(:misty_trail)
+        expect(log.grep(Array)).to eq([[:move, 'climb boulder'], [:move, 'down'], [:move, 'northeast']])
       end
 
       it 'takes its own route where it has one' do
