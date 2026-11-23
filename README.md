@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.40.0')             the version the script was built against
+EO.require('0.41.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -26,7 +26,7 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a shop in a bounty's town within the region, Four Winds Isle and the way off it, the trash receptacle, the locksmith pool's worker |
 | `eo/items.rb` | `EO::Items`: throwing an item away unless it is marked, phasing a box and bringing it back, lifting a curse, waiting for the disk |
 | `eo/boxes.rb` | `EO::Boxes`: opening a box, looking in, taking its coins, which emptied box is kept |
-| `eo/stow.rb` | `EO::Stow`: the bags an item is tried in by the STOW list, and the bags to open before looting |
+| `eo/stow.rb` | `EO::Stow`: the bags an item may go in by the STOW list, in order; `EO::Stow::Weights`: by the inventory feed's weights, whether a bag has the room, and moving a box to make it |
 | `eo/loot.rb` | `EO::Loot`: what in a room is no loot, whether an item is wanted, searching a dead creature |
 | `eo/skinning.rb` | `EO::Skinning`: which dead to skin and with what kind of tool, getting ready, the skinning, standing up after |
 | `eo/selling.rb` | `EO::Selling`: selling one item to a shop, asking a shop what an item is worth |

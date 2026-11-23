@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.40.0')
-    EO.require('0.40.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.41.0')
+    EO.require('0.41.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,15 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.40.0
+       version: 0.41.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.41.0 (2026-11-13)
+    - EO::Stow::Weights, new: a looting pass's knowledge by weight, from one snapshot of
+      the inventory feed. fits?(bag, item) before a put; stored(bag, item) to count
+      one; make_room(item, bags) moves a box out of a bag into the worn container with
+      the most room; disk_room?(disk, box) by the disk's count and its 500 lbs
   v0.40.0 (2026-11-13)
     - EO::Carry, new: capacity before encumbrance (capacity), what is carried (carried),
       the room left (room) and the encumbrance it comes to (percent), from the formula
