@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.61.0')             the version the script was built against
+EO.require('0.62.0')             the version the script was built against
 ```
 
 ## What is in it
@@ -87,7 +87,7 @@ left is its settings, its command line and its own flow.
 
 | Script | Version | What it asks of the library |
 |---|---|---|
-| `scripts/eloot.lic` | 2.18.8 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
+| `scripts/eloot.lic` | 2.18.9 | `EO::Appraisal`, `EO::Boxes`, `EO::Carry`, `EO::Containers`, `EO::Hands`, `EO::Hoard`, `EO::Items`, `EO::Locker`, `EO::Locksmith`, `EO::Loot`, `EO::Selling`, `EO::Settings`, `EO::Skinning`, `EO::Stow`, `EO::Town` |
 | `scripts/ebounty.lic` | 1.16.2 | `EO::Containers`, `EO::Guild`, `EO::Settings`, `EO::Town`, `EO::UnknownRoom` |
 | `scripts/echild.lic` | 1.23.2 | `EO::Guild::Disablers`, `EO::Guild::Rescue`, `EO::Settings` |
 | `scripts/escortgo2.lic` | 1.3.0 | `EO::Guild`, `EO::Guild::Escort`, `EO::Settings` |

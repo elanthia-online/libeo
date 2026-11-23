@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.61.0')
-    EO.require('0.61.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.62.0')
+    EO.require('0.62.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,20 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.61.0
+       version: 0.62.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.62.0 (2026-11-23)
+    - feature: room for an item is made before it is picked up: when no bag on its route has the room,
+      EO::Stow#make_room moves a box aside while the item is still on the floor. The heaviest box of the bag
+      goes into the disk when there is one; a disk that has refused a box gives up its lightest first
+    - feature: the disks carry the heaviest boxes: a box on the floor heavier than the lightest box on a disk (a
+      group member's too) takes its place, that one going to the box bag or an overflow bag (EO::Stow#disk_slot,
+      #placed); a box that is not heavier is tried as one more on the disk, and goes to a bag when the game
+      refuses it. EO::Boxes.disks names the disks a box may go on
+    - change: EO::Stow#disk_room? is gone. A locked box hides its item count and a disk never nears its 500 lbs,
+      so a disk is full when the game refuses a box, as in eloot before
   v0.61.0 (2026-11-23)
     - feature: EO::Loot::Hooks.lists and .setup, what ;eloot sets up before it loots: the treasure flags off,
       Lich's READY and STOW lists read, the overflow and appraisal bags, the skinning sheaths and weapons. eloot

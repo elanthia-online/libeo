@@ -86,16 +86,24 @@ module EO
     # @param group [Boolean] the group's disks too
     # @return [String, nil] the disk owner it went to
     def to_disk(box, full:, put:, group: false)
-      disks = Group.disks
-      disks = disks.select { |d| d.name == Char.name } unless group
-      disks.sort_by { |d| d.name == Char.name ? 0 : 1 }.each do |disk|
+      disks(group: group).each do |disk|
         next if full[disk.name]
-        next unless ::Disk.find_by_name(disk.name)
         return disk.name if put.call(GameObj[disk.id], box)
 
         full[disk.name] = true
       end
       nil
+    end
+
+    # The disks a box may go on, here in the room: the character's own
+    # first, then the group's when allowed. A stranger's is never one.
+    #
+    # @param group [Boolean]
+    # @return [Array<Disk>]
+    def disks(group: false)
+      found = Group.disks
+      found = found.select { |d| d.name == Char.name } unless group
+      found.select { |d| ::Disk.find_by_name(d.name) }.sort_by { |d| d.name == Char.name ? 0 : 1 }
     end
   end
 end

@@ -14,6 +14,9 @@ module EO
     #   and the item that did not fit
     attr_accessor :full
 
+    # A box put on a disk that the snapshot did not weigh.
+    Box = Struct.new(:id, :total_weight, :type)
+
     # @param bags [Hash{Symbol => GameObj}, nil] the bags by type; nil reads
     #   Lich's StowList.stow_list afresh each time, as STOW changes
     # @param learned [Proc, nil] given (:auto_close, bag), (:crumbly, item) or
@@ -24,7 +27,8 @@ module EO
       @full = {}
       @snapshot = nil
       @added = Hash.new(0)
-      @moved = []
+      @count = Hash.new(0)
+      @at = {}
       @opened = {}
     end
 
@@ -42,7 +46,9 @@ module EO
     def observe(snapshot)
       @snapshot = snapshot
       @added = Hash.new(0)
-      @moved = []
+      @count = Hash.new(0)
+      # where each box this pass moved or put on a disk is now, and the box
+      @at = {}
     end
 
     # @param item [GameObj]
@@ -160,7 +166,10 @@ module EO
         opened(closed_bag)
       end
       result = Hands.store(bag, item, loose: loose, on_closed: closed)
-      @added[bag.id] += weight_of(item).to_i if %i[stored gone].include?(result)
+      if %i[stored gone].include?(result)
+        @added[bag.id] += weight_of(item).to_i
+        @count[bag.id] += 1
+      end
       case result
       when :gone then :stored
       when :full
@@ -193,12 +202,15 @@ module EO
     end
 
     # When no bag on an item's route has the room: move a box out of one of
-    # them into another carried container with room for it, so the item
-    # fits. Moving a box costs no roundtime.
+    # them so the item fits. The heaviest box goes into the disk, when there
+    # is one; else a box goes into another box or overflow bag with room for
+    # it. Moving a box costs no roundtime.
     #
-    # @param item [GameObj]
+    # @param item [GameObj] in a hand or still on the floor
+    # @param disk [GameObj, nil] the character's own disk
+    # @param full [Boolean] the disk has refused a box: its lightest comes out first
     # @return [GameObj, nil] the bag now with room, nil when nothing could be moved
-    def make_room(item)
+    def make_room(item, disk: nil, full: false)
       weight = weight_of(item)
       return nil unless weight && @snapshot
 
@@ -211,47 +223,129 @@ module EO
         next unless short.positive?
 
         # the snapshot still lists a box this pass already moved out
-        boxes = (@snapshot[bag.id]&.children || []).reject { |c| @moved.include?(c.id) }
-        box = boxes.select { |c| c.type.to_s =~ /\bbox\b/ && c.total_weight >= short }.min_by(&:total_weight)
+        boxes = boxes_in(bag)
+        return bag if disk && heaviest_to_disk(bag, boxes, short, disk, full, shuffled)
+
+        box = boxes.select { |c| c.total_weight >= short }.min_by(&:total_weight)
         next unless box
 
-        # and a container kept for something else is never filled
-        allowed = shuffled.map { |c| c.id.to_s }
-        target = containers.select { |c| allowed.include?(c.id.to_s) && c.id != bag.id }
-                           .select { |c| room_in(c).to_f >= box.total_weight }.max_by { |c| room_in(c) }
-        # the live objects: a snapshot's contents never change, so a put into one is never seen
-        into = target && GameObj[target.id.to_s]
-        moving = GameObj[box.id.to_s]
-        next unless into && moving
-        next unless Hands.store(into, moving, loose: false) == :stored
-
-        @added[target.id] += box.total_weight
-        @added[bag.id] -= box.total_weight
-        @moved << box.id
-        return bag
+        target = homes(shuffled, box).reject { |c| c.id == bag.id }.max_by { |c| room_in(c) }
+        return bag if target && move(box, bag, target)
       end
       nil
     end
 
-    # Whether the disk has room for a box: under its item limit (a box
-    # counts at least one) and its 500 lbs. True when the snapshot does not
-    # know the disk, so it is tried as before.
+    # @param disk [GameObj]
+    # @return [Integer] the boxes on a disk, with what this pass moved or
+    #   put there; 0 for one the snapshot does not know
+    def boxes_on(disk) = @snapshot && @snapshot[disk.id] ? boxes_in(disk).size : 0
+
+    # @param disk [GameObj]
+    # @return [Array<Numeric>, nil] the weight of each box on a disk, with
+    #   what this pass moved or put there; nil for one the snapshot does not know
+    def box_weights(disk) = @snapshot && @snapshot[disk.id] ? boxes_in(disk).map(&:total_weight) : nil
+
+    # Count a box put on a disk, so the next one sees it there.
     #
     # @param disk [GameObj]
     # @param box [GameObj]
-    # @param limit [Integer] the disk's item limit (Carry.disk_limit)
-    # @return [Boolean]
-    def disk_room?(disk, box, limit: Carry.disk_limit)
-      known = @snapshot && @snapshot[disk.id]
-      return true unless known
+    # @return [void]
+    def placed(disk, box)
+      @added[disk.id] += weight_of(box).to_i
+      @count[disk.id] += 1
+      @at[box.id.to_s] = [disk.id.to_s, @snapshot&.[](box.id) || Box.new(box.id.to_s, 0, 'box')]
+    end
 
-      held = known.total_weight + @added[disk.id]
-      Carry.disk_items(known) < limit && held + weight_of(box).to_i <= Carry::DISK_POUNDS
+    # Make a disk's slot for a box when every disk is full: the
+    # disks keep the heaviest boxes. Of the disks with a box lighter than this
+    # one, the one with the lightest gives it up, to the box or overflow bag
+    # with the most room; a disk is any the box may go on, a group member's
+    # too.
+    #
+    # @param box [GameObj] on the floor or in a hand
+    # @param disks [Array<GameObj>] the disks it may go on
+    # @return [GameObj, nil] the disk with the slot now, nil when no swap is worth it
+    def disk_slot(box, disks)
+      weight = weight_of(box)
+      return nil unless weight && @snapshot
+
+      lighter = disks.filter_map do |disk|
+        known = @snapshot[disk.id]
+        next unless known
+
+        light = boxes_in(disk).min_by(&:total_weight)
+        next unless light && light.total_weight < weight
+
+        [disk, light]
+      end
+      lighter.sort_by { |_, light| light.total_weight }.each do |disk, light|
+        home = homes([bags[:box], *overflow].compact, light).max_by { |c| room_in(c) }
+        return disk if home && move(light, disk, home)
+      end
+      nil
     end
 
     # The worn containers the snapshot knows the room of.
     #
     # @api private
     def containers = @snapshot ? @snapshot.worn.select { |c| c.container? && c.space_left } : []
+
+    private
+
+    # The boxes in a container: what the snapshot lists, less the ones this
+    # pass moved out, and those it moved or put in.
+    def boxes_in(container)
+      listed = (@snapshot[container.id]&.children || []).select { |c| c.type.to_s =~ /\bbox\b/ }.reject { |c| @at.key?(c.id.to_s) }
+      listed + @at.values.select { |at, _| at == container.id.to_s }.map(&:last)
+    end
+
+    # The box and overflow bags with room for a box; a container kept for
+    # something else is never filled.
+    def homes(shuffled, box)
+      allowed = shuffled.map { |c| c.id.to_s }
+      containers.select { |c| allowed.include?(c.id.to_s) && room_in(c).to_f >= box.total_weight }
+    end
+
+    # The heaviest box of a bag into the disk. How many boxes a disk takes
+    # is not known ahead (a locked box hides its item count), so a disk is
+    # full once it has refused one: its lightest box then comes out first,
+    # into the box or overflow bag with the most room.
+    #
+    # @return [Boolean] whether the bag now has +short+ pounds more
+    def heaviest_to_disk(bag, boxes, short, disk, full, shuffled)
+      heavy = boxes.max_by(&:total_weight)
+      return false unless heavy
+
+      if full
+        light = boxes_in(disk).min_by(&:total_weight)
+        return false unless light && light.total_weight < heavy.total_weight
+
+        home = homes(shuffled, light).max_by { |c| room_in(c) }
+        return false unless home
+        return false if heavy.total_weight - (home.id.to_s == bag.id.to_s ? light.total_weight : 0) < short
+        return false unless move(light, disk, home)
+      elsif heavy.total_weight < short
+        return false
+      end
+      move(heavy, bag, disk)
+    end
+
+    # Move a box between two containers and count it.
+    #
+    # @return [Boolean] whether it went in
+    def move(box, from, to)
+      # the live objects: a snapshot's contents never change, so a put into one is never seen
+      into = GameObj[to.id.to_s]
+      moving = GameObj[box.id.to_s]
+      return false unless into && moving
+      return false unless Hands.store(into, moving, loose: false) == :stored
+
+      @added[to.id] += box.total_weight
+      @added[from.id] -= box.total_weight
+      @count[to.id] += 1
+      @count[from.id] -= 1
+      @at[box.id.to_s] = [to.id.to_s, box]
+      true
+    end
   end
 end

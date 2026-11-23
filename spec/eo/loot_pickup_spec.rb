@@ -21,6 +21,7 @@ RSpec.describe EO::Loot::Pickup do
   let(:ruby) { thing.new(id: '9', name: 'blue ruby', type: 'gem') }
   let(:chest) { thing.new(id: '50', name: 'silver chest', type: 'box') }
   let(:said) { [] }
+  let(:floor) { [] }
   let(:loud) { said.reject { |type, _| type == 'debug' } }
   let(:settings) { { loot_phase: false, use_disk: false, use_disk_group: false } }
   let(:bags) { { gem: gems, default: sack, overflow_container: cloak } }
@@ -63,7 +64,11 @@ RSpec.describe EO::Loot::Pickup do
   before do
     stub_const('StowList', Module.new { define_singleton_method(:stow_list) { {} } })
     stub_const('Char', Module.new { define_singleton_method(:name) { 'Nisugi' } })
-    stub_const('GameObj', Module.new { define_singleton_method(:inv) { [] } })
+    on_floor = floor
+    stub_const('GameObj', Module.new do
+      define_singleton_method(:inv) { [] }
+      define_singleton_method(:loot) { on_floor }
+    end)
     allow(EO::Hands).to receive(:holding?).and_return(true)
     allow(EO::Items).to receive(:phase)
     pickup.define_singleton_method(:stunned?) { false }
@@ -134,7 +139,35 @@ RSpec.describe EO::Loot::Pickup do
       expect(pickup.drag(ruby)).to eq(:stored)
     end
 
-    it 'does not make room for an item that is no longer in hand' do
+    it 'makes room for an item still on the floor, before it is picked up' do
+      refused = [full.push('gem pouch', 'leather sack', 'first cloak')]
+      floor << ruby
+      allow(EO::Hands).to receive(:holding?).and_return(false)
+      allow(stow).to receive(:make_room) { refused.first.clear; sack }
+      expect(pickup.drag(ruby)).to eq(:stored)
+      expect(stow).to have_received(:make_room).with(ruby, disk: nil, full: false)
+    end
+
+    it "hands over the character's own disk when disks are used" do
+      full.push('gem pouch', 'leather sack', 'first cloak')
+      settings[:use_disk] = true
+      context.disk = thing.new(id: '60', name: 'Nisugi')
+      allow(stow).to receive(:make_room).and_return(nil)
+      pickup.drag(ruby)
+      expect(stow).to have_received(:make_room).with(ruby, disk: context.disk, full: false)
+    end
+
+    it 'says so when that disk has refused a box' do
+      full.push('gem pouch', 'leather sack', 'first cloak')
+      settings[:use_disk] = true
+      context.disk = thing.new(id: '60', name: 'Nisugi')
+      context.disk_full = { 'Nisugi' => true }
+      allow(stow).to receive(:make_room).and_return(nil)
+      pickup.drag(ruby)
+      expect(stow).to have_received(:make_room).with(ruby, disk: context.disk, full: true)
+    end
+
+    it 'does not make room for an item that is neither in hand nor on the floor' do
       full.push('gem pouch', 'leather sack', 'first cloak')
       allow(EO::Hands).to receive(:holding?).and_return(false)
       allow(stow).to receive(:make_room)
@@ -147,8 +180,8 @@ RSpec.describe EO::Loot::Pickup do
       disk = thing.new(id: '60', name: 'Nisugi')
       context.disk = disk
       context.disk_full = { 'Nisugi' => false }
-      allow(stow).to receive(:disk_room?).and_return(true)
-      allow(EO::Carry).to receive(:disk_limit).and_return(10)
+      allow(stow).to receive(:disk_slot).and_return(nil)
+      allow(EO::Boxes).to receive(:disks).and_return([])
       allow(EO::Boxes).to receive(:to_disk) { |box, put:, **| put.call(disk, box) }
       expect(pickup.drag(chest)).to eq(:stored)
       expect(stored).to eq([['Nisugi', 'silver chest']])
@@ -199,13 +232,55 @@ RSpec.describe EO::Loot::Pickup do
       settings[:use_disk] = true
       context.disk = disk
       context.disk_full = { 'Nisugi' => false }
-      allow(stow).to receive(:disk_room?).and_return(true)
-      allow(EO::Carry).to receive(:disk_limit).and_return(10)
+      allow(stow).to receive(:disk_slot).and_return(nil)
+      allow(EO::Boxes).to receive(:disks).and_return([])
       allow(EO::Boxes).to receive(:to_disk) do |box, full:, put:, group: false|
         group_flag = group
         given << [box.name, full, group_flag]
         put.call(disk, box)
       end
+    end
+
+    context 'with a box on the floor' do
+      let(:order) { [] }
+
+      before do
+        allow(EO::Hands).to receive(:holding?).and_return(false)
+        allow(EO::Boxes).to receive(:disks).and_return([disk])
+        live = { '60' => disk }
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| live[id] } })
+        log = order
+        allow(EO::Boxes).to receive(:to_disk) { |box, put:, **| log << :another && put.call(disk, box) }
+      end
+
+      it 'swaps with a lighter box on a disk before it is tried as one more, full or not' do
+        allow(stow).to receive(:disk_slot).with(chest, [disk]) { order << :swap && disk }
+        expect(pickup.drag_box(chest)).to be(true)
+        expect(order).to eq([:swap])
+        expect(stored).to eq([['Nisugi', 'silver chest']])
+      end
+
+      it 'is tried as one more box on the disk when none there is lighter' do
+        allow(stow).to receive(:disk_slot) { order << :swap && nil }
+        expect(pickup.drag_box(chest)).to be(true)
+        expect(order).to eq(%i[swap another])
+      end
+
+      it 'goes to the bags when the disk refuses it after the swap, and is not tried again' do
+        allow(stow).to receive(:disk_slot).and_return(disk)
+        full << 'Nisugi'
+        held = [false, true]
+        allow(EO::Hands).to receive(:holding?) { held.shift }
+        expect(pickup.drag_box(chest)).to be(false)
+        expect(order).to be_empty
+      end
+    end
+
+    it 'does not swap for a box already in hand, which leaves no hand for it' do
+      allow(EO::Hands).to receive(:holding?).and_return(true)
+      allow(stow).to receive(:disk_slot)
+      expect(pickup.drag_box(chest)).to be(true)
+      expect(stow).not_to have_received(:disk_slot)
     end
 
     it 'is false for what is not a box' do
@@ -218,17 +293,33 @@ RSpec.describe EO::Loot::Pickup do
       expect(pickup.drag_box(chest)).to be(false)
     end
 
-    it 'is false when every disk is known to be full' do
+    it 'is false when every disk is known to be full and no swap is worth it' do
       context.disk_full = { 'Nisugi' => true }
+      allow(EO::Hands).to receive(:holding?).and_return(false)
       expect(pickup.drag_box(chest)).to be(false)
+      expect(EO::Boxes).not_to have_received(:to_disk)
     end
 
-    it 'is false when the character has no disk, or its disk is full, and no group disks are used' do
+    it 'swaps a heavier box onto a disk known to be full, while the box is on the floor' do
+      context.disk_full = { 'Nisugi' => true }
+      allow(EO::Hands).to receive(:holding?).and_return(false)
+      allow(EO::Boxes).to receive(:disks).and_return([disk])
+      live = { '60' => disk }
+      stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| live[id] } })
+      allow(stow).to receive(:disk_slot).with(chest, [disk]).and_return(disk)
+      expect(pickup.drag_box(chest)).to be(true)
+      expect(stored).to eq([['Nisugi', 'silver chest']])
+      expect(EO::Boxes).not_to have_received(:to_disk)
+    end
+
+    it 'does not try the disks when the character has none, or its own is full, and no group disks are used' do
+      allow(EO::Hands).to receive(:holding?).and_return(false)
       context.disk = nil
       expect(pickup.drag_box(chest)).to be(false)
       context.disk = disk
       context.disk_full = { 'Nisugi' => true, 'Ann' => false }
       expect(pickup.drag_box(chest)).to be(false)
+      expect(EO::Boxes).not_to have_received(:to_disk)
     end
 
     it 'waits for the disk, puts the box in, and says true' do
@@ -242,22 +333,40 @@ RSpec.describe EO::Loot::Pickup do
       settings[:use_disk_group] = true
       pickup.drag_box(chest)
       expect(waited).to be_empty
-      expect(given.first.last).to be(true)
+      expect(given.first[2]).to be(true)
     end
 
-    it 'does not try a disk that is clearly full' do
-      allow(stow).to receive(:disk_room?).and_return(false)
-      expect(pickup.drag_box(chest)).to be(false)
-      expect(stored).to be_empty
-      expect(loud).to include(['info', " The #{chest} won't fit in any disk(s). Trying a different container."])
-    end
-
-    it 'gives the character\'s own disk its computed limit and another\'s eight' do
-      other = thing.new(id: '61', name: 'Ann')
-      allow(EO::Boxes).to receive(:to_disk) { |box, put:, **| put.call(other, box); put.call(disk, box) }
+    it 'counts a box it put on a disk' do
+      allow(stow).to receive(:placed)
       pickup.drag_box(chest)
-      expect(stow).to have_received(:disk_room?).with(other, chest, limit: 8)
-      expect(stow).to have_received(:disk_room?).with(disk, chest, limit: 10)
+      expect(stow).to have_received(:placed).with(disk, chest)
+    end
+
+    context 'when every disk is full' do
+      let(:live) { { '60' => disk } }
+
+      before do
+        context.disk_full = { 'Nisugi' => true }
+        # the box is still on the floor
+        allow(EO::Hands).to receive(:holding?).and_return(false)
+        allow(EO::Boxes).to receive(:disks).and_return([disk])
+        objs = live
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| objs[id] } })
+      end
+
+      it 'puts a box on the disk a swap made a slot on, and counts it' do
+        allow(stow).to receive(:disk_slot).with(chest, [disk]).and_return(disk)
+        allow(stow).to receive(:placed)
+        expect(pickup.drag_box(chest)).to be(true)
+        expect(stored).to eq([['Nisugi', 'silver chest']])
+        expect(stow).to have_received(:placed).with(disk, chest)
+      end
+
+      it 'goes on to the bags when no swap is worth it' do
+        expect(pickup.drag_box(chest)).to be(false)
+        expect(stored).to be_empty
+        expect(loud).to be_empty
+      end
     end
 
     it 'says a disk would not take it only when there are several to try' do

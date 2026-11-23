@@ -30,7 +30,8 @@ module EO
 
       # Put an item where the STOW list says: a box in a disk first, then the
       # bags along its route. When none takes it, a box is moved aside to make
-      # room, once, and the route is tried again.
+      # room, once, and the route is tried again; a bag known to lack the room
+      # is not tried, so that happens before the item is picked up.
       #
       # @param item [GameObj]
       # @param phase [Boolean] phase a box once it is put away, when the
@@ -47,13 +48,18 @@ module EO
         return placed if placed
 
         # Nowhere had the room: move a box aside to make some, once, and try again
-        return drag(item, phase: phase, room_made: true) if !room_made && Hands.holding?(item) && stow.make_room(item)
+        disk = settings[:use_disk] ? @context.disk : nil
+        refused = @context.disk_full[Char.name] ? true : false
+        return drag(item, phase: phase, room_made: true) if !room_made && at_hand?(item) && stow.make_room(item, disk: disk, full: refused)
 
         :no_room
       end
 
-      # Put a box in a disk, the character's own or a group member's, when
-      # disks are used and one is not known to be full.
+      # Put a box in a disk, so the disks carry the heaviest. A box heavier
+      # than one on a disk takes its place, the lighter going to the box or
+      # overflow bag. Any other is tried as one more box on a disk, the
+      # character's own first and then a group member's, until the game
+      # refuses it; a disk that refused is full.
       #
       # @param item [GameObj]
       # @return [Boolean] whether the box went into a disk
@@ -62,19 +68,24 @@ module EO
 
         return false unless item.type == 'box'
         return false unless settings[:use_disk] || settings[:use_disk_group]
-        return false unless @context.disk_full.value?(false)
-        unless settings[:use_disk_group]
-          return false if @context.disk.nil? || @context.disk_full[Char.name]
-        end
 
         # Only wait if the characters disk exists
         @wait_for_disk.call unless @context.disk.nil?
 
+        # the swap moves a box off the disk, which needs a hand: only for a
+        # box still on the floor
+        unless Hands.holding?(item)
+          return true if swap_into_disk(item)
+          # the disk refused it after the swap: on to the bags
+          return false if Hands.holding?(item)
+        end
+        return false unless disk_open?
+
         put = lambda do |disk, box|
-          # clearly full by its item count or 500 lbs: not tried
-          limit = disk.name.to_s.include?(Char.name) ? Carry.disk_limit : 8
-          next false unless stow.disk_room?(disk, box, limit: limit)
-          next true if @hands.store_item(disk, box)
+          if @hands.store_item(disk, box)
+            stow.placed(disk, box)
+            next true
+          end
 
           # inform user it didn't fit
           say('info', " The #{box} won't fit in the #{disk.name} disk. Trying a different disk.") if @context.disk_full.size > 1
@@ -84,6 +95,34 @@ module EO
 
         say('info', " The #{item} won't fit in any disk(s). Trying a different container.")
         false
+      end
+
+      # Whether a disk may be tried: one is not known to be full, and it is
+      # the character's own unless group disks are used.
+      #
+      # @return [Boolean]
+      def disk_open?
+        return false unless @context.disk_full.value?(false)
+
+        settings[:use_disk_group] || !(@context.disk.nil? || @context.disk_full[Char.name])
+      end
+
+      # A box heavier than one on a disk takes its place, the lighter going
+      # to the box or overflow bag.
+      #
+      # @param item [GameObj] a box
+      # @return [Boolean] whether it went onto a disk
+      def swap_into_disk(item)
+        disks = Boxes.disks(group: settings[:use_disk_group]).filter_map { |d| GameObj[d.id] }
+        on = disks.map { |d| "#{d.name}: #{stow.box_weights(d)&.join(', ') || 'not weighed'}" }.join('; ')
+        # the box is still on the floor, so the move off the disk has a hand
+        disk = stow.disk_slot(item, disks)
+        verdict = disk ? "swapping onto #{disk.name}" : 'no swap'
+        say('debug', "disk swap: #{item.name} weighs #{stow.weight_of(item) || 'unknown'}; boxes on #{on}; #{verdict}")
+        return false unless disk && @hands.store_item(disk, item)
+
+        stow.placed(disk, item)
+        true
       end
 
       # Take an item into its bag with LOOT, which puts it where the game's
@@ -137,6 +176,9 @@ module EO
       private
 
       def settings = @context.settings
+
+      # In a hand or still on the floor: not gone, and not put away.
+      def at_hand?(item) = Hands.holding?(item) || GameObj.loot.to_a.any? { |o| o.id == item.id }
 
       def stow = @context.stow
 
