@@ -1,54 +1,24 @@
 # frozen_string_literal: true
 
 module EO
-  # Lockers: which rooms hold a character's locker, the last step into a
-  # booth, what the game says when it will not let you in, and opening the
-  # locker once inside.
-  #
-  # Commands go through the running script's helpers (EO.use). The helper
-  # this needs: command(text, pattern, silent:, quiet:) answering the lines.
+  # The locker: which rooms hold the character's, getting into one (a
+  # booth may be taken, the locker may be in another town, a debt may
+  # bar the door), opening it to a container, and leaving.
   module Locker
     module_function
 
-    # Rounds of trying every locker before giving up, and seconds between rounds.
     MAX_PASSES = 6
     PASS_WAIT = 10
-
-    # The game's refusal when the character's one locker is in another town.
     ELSEWHERE = /your locker isn't here/i
-    # LOCKER INFO's line naming the town a locker is in.
     INFO = /Your locker is currently located in (.+?)\./i
-    # The game's refusal while the character owes a debt.
     DEBT = /pay off (your|that) debt/i
-
-    # A way into, or out of, a locker booth.
+    OWED = /In the back of your mind you remember you owe a debt of ([\d,]+) silver/
     WAY = /^(?:opening|curtain|tapestry)$/
 
-    # A house's own lockers in a town, as the map tags them: the locker
-    # rooms themselves, or when none are mapped, the entrances to them.
-    #
-    # @param rooms [Array<Room>] the map
-    # @param che [String, nil] the character's house
-    # @param town_id [Integer] the town's room id
-    # @return [Array<Room>] none for a character with no house
-    def che_rooms(rooms, che, town_id)
-      return [] if che.to_s.empty? || che.to_s == 'none'
-
-      %w[locker entrance_locker].each do |tier|
-        # the tag first: the town lookup is slow, and few rooms are this house's
-        found = rooms.select { |room| room.tags.include?("meta:che:#{che}:#{tier}") }
-                     .select { |room| room.find_nearest_by_tag('town') == town_id }
-        return found unless found.empty?
-      end
-
-      []
-    end
-
-    # One name for a place the game and the map name differently: "the town
-    # of Kraken's Fall" and "Kraken's Fall"; Teras Isle, which the map calls
-    # Kharam-Dzu; the Isle of Four Winds, whose lockers the map puts in Mist
-    # Harbor; and the house lounge lockers reached from Ta'Illistim, in a
-    # hidden area the map calls the Lost Home.
+    # Names for the same place: "the town of Kraken's Fall" and "Kraken's
+    # Fall". The map calls Teras Isle "Kharam-Dzu", puts the Isle of Four
+    # Winds lockers in "Mist Harbor", and the house lounge lockers reached
+    # from Ta'Illistim in "the Lost Home".
     #
     # @param name [String]
     # @return [String]
@@ -57,26 +27,38 @@ module EO
       { 'teras isle' => 'kharam-dzu', 'four winds' => 'mist harbor', 'the lost home' => "ta'illistim" }.fetch(plain, plain)
     end
 
-    # The town a house's lockers are in, by the town's name as LOCKER INFO
-    # gives it.
+    # The character's own CHE lockers in a town: the locker rooms
+    # themselves, or if none are mapped, the entrances to them. Empty for
+    # a character with no CHE.
     #
     # @param rooms [Array<Room>] the map
-    # @param che [String, nil] the character's house
-    # @param town [String]
-    # @return [Integer, nil] the town's room id, nil when the house has no
-    #   mapped lockers there
+    # @param che [String] Char.che
+    # @param town_id [Integer] the town square
+    # @return [Array<Room>]
+    def che_rooms(rooms, che, town_id)
+      return [] if che.to_s.empty? || che.to_s == 'none'
+      %w[locker entrance_locker].each do |tier|
+        found = rooms.select { |room| room.tags.include?("meta:che:#{che}:#{tier}") }
+                     .select { |room| room.find_nearest_by_tag('town') == town_id }
+        return found unless found.empty?
+      end
+      []
+    end
+
+    # The town square of the house's lockers in the named town, as LOCKER
+    # INFO names it, or nil when the house has no mapped lockers there.
+    #
+    # @return [Integer, nil]
     def che_town_id(rooms, che, town)
       return nil if che.to_s.empty? || che.to_s == 'none' || town.to_s.strip.empty?
-
       wanted = town_name(town)
       found = rooms.find do |room|
         room.tags.any? { |tag| tag =~ /\Ameta:che:#{Regexp.escape(che.to_s)}:(?:locker|entrance_locker)\z/ } && town_name(room.location) == wanted
       end
-
-      found && found.find_nearest_by_tag('town')
+      found&.find_nearest_by_tag('town')
     end
 
-    # Where a house member's one locker is, asked of LOCKER INFO.
+    # Where a non-premium member's single locker is, from LOCKER INFO.
     #
     # @return [String, nil] the town as the game names it
     def info_town
@@ -84,126 +66,156 @@ module EO
       lines.join(' ')[INFO, 1]
     end
 
-    # The lines that arrived after +before+ was read. Both are the last
-    # lines of the session, so the new ones follow the longest run of
-    # +before+'s end that +after+ begins with.
-    #
-    # @param before [Array<String>]
-    # @param after [Array<String>]
-    # @return [Array<String>]
-    def lines_since(before, after)
-      overlap = [before.length, after.length].min.downto(0).find { |count| before.last(count) == after.first(count) }
-      after[overlap..]
-    end
-
-    # The rooms that can be reached, nearest first.
+    # Reachable rooms only, nearest first. Room#dijkstra is called without
+    # a destination: given a list it stops at the first one reached.
     #
     # @param rooms [Array<Room>]
     # @return [Array<Room>]
     def nearest_first(rooms)
       return rooms if rooms.empty?
-
-      # no destination list: given one, dijkstra stops at the first of them
-      # it reaches and the rest have no distance
       _previous, distances = Room.current.dijkstra
       distances ||= {}
       rooms.select { |room| distances[room.id] }.sort_by { |room| distances[room.id] }
     end
 
-    # The command for the opening, curtain or tapestry here, the way into a
-    # booth from outside and out of it from inside.
-    #
-    # @return [String, nil] nil when the room shows none
-    def way
-      way_obj = (GameObj.loot.to_a + GameObj.room_desc.to_a).find { |obj| obj.noun =~ WAY }
-      return nil if way_obj.nil?
-
-      way_obj.noun = 'opening' if way_obj.noun == 'tapestry'
-      "go #{way_obj.noun}"
+    # The lines that arrived after +before+ was taken; reget returns the
+    # last N lines, so the new ones follow the longest run of before's
+    # tail that after starts with.
+    def lines_since(before, after)
+      overlap = [before.length, after.length].min.downto(0).find { |n| before.last(n) == after.first(n) }
+      after[overlap..]
     end
 
-    # @return [Boolean] whether the room shows a locker or a counter
+    # @return [String, nil] the move into a locker from this room: the
+    #   opening, curtain or tapestry here, else nil
+    def way_in_here
+      obj = (GameObj.loot.to_a + GameObj.room_desc.to_a).find { |o| o.noun =~ WAY }
+      return nil if obj.nil?
+      "go #{obj.noun == 'tapestry' ? 'opening' : obj.noun}"
+    end
+
+    # @return [Boolean] whether this room is a locker booth
     def inside?
       (GameObj.room_desc.to_a + GameObj.loot.to_a).any? { |obj| obj.name =~ /locker|counter/ }
     end
 
     # @param place [Room]
-    # @return [Boolean] whether the map tags the room as a booth itself,
-    #   not the room outside one
+    # @return [Boolean] a booth room itself, from the map tags
     def booth?(place)
       place.tags.any? { |tag| tag =~ /\Ameta:che:[^:]+:locker\z/ }
     end
 
-    # The last step of the way to a booth: a booth that is taken refuses the
-    # step, which a walker treats as a broken route, so the caller walks to
-    # the room before and takes this step itself.
-    #
-    # @param place [Room] the booth
-    # @return [Array(Integer, Object), nil] the room before the booth and
-    #   the map's move into it; nil when there is no such plain last step
-    def approach(place)
-      # a single destination, so dijkstra stops on reaching the booth
+    # [the room before the booth on our route, the map's move into it], or
+    # nil when the route's last step is not one we can take ourselves.
+    def approach_step(place)
       previous, _distances = Room.current.dijkstra(place.id)
       before = previous && previous[place.id]
       return nil if before.nil? || before == place.id
-
       way = Room[before]&.wayto&.[](place.id.to_s)
       way && [before, way]
     end
 
-    # Take a move from the map: a command, or a scripted move.
+    # Take a mapped move (a command, or a proc for a scripted move).
     #
-    # @param way [String, #call]
-    # @param place [Room] where it leads
-    # @return [Boolean, nil] true once in the room; false or nil when the
-    #   game refused. For a command it is what move answers, which is nil
-    #   for a booth someone is using.
-    def step(way, place)
+    # @return [Boolean, nil] true once in the room; nil or false when refused
+    def take_step(way, place)
       return move(way) if way.is_a?(String)
-
       way.call
       20.times do
         break if Room.current.id == place.id
-
         sleep 0.05
       end
       Room.current.id == place.id
     end
 
-    # The debt the character owes, which WEALTH mentions.
-    #
-    # @return [Integer, nil] nil when WEALTH names none
-    def debt
-      lines = EO.command('wealth quiet', /^You have (no|[,\d]+|but one) silver with you/, silent: true, quiet: true).join(' ')
-      return nil unless lines.to_s =~ /In the back of your mind you remember you owe a debt of ([\d,]+) silver/
+    # What a try at a locker came to.
+    Entry = Struct.new(:outcome, :debt, keyword_init: true)
 
-      Regexp.last_match(1).gsub(',', '').to_i
+    # Get into a locker. For a booth room, go2 only as far as the room
+    # outside and take the last step here: go2 treats a refused step as a
+    # broken route, retries, disables the edge and gives up.
+    #
+    # @param place [Room]
+    # @param way_in [String, nil] the house's typed entry verb, else the room's opening
+    # @return [Entry] outcome :entered, :in_use, :elsewhere (the locker is in
+    #   another town), :debt (with the silver owed), :no_way (nothing to go
+    #   through), :unreachable, or :refused
+    def enter(place, way_in: nil)
+      step = booth?(place) ? approach_step(place) : nil
+      if step
+        outside, way = step
+        EO.go2(outside)
+        EO.settle
+        return Entry.new(outcome: :entered) if Room.current.id == place.id
+        return Entry.new(outcome: :unreachable) unless Room.current.id == outside
+        before = reget(30)
+        result = take_step(way, place)
+      else
+        EO.go2(place.id)
+        EO.settle
+        return Entry.new(outcome: :entered) if inside?
+        way = way_in.to_s.strip.empty? ? way_in_here : way_in
+        return Entry.new(outcome: :no_way) if way.nil?
+        before = reget(30)
+        result = move(way)
+      end
+      return Entry.new(outcome: :entered) if result == true
+
+      fresh = lines_since(before, reget(30))
+      if fresh.reverse.any? { |line| line =~ DEBT }
+        wealth = EO.command('wealth quiet', /^You have (no|[,\d]+|but one) silver with you/, silent: true, quiet: true).join(' ')
+        owed = wealth =~ OWED ? Regexp.last_match(1).delete(',').to_i : 0
+        return Entry.new(outcome: :debt, debt: owed) if owed.positive?
+      end
+      return Entry.new(outcome: :elsewhere) if fresh.any? { |line| line =~ ELSEWHERE }
+      # move returns nil (not false) for "You'll have to wait, X is presently using that locker booth"
+      Entry.new(outcome: result.nil? ? :in_use : :refused)
     end
 
-    # OPEN LOCKER.
+    # OPEN LOCKER and find the hoard container in it, or on the counter.
     #
-    # @return [Array<String>] the answer's lines
-    def open
-      EO.command('open locker', /exist=".*?" noun="(?:locker|chest)"|That is already open.|<prompt time=".*?">&gt;<\/prompt>/)
-    end
-
-    # The container in an open locker whose name matches, on the floor or
-    # on the room's counter.
-    #
-    # @param name [String] the container's name, as a pattern
+    # @param cache [String, Regexp] the container's name
+    # @param tries [Integer]
+    # @param already_open [Boolean] skip the OPEN LOCKER (a second look at a stash)
     # @return [GameObj, nil]
-    def stash(name)
-      found = GameObj.loot.find { |item| item.name =~ /#{name}/ }
-      return found unless found.nil?
-
-      counter = GameObj.room_desc.find { |item| item.name =~ /counter/ }
-      EO.command("look on ##{counter.id}", /<container id='.*?' title=/, silent: true, quiet: true)
-      counter.contents.find { |item| item.name =~ /#{name}/ }
+    def open(cache, tries: 3, already_open: false)
+      EO.settle
+      tries.times do |attempt|
+        EO.command('open locker', /exist=".*?" noun="(?:locker|chest)"|That is already open.|<prompt time=".*?">&gt;<\/prompt>/) if attempt.zero? && !already_open
+        EO.settle
+        stash = GameObj.loot.to_a.find { |item| item.name =~ /#{cache}/ }
+        if stash.nil? && (counter = GameObj.room_desc.to_a.find { |item| item.name =~ /counter/ })
+          EO.command("look on ##{counter.id}", /<container id='.*?' title=/, silent: true, quiet: true)
+          stash = counter.contents.to_a.find { |item| item.name =~ /#{cache}/ }
+        end
+        if stash
+          EO.command("look in ##{stash.id}", /<container id='.*?' title=/, silent: true, quiet: true)
+          return stash
+        end
+        sleep 1
+      end
+      nil
     end
 
-    # @return [GameObj, nil] the thing in the room that shows this is a locker
-    def here
-      GameObj.loot.find { |item| item.name =~ /dark stained antique oak trunk|counter|locker/ }
+    # CLOSE LOCKER and step out, by the house's typed exit verb or the
+    # room's opening. A mapped house locker with neither is left to the
+    # next go2.
+    #
+    # @param way_out [String, nil]
+    # @return [Boolean] whether a move out was made
+    def leave(way_out: nil)
+      locker = GameObj.loot.to_a.find { |item| item.name =~ /dark stained antique oak trunk|counter|locker/ }
+      return false if locker.nil? || Room.current.tags.include?('locksmith')
+      EO.result('close locker', /^You/)
+      way = way_out.to_s.strip.empty? ? nil : way_out
+      if way.nil?
+        obj = (GameObj.loot.to_a + GameObj.room_desc.to_a).find { |o| o.noun =~ WAY }
+        return false if obj.nil?
+        way = "go #{obj.noun == 'tapestry' ? 'opening' : obj.noun}"
+      end
+      move way
+      EO.settle
+      true
     end
   end
 end
