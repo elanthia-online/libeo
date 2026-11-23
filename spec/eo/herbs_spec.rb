@@ -97,6 +97,14 @@ RSpec.describe EO::Herbs::Injuries do
       expect(described_class.next_type).to eq('major head scar')
     end
 
+    it 'calls either arm or hand scarred to rank 3 severed, when only what stops casting is treated' do
+      %w[rightHand rightArm leftHand leftArm].each do |part|
+        scars.clear
+        scars[part] = 3
+        expect(described_class.next_type(spellcast_only: true)).to eq('severed limb')
+      end
+    end
+
     it 'calls a limb scarred to rank 3 severed, and an eye missing' do
       scars['limbs'] = 3
       expect(described_class.next_type).to eq('severed limb')
@@ -142,10 +150,16 @@ RSpec.describe EO::Herbs::Injuries do
     end
   end
 
+  it 'does not take a line that only mentions an arm or a hand for a limb wound' do
+    expect(described_class.escort('He raises a hand in greeting.')).to eq([])
+    expect(described_class.escort('She has a sword arm like no other.')).to eq([])
+  end
+
   it 'reads what an escort needs from how LOOK describes them' do
     expect(described_class.escort('He has moderate bleeding from his neck.')).to eq(['major head wound', 'minor head wound'])
     expect(described_class.escort('She has a swollen left eye and minor bruises about the head.')).to eq(['major organ wound', 'minor organ wound', 'minor head wound'])
     expect(described_class.escort('He appears to be in good shape.')).to eq([])
+    expect(described_class.escort('She has a fractured and bleeding right arm.')).to eq(['major limb wound', 'minor limb wound'])
   end
 
   it "reports the character's condition type by type" do

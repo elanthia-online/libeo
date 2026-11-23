@@ -74,15 +74,14 @@ module EO
             if $eherbs_measure[bundle_id] && !@doses.nil?
               $eherbs_measure[bundle_id] += @doses.to_i
               @doses = nil
-            # the bundling line names no item, so the count kept for it is under no id
-            elsif ($eherbs_measure[nil] && $eherbs_measure[nil] > 10) || ($eherbs_measure[@last_left_hand_id] && $eherbs_measure[@last_left_hand_id] > 10)
+            elsif ($eherbs_measure[bundle_id] && $eherbs_measure[bundle_id] > 10) || ($eherbs_measure[@last_left_hand_id] && $eherbs_measure[@last_left_hand_id] > 10)
               # the bundle has between 11 and 50 bites: say 50, so no more
               # is bought than can be bundled; using it finds the true count
-              $eherbs_measure[nil] = 50
+              $eherbs_measure[bundle_id] = 50
               $eherbs_measure.delete(@last_left_hand_id)
             else
               # between 2 and 50: forget the counts, so the bundle gets measured
-              $eherbs_measure.delete(nil)
+              $eherbs_measure.delete(bundle_id)
               $eherbs_measure.delete(@last_left_hand_id)
             end
           elsif line =~ /^You carefully remove one dose from your <a exist="([0-9]+)"/

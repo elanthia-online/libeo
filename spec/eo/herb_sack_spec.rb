@@ -55,6 +55,18 @@ RSpec.describe EO::Herbs::Doses::Monitor do
     expect($eherbs_measure['50']).to eq(20)
   end
 
+  it 'calls a bundle of more than ten fifty when it cannot add, and forgets a smaller one' do
+    bundle = 'Carefully, you combine all your acantha leaf into one bundle.'
+    $eherbs_measure['50'] = 12
+    read(bundle, bundle)
+    expect($eherbs_measure).to eq({ '50' => 50 })
+    $eherbs_measure['50'] = 4
+    read(bundle)
+    expect($eherbs_measure).to eq({})
+    read(bundle)
+    expect($eherbs_measure).to eq({})
+  end
+
   it 'counts a dose taken off a bundle, into the left hand' do
     $eherbs_measure['50'] = 10
     read('<left exist="61" noun="leaf">leaf</left>', 'You carefully remove one dose from your <a exist="50" noun="leaf">bundle</a>.')
