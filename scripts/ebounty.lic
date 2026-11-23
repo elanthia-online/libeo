@@ -10,10 +10,16 @@
           game: Gemstone
           tags: bounty, adventure's guild, advguild, bounties
       required: Lich >= 5.22.0
-       version: 1.16.2
+       version: 1.16.3
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v1.16.3 (2026-11-23)
+    - fix: foraging no longer loops forever on an herb that can't be found in the room's climate
+    - fix: golden mushroom forage bounties now count the golden hook mushrooms you have foraged
+    - fix: forage herb names are no longer case sensitive, and a forage location with no exact-case
+      match is retried ignoring case (e.g. "Bowels of Thanatoph" now finds the same rooms as
+      "bowels of Thanatoph"). Needs libeo 0.62.1
   v1.16.2 (2026-11-14)
     - fix: the setup window's hint for the escort script says escortgo2, which is the default,
       and not ego
@@ -236,8 +242,8 @@
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.52.1')
-EO.require('0.52.1')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.62.1')
+EO.require('0.62.1')
 Script.require_lich_version!
 
 require 'yaml'

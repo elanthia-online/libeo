@@ -19,8 +19,8 @@ module EO
 
       # The task names some herbs by a form that FORAGE does not.
       TASK_NAMES = {
-        /ayana (weed|lichen|berry|root)/    => 'ayana leaf',
-        /ayana'al (weed|lichen|berry|root)/ => "ayana'al leaf",
+        /ayana (weed|lichen|berry|root)/i    => 'ayana leaf',
+        /ayana'al (weed|lichen|berry|root)/i => "ayana'al leaf",
       }.freeze
 
       # The task shortens some mushroom names; the item in the sack is the full one.
@@ -31,10 +31,13 @@ module EO
         'soft mushroom'     => 'soft white mushroom',
         'red mushroom'      => 'red trafel mushroom',
         'black mushroom'    => 'black hook mushroom',
+        'golden mushroom'   => 'golden hook mushroom',
       }.freeze
 
       FOUND = /^You forage briefly and manage to find/
-      NOTHING_HERE = /^As you carefully forage around you (?:can find no (?:hint|trace)|see no evidence) of what you are looking for(?: right now, though you are fairly certain this is where it can be found)?\.(?:  You briefly wonder if it could even thrive in this place\.)?/
+      # The herb cannot be found in this room now: picked clean, or the wrong
+      # climate for it. Only the start of the line: what follows differs.
+      NOTHING_HERE = /^As you carefully forage around you (?:can )?(?:find no (?:hint|trace)|see no evidence) of what you are looking for/
       PICKED_OVER = /^As you forage around, you notice that someone has been foraging here recently and you are unable to find anything useful\./
       GIVE_RESULT = /This looks perfect|That looks like it has been partially used up/
 
@@ -45,21 +48,23 @@ module EO
         herb
       end
 
-      # @param herb [String] as the task names it
-      # @return [String] as the item reads in a container
+      # @param herb [String] as the task names it, in any case
+      # @return [String] as the item reads in a container, in lower case
       def stow_name(herb)
-        STOW_NAMES.fetch(herb, herb)
+        name = herb.downcase
+        STOW_NAMES.fetch(name, name)
       end
 
-      # Does a container item answer to the herb? Ayana items are named by
-      # their part, so the herb name may only start with the item's.
+      # Does a container item answer to the herb, whatever the case? Ayana
+      # items are named by their part, so the herb name may only start with
+      # the item's.
       #
       # @param item_name [String]
       # @param herb [String] the task's name for it
       # @return [Boolean]
       def match?(item_name, herb)
         full = stow_name(herb)
-        (item_name =~ /#{Regexp.escape(full)}/ || (full.start_with?(item_name) && full =~ /ayana/)) ? true : false
+        (item_name =~ /#{Regexp.escape(full)}/i || (full.start_with?(item_name.downcase) && full =~ /ayana/)) ? true : false
       end
 
       # The items in +container+ that answer to the herb.
@@ -71,8 +76,10 @@ module EO
         container.contents.to_a.select { |item| match?(item.name, herb) }
       end
 
-      # Rooms tagged with the herb, nearest first. With a location, only
-      # rooms there; with "nearest", the ten closest within 90 steps.
+      # Rooms tagged with the herb, nearest first, whatever the case of the
+      # herb or the tag. With a location, only rooms there: by its exact case,
+      # and without regard to case when that finds none. With "nearest", the
+      # ten closest within 90 steps.
       #
       # @param herb [String] as the task names it
       # @param forage_item [String] what the task's FORAGE link names (may differ)
@@ -81,18 +88,23 @@ module EO
       # @return [Array<Integer>] room ids
       def rooms(herb, forage_item, location = 'nearest', from: Room.current)
         herb = forage_name(herb)
-        herb_alt = herb.sub(/^some /, '')
-        pattern = /#{Regexp.escape(herb)}|#{Regexp.escape(herb_alt)}|#{Regexp.escape(forage_item.to_s)}/
+        herb_alt = herb.sub(/^some /i, '')
+        pattern = /#{Regexp.escape(herb)}|#{Regexp.escape(herb_alt)}|#{Regexp.escape(forage_item.to_s)}/i
 
+        low = herb.downcase
         ids = Room.list.select do |r|
-          r.tags.any? { |tag| tag.end_with?(herb) || (herb.start_with?(tag) && herb =~ /ayana/) || herb.end_with?(tag) }
+          r.tags.any? do |tag|
+            tag = tag.downcase
+            tag.end_with?(low) || (low.start_with?(tag) && low =~ /ayana/) || low.end_with?(tag)
+          end
         end.map(&:id)
         ids.select! { |id| Room[id].tags.any? { |tag| tag =~ pattern } }
 
         nearest = location.eql?('nearest')
         unless nearest
-          where = /#{Regexp.escape(location.strip)}/
-          ids.select! { |id| Room[id].location.to_s =~ where }
+          where = Regexp.escape(location.strip)
+          exact = ids.select { |id| Room[id].location.to_s =~ /#{where}/ }
+          ids = exact.empty? ? ids.select { |id| Room[id].location.to_s =~ /#{where}/i } : exact
         end
 
         _previous, distance = from.dijkstra

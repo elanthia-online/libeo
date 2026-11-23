@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.62.0')
-    EO.require('0.62.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.62.1')
+    EO.require('0.62.1')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,17 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.62.0
+       version: 0.62.1
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.62.1 (2026-11-23)
+    - bugfix: EO::Guild::Forage moves on from a room where the herb cannot be found whatever the rest of the
+      line says; "you find no trace ... not even sure it could be found in this type of climate" was not
+      matched, and the same room was foraged without end
+    - bugfix: EO::Guild::Forage counts golden hook mushrooms for a golden mushroom task
+    - bugfix: EO::Guild::Forage matches herb names, map tags and container items without regard to case, and
+      a location in another case when its exact case finds no room
   v0.62.0 (2026-11-23)
     - feature: room for an item is made before it is picked up: when no bag on its route has the room,
       EO::Stow#make_room moves a box aside while the item is still on the floor. The heaviest box of the bag
