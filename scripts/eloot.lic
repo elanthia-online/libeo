@@ -15,10 +15,15 @@
               game: Gemstone
               tags: loot
           required: Lich >= 5.22.0
-           version: 2.18.7
+           version: 2.18.8
 
   Improvements:
   Major_change.feature_addition.bugfix
+  v2.18.8 (2026-11-23)
+    - eloot's READY and STOW entries (skinning weapons and sheaths, overflow and appraisal bags) are set up
+      by libeo, at each run as before and when libeo loads
+    - an item put in a container that has its own message, or on a disk, counts as put away once it has
+      left your hand. Needs libeo 0.61.0
   v2.18.7 (2026-11-14)
     - eloot frees a hand, takes an item, puts it away, opens its bags and gives the hands back through libeo's
       EO::Loot::Handler, and still pauses for you when every bag is full. Needs libeo 0.58.0
@@ -398,8 +403,8 @@ before_dying { ELoot.release_room_lease(eloot_load_token) }
 # needs; load it again unless the one loaded is new enough.
 # Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.58.0')
-EO.require('0.58.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.61.0')
+EO.require('0.61.0')
 Script.require_lich_version!
 
 require 'yaml'
@@ -1909,56 +1914,18 @@ module ELoot # Sets Inventory
     # Check account type
     ELoot.data.account_type = Account.subscription
 
-    # Make sure flag righthand and lefthand are turned off
-    ELoot.get_command("flag righthand off", /You will not attempt to pick\s?up treasure using your right hand/, silent: true, quiet: true)
-    ELoot.get_command("flag lefthand off", /You will not attempt to pick\s?up treasure using your left hand/, silent: true, quiet: true)
+    # Get weapon inventory for skinning weapons
+    ELoot.get_weapon_inv
 
-    # Make sure StowList and ReadyList are populated, and that what they hold still exists
-    ReadyList.check(silent: true, quiet: true) unless ReadyList.checked? && ReadyList.valid?
-    StowList.check(silent: true, quiet: true) unless StowList.checked? && StowList.valid?
-
-    # Remove any extra keys and repopulate them
-    ReadyList.ready_list.delete_if { |k, _| [:skin_weapon, :skin_weapon_blunt, :skin_sheath, :skin_sheath_blunt].include?(k) }
-    # Remove old overflow container keys (they may use sequential numbering now)
-    StowList.stow_list.delete_if { |k, _| k.to_s.start_with?('overflow_container') || k == :secondary_overflow || k == :appraisal_container }
-    StowList.stow_list.delete(:secondary_overflow)
-
-    # Find the stow containers we need: overflow, appraisal
-    # Parse comma-separated overflow containers and add them dynamically
-    overflow_list = ELoot.data.settings[:overflow_containers].to_s.split(',').map(&:strip).reject(&:empty?)
-    overflow_list.each_with_index do |container_name, index|
-      # Create a unique key for each overflow container
-      key = index == 0 ? :overflow_container : "overflow_container_#{index + 1}".to_sym
-      # Temporarily set the setting for this specific container so ensure_items can find it
-      temp_settings_key = "overflow_temp_#{index}".to_sym
-      ELoot.data.settings[temp_settings_key] = container_name
-      ELoot.ensure_items(key: temp_settings_key, list: StowList.stow_list)
-      # Move the found item to the proper key
-      if StowList.stow_list[temp_settings_key]
-        StowList.stow_list[key] = StowList.stow_list.delete(temp_settings_key)
-      end
-      ELoot.data.settings.delete(temp_settings_key)
-    end
-
-    ELoot.ensure_items(key: 'appraisal_container', list: StowList.stow_list)
-
-    # Find skin sheaths
-    if ELoot.data.settings[:skin_enable]
-      ELoot.ensure_items(key: 'skin_sheath', list: ReadyList.ready_list, check_hidden: true)
-      ELoot.ensure_items(key: 'skin_sheath_blunt', list: ReadyList.ready_list, check_hidden: true)
-    end
+    # The treasure flags, Lich's READY and STOW lists, the overflow and
+    # appraisal bags, the skinning sheaths and weapons: libeo's, which the
+    # in-process pass uses too
+    EO::Loot::Hooks.lists(ELoot.data, ELoot.method(:get_command))
 
     # Make sure the bags are open and contents available
     StowList.stow_list.values.uniq.compact.each do |item|
       Inventory.open_single_container(item)
     end
-
-    # Get weapon inventory for skinning weapons
-    ELoot.get_weapon_inv
-
-    # Find the skinning weapons
-    ELoot.ensure_items(key: 'skin_weapon', list: ReadyList.ready_list, inventory: ELoot.data.weapon_inv)
-    ELoot.ensure_items(key: 'skin_weapon_blunt', list: ReadyList.ready_list, inventory: ELoot.data.weapon_inv)
 
     # Are we using weighless coin containers?
     ELoot.find_coin_containers

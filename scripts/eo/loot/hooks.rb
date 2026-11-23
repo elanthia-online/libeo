@@ -160,7 +160,96 @@ module EO
         context.gauntlet = GameObj.inv.find { |i| i.name =~ /\beonake gauntlet\b/i }
         find_blood_band(context, command)
         context.weapon_inv = weapons(command)
-        context.disk = Items::Disk.mine if settings[:use_disk]
+        disks(context)
+      end
+
+      # The ready list keys eloot adds, and the stow list keys.
+      SKIN_KEYS = %i[skin_weapon skin_weapon_blunt skin_sheath skin_sheath_blunt].freeze
+      OVERFLOW_KEY = /\Aoverflow_container/
+
+      # eloot's set_inventory for the lists: the treasure flags off, Lich's
+      # READY and STOW lists read when it does not have them or they name
+      # what is no longer worn, then the overflow and appraisal bags and the
+      # skinning sheaths and weapons found by the names in the settings. The
+      # weapons are looked for in context.weapon_inv, so fill it first.
+      #
+      # @param context [EO::Loot::Context, ELoot::Data] settings, say, weapon_inv
+      # @param command [Proc] sends a command, as #command
+      # @return [void]
+      def lists(context, command)
+        settings = context.settings
+        command.call('flag righthand off', /You will not attempt to pick\s?up treasure using your right hand/, silent: true, quiet: true)
+        command.call('flag lefthand off', /You will not attempt to pick\s?up treasure using your left hand/, silent: true, quiet: true)
+        ReadyList.check(silent: true, quiet: true) unless ReadyList.checked? && ReadyList.valid?
+        StowList.check(silent: true, quiet: true) unless StowList.checked? && StowList.valid?
+
+        ready = ReadyList.ready_list
+        stow = StowList.stow_list
+        ready.delete_if { |key, _| SKIN_KEYS.include?(key) }
+        stow.delete_if { |key, _| key.to_s.match?(OVERFLOW_KEY) || key == :secondary_overflow || key == :appraisal_container }
+
+        settings[:overflow_containers].to_s.split(',').map(&:strip).reject(&:empty?).each_with_index do |name, index|
+          found = named(GameObj.inv, name)
+          stow[index.zero? ? :overflow_container : :"overflow_container_#{index + 1}"] = found if found
+        end
+        appraisal = named(GameObj.inv, settings[:appraisal_container])
+        stow[:appraisal_container] = appraisal if appraisal
+        return unless settings[:skin_enable]
+
+        %i[skin_sheath skin_sheath_blunt].each do |key|
+          sheath = named(GameObj.inv, settings[key]) || hidden_sheath(settings[key])
+          ready[key] = sheath if sheath
+        end
+        %i[skin_weapon skin_weapon_blunt].each do |key|
+          weapon = named(context.weapon_inv, settings[key])
+          ready[key] = weapon if weapon
+        end
+      end
+
+      # The eloot items, when libeo loads (libeo.lic): set_inventory's lists
+      # part, for eloot's settings, so a script looting in its own process
+      # finds them as ;eloot would.
+      #
+      # @param settings [Hash] eloot's settings
+      # @param say [Proc] given type: and text:
+      # @return [void]
+      def setup(settings, say: ->(**) {})
+        context = Context.from_settings(settings, say: say)
+        command = command(context)
+        context.weapon_inv = weapons(command)
+        lists(context, command)
+      end
+
+      # The first of items whose name holds the word, as eloot's ensure_items
+      # finds them; nil for a name not set.
+      def named(items, name)
+        name = name.to_s
+        return nil if name.empty?
+
+        items.to_a.find { |item| item.name =~ /\b#{Regexp.escape(name)}\b/i }
+      end
+
+      # eloot's find_sheath_hidden: a sheath worn under something shows once
+      # pulled out, and is pushed back after.
+      def hidden_sheath(name)
+        return nil if name.to_s.empty?
+
+        lines = Lich::Util.quiet_command_xml('pull my sheath', /You reach down|I'm afraid that/, /<prompt/, true, 2, true)
+        return nil unless lines.any? { |line| line =~ /You reach down/i }
+
+        found = named(GameObj.inv, name)
+        Lich::Util.quiet_command_xml("push my #{name}", /You reach down|I'm afraid that you can't pull that/, /<prompt/, true, 2, true)
+        found
+      end
+
+      # The disks in the room now. A pass is built once and run room after
+      # room, and a disk not yet caught up when it was built was never used:
+      # each pass looks again, as each ;eloot run does (reset_disk_full).
+      #
+      # @param context [EO::Loot::Context]
+      # @return [void]
+      def disks(context)
+        context.disk = Items::Disk.mine if context.settings[:use_disk]
         context.disk_full = Group.disks.to_h { |disk| [disk.name, false] }
       end
 
@@ -223,7 +312,8 @@ module EO
                                  unlootable: unlootable, toss: Hooks.toss(context))
       skin = (-> { Skinning::Pass.new(context, corpses: corpses.call, hands: handler, ensure_items: ->(**) {}) } if settings[:skin_enable])
       Pass.new(context, floor: floor, hands: handler, corpses: corpses, skin: skin, floor_loot: floor_loot,
-                        stance: Hooks.stance(context), coin_hand: -> {}, return_hands: -> { handler.return_hands })
+                        stance: Hooks.stance(context), coin_hand: -> {}, return_hands: -> { handler.return_hands },
+                        ready: -> { Hooks.disks(context) })
     end
   end
 end

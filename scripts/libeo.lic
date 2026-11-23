@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.60.1')
-    EO.require('0.60.1')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.61.0')
+    EO.require('0.61.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,19 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.60.1
+       version: 0.61.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.61.0 (2026-11-23)
+    - feature: EO::Loot::Hooks.lists and .setup, what ;eloot sets up before it loots: the treasure flags off,
+      Lich's READY and STOW lists read, the overflow and appraisal bags, the skinning sheaths and weapons. eloot
+      calls it now. libeo runs it once when it loads, for a character with eloot settings; a pass built by
+      EO::Loot.build runs it again when Lich's lists are unread or name what is no longer worn (Hooks.stale?),
+      and looks for the disks as each pass starts (EO::Loot::Pass ready:)
+    - bugfix: EO::Hands.store counts a put the game did not refuse as stored once the item has left the hand or
+      the floor it was on (EO::Hands.on_floor?), whatever the container says, even into a disk, whose contents
+      Lich never sees again
   v0.60.1 (2026-11-14)
     - bugfix: EO::Loot::Pass run again room after room starts each room fresh; it had kept the last room's corpses
       and floor as done, and skipped searching and looting the next
@@ -458,4 +467,15 @@ begin
   EO::Settings.preload
 rescue StandardError => e
   Lich::Messaging.msg('warn', "libeo: could not read the e-script settings: #{e.message}")
+end
+
+# eloot's items, as ;eloot sets them up: the READY and STOW lists Lich reads
+# when it has not or they name what is no longer worn, the overflow and
+# appraisal bags, the skinning sheaths and weapons (EO::Loot::Hooks.setup)
+begin
+  if (eloot = EO::Settings.load_profile('eloot'))
+    EO::Loot::Hooks.setup(eloot, say: ->(type:, text:) { Lich::Messaging.msg(type.to_s, text) unless type.to_s == 'debug' })
+  end
+rescue StandardError => e
+  Lich::Messaging.msg('warn', "libeo: could not set up eloot's items: #{e.message}")
 end

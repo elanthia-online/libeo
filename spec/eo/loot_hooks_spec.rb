@@ -337,6 +337,18 @@ RSpec.describe EO::Loot, '.build' do
     expect(context.disk_full).to eq('Nisugi' => false, 'Ann' => false)
   end
 
+  # The pass is built once and run room after room. A disk not yet in the
+  # room when it was built was never used for the whole hunt.
+  it 'looks for the disks again as each pass starts' do
+    pass
+    allow(EO::Items::Disk).to receive(:mine).and_return(:late_disk)
+    stub_const('Group', Module.new { define_singleton_method(:disks) { [Struct.new(:name).new('Nisugi')] } })
+    stub_const('Spell', Class.new { define_singleton_method(:[]) { |_name| Struct.new(:active?).new(true) } })
+    allow(pass).to receive(:say)
+    pass.start
+    expect([context.disk, context.disk_full]).to eq([:late_disk, { 'Nisugi' => false }])
+  end
+
   it 'gives the floor and the pass libeo\'s own hands, which never pause' do
     expect(pass.instance_variable_get(:@hands)).to be_a(EO::Loot::Handler)
     expect(pass.instance_variable_get(:@floor)).to be_a(EO::Loot::Floor)
@@ -352,5 +364,68 @@ RSpec.describe EO::Loot, '.build' do
     settings[:log_unlootables] = true
     context.learn(:unlootable, Struct.new(:name, :type).new('odd thing', nil))
     expect(settings[:unlootable]).to eq(['odd thing'])
+  end
+end
+
+RSpec.describe EO::Loot::Hooks, '.lists' do
+  let(:obj) { Struct.new(:id, :name, :noun) }
+  let(:backpack) { obj.new('1', 'patchwork dwarf skin backpack') }
+  let(:cloak) { obj.new('2', 'nacreous plumille cloak') }
+  let(:sack) { obj.new('3', 'grey sack') }
+  let(:bandolier) { obj.new('4', 'iron boar hide bandolier') }
+  let(:knife) { obj.new('5', 'narrow vultite knife') }
+  let(:inv) { [backpack, cloak, sack, bandolier] }
+  let(:settings) do
+    { overflow_containers: 'grey sack', appraisal_container: 'cloak', skin_enable: true, skin_sheath: 'bandolier', skin_weapon: 'vultite knife' }
+  end
+  let(:sent) { [] }
+  let(:command) { ->(cmd, _re, **) { sent << cmd; [] } }
+  let(:context) { Struct.new(:settings, :weapon_inv).new(settings, [knife]) }
+  let(:lists) do
+    Class.new do
+      attr_accessor :list, :checked, :checks
+
+      def initialize(list) = (@list = list; @checked = false; @checks = 0)
+      def checked? = @checked
+      def check(**) = (@checks += 1; @checked = true)
+    end
+  end
+  let(:stow) { lists.new({ box: backpack, default: cloak }) }
+  let(:ready) { lists.new({}) }
+
+  before do
+    items = inv
+    stub_const('GameObj', Class.new { define_singleton_method(:inv) { items } })
+    [['StowList', stow, :stow_list], ['ReadyList', ready, :ready_list]].each do |name, fake, reader|
+      stub_const(name, Module.new do
+        define_singleton_method(reader) { fake.list }
+        define_singleton_method(:checked?) { fake.checked? }
+        define_singleton_method(:check) { |**kw| fake.check(**kw) }
+        define_singleton_method(:valid?) { |**| fake.list.values.compact.all? { |v| items.include?(v) } }
+      end)
+    end
+  end
+
+  it 'reads the lists Lich does not have, and finds the bags and the skinning gear' do
+    EO::Loot::Hooks.lists(context, command)
+    expect([stow.checks, ready.checks]).to eq([1, 1])
+    expect(sent).to eq(['flag righthand off', 'flag lefthand off'])
+    expect(stow.list).to include(overflow_container: sack, appraisal_container: cloak)
+    expect(ready.list).to include(skin_sheath: bandolier, skin_weapon: knife)
+  end
+
+  it 'leaves the lists Lich has and that still name what is worn' do
+    stow.checked = true
+    ready.checked = true
+    EO::Loot::Hooks.lists(context, command)
+    expect([stow.checks, ready.checks]).to eq([0, 0])
+  end
+
+  it 'is what libeo runs as it loads, with the weapons read first' do
+    allow(EO::Loot::Hooks).to receive(:weapons).and_return([knife])
+    allow(EO::Loot::Hooks).to receive(:command).and_return(command)
+    ReadyList.const_set(:ORIGINAL_READY_LIST, [])
+    EO::Loot::Hooks.setup(settings)
+    expect(ready.list).to include(skin_weapon: knife)
   end
 end

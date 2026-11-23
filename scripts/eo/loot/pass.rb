@@ -30,7 +30,9 @@ module EO
       # @param stance [Proc] given a stance name, changes to it
       # @param coin_hand [Proc] uses the coin hand, when there is one
       # @param return_hands [Proc] gives each hand back what it held at the start
-      def initialize(context, floor:, hands:, corpses:, stance:, coin_hand:, return_hands:, skin: nil, floor_loot: true)
+      # @param ready [Proc] runs as each pass starts, to look again at what
+      #   may have changed since the last one (the disks)
+      def initialize(context, floor:, hands:, corpses:, stance:, coin_hand:, return_hands:, skin: nil, floor_loot: true, ready: -> {})
         @context = context
         @floor = floor
         @hands = hands
@@ -40,6 +42,7 @@ module EO
         @stance = stance
         @coin_hand = coin_hand
         @return_hands = return_hands
+        @ready = ready
         @phase = nil
         @last = nil
       end
@@ -67,6 +70,7 @@ module EO
         @floor_state = nil
         @last = nil
         @phase = :done
+        @ready.call
         if Spell['Berserk'].active?
           say('info', ' Berserk is active and preventing you from looting.')
           return

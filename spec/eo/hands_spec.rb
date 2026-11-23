@@ -5,6 +5,50 @@ require_relative '../../scripts/eo/command'
 require_relative '../../scripts/eo/hands'
 
 RSpec.describe EO::Hands do
+  describe '.store' do
+    let(:disk) { Struct.new(:id, :name, :contents).new('9', 'Nisugi disk', []) }
+    let(:coffer) { Struct.new(:id, :name).new('5', 'scratched haon coffer') }
+    let(:sent) { [] }
+
+    # answer: the _drag's lines; before/after: in hand before and after it
+    def store_with(answer:, before:, after:)
+      held = [before]
+      allow(described_class).to receive(:holding?) { held.size > 1 ? after : held.shift.tap { held << after } }
+      allow(EO).to receive(:command) { |cmd, *| sent << cmd; answer }
+      allow(described_class).to receive(:sleep)
+      described_class.store(disk, coffer)
+    end
+
+    it 'is :stored once an item on the floor has left it, whatever the wording, with no look in the disk' do
+      room = [coffer]
+      stub_const('GameObj', Module.new { define_singleton_method(:loot) { room } })
+      allow(EO).to receive(:command) { |cmd, *| sent << cmd; room.clear; ['Your disk takes the coffer.'] }
+      allow(described_class).to receive(:holding?).and_return(false)
+      expect(described_class.store(disk, coffer)).to eq(:stored)
+      expect(sent).to eq(['_drag #5 #9'])
+    end
+
+    it 'does not take a put of a floor item for stored while it still lies there' do
+      room = [coffer]
+      stub_const('GameObj', Module.new { define_singleton_method(:loot) { room } })
+      allow(EO).to receive(:command) { |cmd, *| sent << cmd; ['You put a scratched haon coffer in the disk.'] }
+      allow(described_class).to receive(:holding?).and_return(false)
+      allow(described_class).to receive(:sleep)
+      allow(described_class).to receive(:waitrt?)
+      stub_const('EO::Containers', Module.new { const_set(:LOOK, /look/) })
+      expect(described_class.store(disk, coffer)).not_to eq(:stored)
+    end
+
+    it 'is :stored once an item in hand has left it, whatever the wording' do
+      expect(store_with(answer: ['You drop the coffer into the disk.'], before: true, after: false)).to eq(:stored)
+      expect(sent).to eq(['_drag #5 #9'])
+    end
+
+    it 'is :full on the refusal, the item still in hand' do
+      expect(store_with(answer: ["It won't fit in the disk."], before: true, after: true)).to eq(:full)
+    end
+  end
+
   describe '.wear' do
     let(:sack) { Struct.new(:id, :name).new('55', 'leather sack') }
 
