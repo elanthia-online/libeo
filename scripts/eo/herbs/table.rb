@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
 module EO
+  # Herbs and the healing done with them: what each herb cures and where it
+  # is sold, which herb a wound wants, the herb sack, the doses left in each
+  # item, buying and stocking.
   module Herbs
-    # Every herb and potion that heals: where it is sold, what it treats,
-    # and how many doses one bought holds; and the questions asked of that
-    # list. A type is a wound or scar by place and severity ('major head
-    # wound', 'minor limb scar'), or 'blood', 'poison', 'disease', 'severed
-    # limb', 'missing eye'.
+    # Every herb the scripts know: where it is sold (as the map names the
+    # location; "Do Not Buy" for the bulk forms, "Forageable", "Skinnable"
+    # and "Alchemical" for what no shop sells), its name as the game says
+    # it, the wound type it cures, the short name a shop menu uses, and the
+    # doses a shop-bought one holds.
     module Table
       module_function
 
-      # Each entry: location (the places that sell it, as the map names
-      # them, or how else it is come by), name, type, short_name (as it
-      # reads on a shop's menu) and store_doses.
       KNOWN = [
         # Wehnimer's Landing 325/1028
         # Solhaven 5722/4740011
@@ -299,99 +299,132 @@ module EO
         { location: ['Alchemical'], name: 'dimly glowing sea-green potion', type: 'poison',  short_name: 'sea-green potion',          store_doses: 4 }
       ].freeze
 
-      # Doses of each type to keep in stock.
+      # Short names of the "major blood" (yabathilium-class) restoratives.
+      # Every one still has type 'blood'; the list only splits counting and
+      # stocking when a driver asks for it.
+      MAJOR_BLOOD = ['yabathilium fruit', 'tincture of yabathilium', 'Bloody Krolvin ale', "Olak's Ol'style ale",
+                     'green mushroom potion', 'sassafras tea'].freeze
+
+      # An herb that is drunk rather than eaten, by its name.
+      DRINKABLE = /\b(?:potion|tea|elixir|brew|tincture|ale|soup|porter)\b/i
+
+      # What cannot be bundled or poured together.
+      CANT_BUNDLE = /tart|feather|special|blubber|pie|porridge|soup|fruit/i
+
+      # The wound types, in the order a sack is filled.
+      TYPES = ['blood', 'major head wound', 'minor head wound', 'major head scar', 'minor head scar', 'major organ wound',
+               'minor organ wound', 'major organ scar', 'minor organ scar', 'missing eye', 'major limb wound',
+               'minor limb wound', 'major limb scar', 'minor limb scar', 'severed limb', 'major nerve wound',
+               'minor nerve wound', 'major nerve scar', 'minor nerve scar'].freeze
+
+      # Types the eaten herbs cover and the ones only potions do, for stocking.
+      HERB_TYPES = ['major head wound', 'minor head scar', 'major organ wound', 'minor organ wound', 'major limb wound',
+                    'minor limb wound', 'major limb scar', 'minor limb scar', 'severed limb', 'minor nerve wound',
+                    'major nerve scar', 'minor nerve scar'].freeze
+      POTION_TYPES = ['major head scar', 'minor head wound', 'major nerve wound', 'minor organ scar', 'major organ scar',
+                      'missing eye'].freeze
+
+      # Doses to keep of each type when stocking a sack.
       DEFAULT_DOSES = {
-        'major head scar'   => 6,
-        'minor head wound'  => 4,
-        'major nerve wound' => 4,
-        'minor organ scar'  => 4,
-        'major organ scar'  => 6,
-        'missing eye'       => 7,
-        'blood'             => 50,
-        'minor blood'       => 50,
-        'major blood'       => 20,
-        'major head wound'  => 25,
-        'minor head scar'   => 25,
-        'major organ wound' => 25,
-        'minor organ wound' => 25,
-        'major limb wound'  => 25,
-        'minor limb wound'  => 25,
-        'major limb scar'   => 25,
-        'minor limb scar'   => 25,
-        'severed limb'      => 25,
-        'minor nerve wound' => 25,
-        'major nerve scar'  => 25,
-        'minor nerve scar'  => 25
+        'major head scar' => 6, 'minor head wound' => 4, 'major nerve wound' => 4, 'minor organ scar' => 4,
+        'major organ scar' => 6, 'missing eye' => 7, 'blood' => 50, 'minor blood' => 50, 'major blood' => 20,
+        'major head wound' => 25, 'minor head scar' => 25, 'major organ wound' => 25, 'minor organ wound' => 25,
+        'major limb wound' => 25, 'minor limb wound' => 25, 'major limb scar' => 25, 'minor limb scar' => 25,
+        'severed limb' => 25, 'minor nerve wound' => 25, 'major nerve scar' => 25, 'minor nerve scar' => 25,
       }.freeze
 
-      # The stronger restoratives of blood, by short name. They are of type
-      # 'blood' like the rest and heal the same; they are told apart only to
-      # count and stock them on their own when blood is split in two.
-      MAJOR_BLOOD = [
-        'yabathilium fruit',
-        'tincture of yabathilium',
-        'Bloody Krolvin ale',
-        "Olak's Ol'style ale",
-        'green mushroom potion',
-        'sassafras tea'
-      ].freeze
-
-      # What is drunk, not eaten, by its name.
-      DRINKABLE = /\b(?:potion|tea|elixir|brew|tincture|ale|soup|porter)\b/i
-      # What cannot be bundled, by the end of its name.
-      CANT_BUNDLE = /tart|feather|special|blubber|pie|porridge|soup|fruit/i
-      # The part of the body, as wounds are reported, to the word a type uses.
+      # The wound areas Lich reports, to the word the herb types use.
       AREAS = { 'head' => 'head', 'neck' => 'head', 'torso' => 'organ', 'limbs' => 'limb', 'nerves' => 'nerve' }.freeze
 
-      # @param herb [Hash] an entry of KNOWN
-      # @return [Boolean] whether it is one of the stronger restoratives of blood
+      # @param herb [Hash] a KNOWN entry
+      # @return [Boolean]
       def major_blood?(herb)
         herb[:type] == 'blood' && MAJOR_BLOOD.include?(herb[:short_name])
       end
 
-      # @param herb [Hash] an entry of KNOWN
+      # @param herb [Hash]
       # @return [String] 'major blood' or 'minor blood' for a blood herb, else its type
       def blood_tier(herb)
         return herb[:type] unless herb[:type] == 'blood'
-
         major_blood?(herb) ? 'major blood' : 'minor blood'
       end
 
-      # The heading a herb is counted and stocked under.
+      # The bucket an herb is counted and stocked under.
       #
-      # @param herb [Hash] an entry of KNOWN
-      # @param split [Boolean] blood is split into major and minor
-      # @return [String] 'blood', or its tier when split, or the herb's type
-      def blood_bucket(herb, split:)
+      # @param herb [Hash]
+      # @param split [Boolean] count major and minor blood apart
+      # @return [String]
+      def blood_bucket(herb, split: false)
         return herb[:type] unless herb[:type] == 'blood'
-        return 'blood' unless split
-
-        blood_tier(herb)
+        split ? blood_tier(herb) : 'blood'
       end
 
-      # Whether a herb belongs under a heading. 'blood' takes every blood
-      # herb, 'major blood' and 'minor blood' their tier, split or not.
-      #
-      # @param herb [Hash] an entry of KNOWN
-      # @param category [String]
+      # @param herb [Hash]
+      # @param category [String] a type, or 'blood' / 'minor blood' / 'major blood'
       # @return [Boolean]
       def in_category?(herb, category)
         case category
-        when 'blood'
-          herb[:type] == 'blood'
-        when 'minor blood', 'major blood'
-          blood_tier(herb) == category
-        else
-          herb[:type] == category
+        when 'blood' then herb[:type] == 'blood'
+        when 'minor blood', 'major blood' then blood_tier(herb) == category
+        else herb[:type] == category
         end
       end
 
-      # @param location [String] a place, as the map names it
-      # @return [Boolean] whether any herb is sold there
+      # @param name [String] an item's name as the game shows it
+      # @return [Boolean] whether it is drunk
+      def drinkable?(name)
+        name.to_s =~ DRINKABLE ? true : false
+      end
+
+      # @param item_name [String]
+      # @return [Hash, nil] the entry whose name or short name the item carries
+      def entry_for(item_name)
+        return nil if item_name.to_s.empty?
+        KNOWN.find { |h| h[:name] =~ /#{Regexp.escape(item_name)}/ || h[:short_name] =~ /#{Regexp.escape(item_name)}/ }
+      end
+
+      # @param item_name [String]
+      # @param type [String] a wound type
+      # @return [Boolean] whether the item cures it
+      def cures?(item_name, type)
+        return false if item_name.to_s.empty?
+        KNOWN.any? { |h| h[:type] == type && (h[:name] =~ /#{Regexp.escape(item_name)}/ || h[:short_name] =~ /#{Regexp.escape(item_name)}/) }
+      end
+
+      # @param item_name [String]
+      # @return [Boolean] whether any known herb matches
+      def herb?(item_name)
+        !entry_for(item_name).nil?
+      end
+
+      # @param type [String]
+      # @return [Array<Hash>]
+      def entries(type)
+        KNOWN.select { |h| h[:type] == type }
+      end
+
+      # @param location [String] a map location
+      # @return [Boolean] whether any known herb is sold there
       def sold_at?(location)
         return false if location.to_s.empty?
-
         KNOWN.any? { |h| h[:location].any? { |place| place.include?(location) } }
+      end
+
+      # The herb sold at +location+ for a category, by form.
+      #
+      # @param category [String]
+      # @param location [String]
+      # @param form [Symbol, nil] :drinkable, :edible, or nil for either
+      # @return [Hash, nil]
+      def sold(category, location, form: nil)
+        KNOWN.find do |h|
+          next false unless in_category?(h, category) && h[:location].any? { |place| place =~ /#{Regexp.escape(location)}/ }
+          case form
+          when :drinkable then drinkable?(h[:name])
+          when :edible then !drinkable?(h[:name])
+          else true
+          end
+        end
       end
     end
   end
