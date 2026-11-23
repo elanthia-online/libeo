@@ -5,7 +5,9 @@ module EO
   # closing it, and reading contents the game does not refresh on its own.
   #
   # Lich lists a container among GameObj.containers, with its contents, once
-  # the game has shown them; that is what "listed" means here.
+  # the game has shown them; that is what "listed" means here. Lich's
+  # inventory feed (Lich::Common::Inventory) knows more of what is carried:
+  # whether a container is closed or locked, without opening it.
   #
   # Commands go through the running script's helpers (EO.use). The helpers
   # this needs: command(text, pattern, silent:, quiet:) answering the lines,
@@ -84,14 +86,62 @@ module EO
       GameObj.containers.keys.include?(container.id) && container.contents.is_a?(Array)
     end
 
-    # See that a container is open and its contents known. One already
-    # listed is left alone; any other is taken for closed, so it gets an OPEN
-    # and then a LOOK IN.
+    # Whether Lich's inventory feed has answered this session. Once it has,
+    # every carried container's contents are in GameObj, a closed one's too:
+    # being listed no longer shows a container is open.
+    #
+    # @return [Boolean]
+    def feed?
+      defined?(Lich::Common::Inventory) && !Lich::Common::Inventory.last_updated.nil? ? true : false
+    rescue StandardError
+      false
+    end
+
+    # What the feed last said of a container, without asking again.
     #
     # @param container [GameObj]
-    # @return [Symbol] :listed (already known, nothing sent), :nothing (opened,
-    #   and empty or not itemised), or :opened
+    # @return [Boolean, nil] closed or not; nil when the feed has not
+    #   answered or does not know the container (a disk, a box on the floor)
+    def closed?(container)
+      return nil unless feed?
+
+      item = Lich::Common::Inventory[container.id]
+      item.nil? ? nil : item.closed?
+    rescue StandardError
+      nil
+    end
+
+    # The feed's fresh view of a carried container: closed or not, locked
+    # or not, with its contents put in GameObj either way.
+    #
+    # @param container [GameObj]
+    # @return [Lich::Common::Inventory::Item, nil] nil without the feed, or
+    #   for a container that is not carried (a disk, a box on the floor)
+    def carried(container)
+      return nil unless defined?(Lich::Common::Inventory)
+
+      Lich::Common::Inventory.refresh&.[](container.id)
+    rescue StandardError
+      nil
+    end
+
+    # See that a container is open and its contents known. A carried one
+    # is asked of the inventory feed: it gets an OPEN only when it is closed,
+    # never a LOOK IN, and nothing at all when it is locked. Any other, or
+    # without the feed: one already listed is left alone, and one that is
+    # not is taken for closed, so it gets an OPEN and then a LOOK IN.
+    #
+    # @param container [GameObj]
+    # @return [Symbol] :listed (open and known, nothing sent), :locked,
+    #   :nothing (opened, and empty or not itemised), or :opened
     def ensure_open(container)
+      if (item = carried(container))
+        return :listed unless item.closed?
+        return :locked if item.locked?
+
+        EO.command("open ##{container.id}", OPEN, silent: true, quiet: true)
+        return :opened
+      end
       return :listed if listed?(container)
 
       EO.command("open ##{container.id}", OPEN, silent: true, quiet: true)
@@ -129,12 +179,14 @@ module EO
     # Lich only updates a container's contents when the game sends a
     # refresh, and some containers never get one (a disk, a skin sack the
     # furrier emptied), so what Lich holds can still list what has since been
-    # taken out. Look in, then read.
+    # taken out. Look in, then read. A carried container is read from the
+    # inventory feed instead, which asks the game afresh.
     #
     # @param container [GameObj, nil]
     # @return [Array<GameObj>] the contents, [] with no container
     def fresh_contents(container)
       return [] if container.nil?
+      return container.contents.to_a if carried(container)
 
       EO.command("look in ##{container.id}", LOOK, silent: true, quiet: true)
       container.contents.to_a
