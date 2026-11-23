@@ -17,8 +17,10 @@
           game: Gemstone
           tags: escort, child, advguild, adventurer guild, guild
       required: Lich >= 5.22.0
-       version: 1.23.0
+       version: 1.23.1
 
+  2026-11-14 - 1.23.1
+    - fix: a number inside an option (--disabler=617) is not taken for the room to walk to
   2026-11-13 - 1.23.0
     - the walk home with the child is libeo's whole (EO::Guild::Rescue), with the disablers
       (EO::Guild::Disablers); this script keeps its settings and starts the walk. Needs
@@ -223,7 +225,8 @@ module EChild
   # where to
   #------------------------------------------------------------------------------#
   points = EO::Guild::Rescue.dropoffs
-  near = Script.current.vars[0] =~ /(u?\d+)/ ? $1 : nil
+  # a bare room id or uid; a number inside --disabler=617 or --test:owl2 is not one
+  near = Script.current.vars[0] =~ /(?:\A|\s)(u?\d+)(?=\s|\z)/ ? $1 : nil
   place = EO::Guild::Rescue.destination(points, near: near)
 
   #------------------------------------------------------------------------------#
