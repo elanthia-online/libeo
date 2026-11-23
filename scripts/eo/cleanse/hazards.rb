@@ -2,62 +2,144 @@
 
 module EO
   module Cleanse
-    # Things in a room that hurt or hinder: webs, magical globes and clouds,
-    # runestones. Each is got rid of by a spell, by Spell Cleave or Spell
-    # Thieve, or by hitting it.
+    # What creatures leave in a room: clouds, magic globes, webs and
+    # Onslaught runestones, found in the loot and cleared by spell, by Spell
+    # Cleave or Spell Thieve, or by breaking.
     module Hazards
       module_function
 
-      # @return [Boolean] Spell Cleave can be used now
-      def cleave? = CMan.available?('Spell Cleave')
-
-      # @return [Boolean] Spell Thieve can be used now
-      def thieve? = CMan.available?('Spell Thieve')
-
-      # Get rid of a web, globe or cloud by the first means there is: the
-      # spell, after a mana pulse when it cannot be afforded; else Spell
-      # Cleave; else Spell Thieve.
+      # The hazard of a kind in a list of loot, skipping refused ids: a
+      # cloud (not the invalid ones nor a gem; the acidic mist only with a
+      # breeze known), a magic globe, a runestone, or a web.
       #
-      # @param obj [GameObj] the hazard
-      # @param spell [Spell, nil] the spell for it, nil when the character
-      #   has none or cannot cast now
-      # @return [void]
-      def clear(obj, spell)
-        if spell
-          Lich::Gemstone::Mana.pulse(spell.num)
-          spell.cast("at ##{obj.id}") if spell.affordable?
-        elsif cleave?
-          CMan.use('Spell Cleave', "##{obj.id}")
-        elsif thieve?
-          CMan.use('Spell Thieve', "##{obj.id}")
+      # @param kind [Symbol] :cloud, :globe, :runestone or :web
+      # @param loot [Array<GameObj>]
+      # @param bad [#include?] refused ids
+      # @param breeze [Boolean] a breeze spell is known
+      # @return [GameObj, nil]
+      def find(kind, loot, bad, breeze: false)
+        ok = ->(l) { !bad.include?(l.id) }
+        case kind
+        when :cloud
+          loot.find { |l| l.name.to_s =~ /cloud/i && !INVALID_CLOUDS.include?(l.name.to_s) && l.type.to_s !~ /\bgem\b/i && ok.call(l) } ||
+            (breeze ? loot.find { |l| l.name.to_s == ACID_MIST && ok.call(l) } : nil)
+        when :globe then loot.find { |l| l.name.to_s =~ MAGIC_GLOBES && ok.call(l) }
+        when :runestone then loot.find { |l| l.name.to_s =~ RUNESTONES && ok.call(l) }
+        when :web then loot.find { |l| l.noun.to_s =~ /web/i && ok.call(l) }
         end
       end
 
-      # Blow away a cloud of acidic mist: Call Wind (912) by incantation, or
-      # Breeze (612) cast at it.
+      def cloud(bad) = find(:cloud, GameObj.loot.to_a, bad, breeze: !Cleanse.spell(:breeze).nil?)
+
+      def globe(bad) = find(:globe, GameObj.loot.to_a, bad)
+
+      def runestone(bad) = find(:runestone, GameObj.loot.to_a, bad)
+
+      def web(bad) = find(:web, GameObj.loot.to_a, bad)
+
+      # @return [Boolean] Spell Cleave or Spell Thieve can be used now
+      def cleave? = Lich::Gemstone::CMan.available?('Spell Cleave') || Lich::Gemstone::CMan.available?('Spell Thieve')
+
+      # Whether there is a way to clear this hazard right now.
       #
-      # @param cloud [GameObj]
-      # @param breeze [Spell] 912 or 612
-      # @return [void]
-      def blow_away(cloud, breeze)
-        breeze.force_incant if breeze.num.eql?(912)
-        breeze.cast("at ##{cloud.id}") if breeze.num.eql?(612)
+      # @param obj [GameObj]
+      # @param kind [Symbol] :cloud, :globe or :web
+      # @param determination [Boolean] see Cleanse.able_to_cast?
+      # @return [Boolean]
+      def clearable?(obj, kind, determination: false)
+        return Cleanse.spell(:breeze) && Cleanse.able_to_cast?(determination: determination) ? true : false if obj.name == ACID_MIST
+
+        spell = Cleanse.spell(kind == :web ? :webs : :dispel)
+        (spell && Cleanse.able_to_cast?(determination: determination)) || cleave? ? true : false
       end
 
-      # Hit a runestone until it shatters, it is gone, or five swings are made.
+      # TARGET a hazard. Only the game's "turn your attention" answer means
+      # it can be cast at; a player's own hazard is refused.
       #
-      # @param runestone [GameObj]
-      # @return [void]
-      def shatter(runestone)
-        attempts = 0
-        loop do
+      # @param obj [GameObj]
+      # @return [Boolean]
+      def target(obj)
+        dothistimeout("target ##{obj.id}", 2, TARGET_ANSWERS).to_s =~ TARGET_OK ? true : false
+      end
+
+      # TARGET a hazard that needs it: not the acidic mist nor the two
+      # globes that cannot be targeted.
+      #
+      # @param obj [GameObj]
+      # @return [Boolean] whether it can be cast at
+      def aim(obj) = obj.name == ACID_MIST || obj.name =~ UNTARGETABLE_GLOBES || target(obj) ? true : false
+
+      # Clear a cloud, globe or web: aim first, then the breeze at the mist,
+      # the spell at the hazard, or Spell Cleave, else Spell Thieve.
+      #
+      # @param obj [GameObj]
+      # @param kind [Symbol] :cloud, :globe or :web
+      # @param determination [Boolean]
+      # @param aimed [Boolean] already aimed at
+      # @return [Symbol] :breeze, :dispelled, :cleaved, :thieved, or
+      #   :untargetable (add it to the bad targets), :unaffordable, :no_means,
+      #   :failed (the cleave or thieve found no wards or did not go off)
+      def clear(obj, kind, determination: false, aimed: false)
+        acid = obj.name == ACID_MIST
+        return :untargetable unless aimed || aim(obj)
+
+        able = Cleanse.able_to_cast?(determination: determination)
+        if acid
+          breeze = Cleanse.spell(:breeze)
+          return :no_means unless breeze && able
+          return :unaffordable unless breeze.affordable?
+
+          breeze.num == 912 ? breeze.force_incant : breeze.cast("at ##{obj.id}")
+          return :breeze
+        end
+        spell = Cleanse.spell(kind == :web ? :webs : :dispel)
+        if spell && able
+          Lich::Gemstone::Mana.pulse(spell)
+          return :unaffordable unless spell.affordable?
+
+          spell.cast("at ##{obj.id}")
+          :dispelled
+        elsif Lich::Gemstone::CMan.available?('Spell Cleave')
+          maneuver('scleave', obj, :cleaved)
+        elsif Lich::Gemstone::CMan.available?('Spell Thieve')
+          maneuver('sthieve', obj, :thieved)
+        else
+          :no_means
+        end
+      end
+
+      # The game's answer when a Spell Cleave or Spell Thieve went into the wards.
+      WARDS_ATTACKED = /before (?:unleashing your attack upon|sneaking in an attack on) them!/
+
+      # Spell Cleave or Spell Thieve at a hazard, by Lich's CMan, which waits
+      # out roundtime and answers with the game's line.
+      #
+      # @param name [String] scleave or sthieve
+      # @param obj [GameObj]
+      # @param done [Symbol] what a hit is reported as
+      # @return [Symbol] +done+, or :failed (no wards found, still drained,
+      #   no answer)
+      # @api private
+      def maneuver(name, obj, done)
+        Lich::Gemstone::CMan.use(name, "##{obj.id}").to_s =~ WARDS_ATTACKED ? done : :failed
+      end
+
+      # TARGET an Onslaught runestone and ATTACK it until it shatters or
+      # goes, five swings at most.
+      #
+      # @param obj [GameObj]
+      # @param aimed [Boolean] already targeted
+      # @return [Symbol] :shattered, :gone, :untargetable or :standing
+      def break_runestone(obj, aimed: false)
+        return :untargetable unless aimed || target(obj)
+
+        5.times do
           waitrt?
-          results = Lich::Util.issue_command("attack ##{runestone.id}", /You bash/, /Roundtime: /, timeout: 2, usexml: false, quiet: false, silent: false)
-          attempts += 1
-          break if results.any? { |line| line =~ /It crashes to the ground and shatters into pale dust/ }
-          break if attempts >= 5
-          break unless GameObj.loot.map(&:id).include?(runestone.id)
+          lines = Lich::Util.issue_command("attack ##{obj.id}", /You bash/, /Roundtime: /, timeout: 2, usexml: false)
+          return :shattered if lines.any? { |line| line =~ /It crashes to the ground and shatters into pale dust/ }
+          return :gone unless GameObj.loot.to_a.any? { |l| l.id == obj.id }
         end
+        :standing
       end
     end
   end

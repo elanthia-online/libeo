@@ -6,9 +6,24 @@
           game: Gemstone
           tags: dispel, unpoison, undisease, disarmed, effects
       required: Lich >= 5.22.0
-       version: 2.6.0
+       version: 2.7.0
 
   Improvements:
+  v2.7.0  (2026-11-13)
+    - ecleanse sends, waits, walks and speaks through libeo's own helpers and no longer lends
+      its own; each cure is libeo's whole, the first way the settings allow (EO::Cleanse with
+      a Policy). Needs libeo 0.50.0
+    - the disarm, trap, curse and infection lines are Lich's own (Combat::Messages), still
+      matched ahead of other scripts so the hands are read at the moment of a disarm
+    - Spell Cleave and Spell Thieve are used only when Lich says they are available
+    - a weapon back in hand by bonding no longer calls fill hands, since nothing was put away
+    - fix: two afflictions at once (poisoned and stunned, say) are both seen to; one used to
+      hide the other
+    - fix: Wizard's Shield is only cast when known
+    - the 709 check for tentacles and other appendages goes by the creature's noun
+    - the walks to a disarm room, the vat and back after the itchy curse start at once though
+      ecleanse has go2 paused; already in the room it was sent to, it stays hidden
+    - fix: ;ecleanse setup says so when the Lich WebUI is not available
   v2.6.0  (2026-11-13)
     - the profile file is read and written through libeo (EO::Settings), so other scripts
       can read ecleanse's settings (EO::Settings.read(:ecleanse)); the settings table's
@@ -183,67 +198,33 @@
     - Initial release
 =end
 
-# Check version of Lich for compatibility
-lich_gem_requires = '5.22.0'
-
-if Gem::Version.new(LICH_VERSION) < Gem::Version.new(lich_gem_requires)
-  if $frontend == 'stormfront' || $frontend == 'profanity'
-    _respond "\<preset id=\"speech\"\>" + "########################################" + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "Script:#{script.name} now requires a newer version of Lich(#{lich_gem_requires}+) to run." + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "Please update to a newer version." + "\<\/preset\>"
-    _respond ""
-    _respond "\<preset id=\"thought\"\>" + "Currently Running Lich Version: #{Gem::Version.new(LICH_VERSION)}" + "\<\/preset\>"
-    _respond "\<preset id=\"thought\"\>" + "For help updating visit: https://gswiki.play.net/Lich_(software)/Installation" + "\<\/preset\>"
-    _respond "\<preset id=\"speech\"\>" + "########################################" + "\<\/preset\>"
-  else
-    _respond "##" + "########################################"
-    _respond ">" + "Script:#{script.name} now requires a newer version of Lich(#{lich_gem_requires}+) to run."
-    _respond ">" + "Please update to a newer version."
-    _respond ">" + ""
-    _respond ">" + "Currently Running Lich Version: #{Gem::Version.new(LICH_VERSION)}"
-    _respond ">" + "For help updating visit: https://gswiki.play.net/Lich_(software)/Installation"
-    _respond "##" + "########################################"
-  end
-  exit
-end
+# A libeo loaded earlier in this Lich session may be older than this script
+# needs; load it again unless the one loaded is new enough.
+# Script.loadlib loads libeo once a session; a copy older than this script needs is run again
+Script.loadlib('libeo')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.50.0')
+EO.require('0.50.0')
+Script.require_lich_version!
 
 require 'yaml'
+require 'securerandom'
 require 'terminal-table'
-
-# Script.loadlib loads libeo once a session; a copy older than this script
-# needs is run again.
-Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.43.0')
-EO.require('0.43.0')
 
 # Data Class
 module Ecleanse
   class Data
-    attr_accessor :settings, :did_something, :event_stack, :disease, :dispel, :poison, :webs, :injury_locations, :cloud, :globe, :web, :debuffs, :magic_globes,
-                  :recover_stuff, :recover_stuff_seq, :creature, :target_regex, :bad_targets, :hive_trap_room, :invalid_clouds, :breeze_wind, :runestones,
-                  :runestone
+    attr_accessor :settings, :policy, :did_something, :event_stack, :cloud, :globe, :web, :runestone,
+                  :recover_stuff, :recover_stuff_seq, :creature, :bad_targets, :hive_trap_room
 
     def initialize(settings)
       @settings = settings
+      @policy = EO::Cleanse::Policy.new(**settings.transform_keys(&:to_sym))
       @did_something = false
       @event_stack = []
       @bad_targets = EO::Cleanse::BadTargets.new
 
-      @disease = EO::Cleanse.spell(:disease)
-      @dispel = EO::Cleanse.spell(:dispel)
-      @poison = EO::Cleanse.spell(:poison)
-      @webs = EO::Cleanse.spell(:webs)
-      @breeze_wind = EO::Cleanse.spell(:breeze)
-
       @settings[:script_list] = @settings[:stop_scripts].split(",").map(&:strip)
       @settings[:script_list] << "go2" unless @settings[:script_list].include?("go2")
-
-      @injury_locations = EO::Cleanse::INJURY_LOCATIONS
-      @debuffs = EO::Cleanse::DEBUFFS
-      @magic_globes = EO::Cleanse::MAGIC_GLOBES
-      @runestones = EO::Cleanse::RUNESTONES
-      @target_regex = EO::Cleanse::TARGET_ANSWERS
-      @invalid_clouds = EO::Cleanse::INVALID_CLOUDS
 
       # action variables
       @cloud = nil
@@ -267,7 +248,10 @@ module Ecleanse
   # Cancel or closing the window discards. The class also backs
   # ;ecleanse list, which works without the WebUI.
   class Setup
-    extend EO::Settings::Registry
+    # Lich keeps this class between runs in a session. A method a newer version
+    # dropped would otherwise still run, ahead of the one the class now includes.
+    # First, so it removes nothing this run defines.
+    (instance_methods(false) + private_instance_methods(false)).each { |name| remove_method(name) }
 
     attr_accessor :settings
 
@@ -338,7 +322,11 @@ module Ecleanse
       }
     }
 
-    def self.available? = EO::Settings.available?
+    extend EO::Settings::Registry
+    include EO::Settings::Listing
+
+    # True when Lich can open a WebUI window for this script.
+    def self.available? = EO::Settings.available?(:SettingsForm)
 
     def initialize(settings)
       @settings = settings
@@ -348,15 +336,10 @@ module Ecleanse
       @original_settings = Marshal.load(Marshal.dump(settings))
 
       # Get script version
-      @settings[:version] = @version = Util.get_script_version
+      @settings[:version] = @version = Script.version(Script.current.name).to_s
 
-      # set default values if they don't exist
-      @@categories.each do |_, data|
-        data.each { |key, value| @settings[key] = value[:default] if @settings[key].nil? }
-      end
-
-      # remove settings that don't exist
-      @settings.delete_if { |key, _| next Setup.get_category(key).nil? }
+      Setup.fill_defaults(@settings)
+      Setup.prune(@settings)
     end
 
     # Options this character cannot use: greyed out and switched off, as in
@@ -491,81 +474,7 @@ module Ecleanse
             end
           end
         end
-        ui.columns(key: 'footer', count: 3, weights: [5, 1, 1], compact: true, row_align: :center, gap: 6) do
-          ui.text(slot: '0', key: 'footer-text', emphasis: :subtle, content: 'Cancel or closing the window discards changes.')
-          ui.button(slot: '1', key: 'cancel', label: 'Cancel', on: { activate: ->(_ev) { cancel.call } })
-          save.call(ui, slot: '2', variant: :primary)
-        end
-      end
-    end
-
-    def list(cat_to_list: 'all')
-      indent_size = 2
-      print_array =
-        proc do |key, value, indent|
-          _respond("#{' ' * indent_size * indent.to_i}#{key}:")
-          value.sort!.each { |entry| _respond("#{' ' * indent_size * (indent.to_i + 1)}#{value.index(entry) + 1}. #{entry}") }
-        end
-
-      print_value = proc { |key, value, indent| _respond("#{' ' * indent_size * indent.to_i}#{key}: #{value}") }
-
-      categories = cat_to_list == 'all' ? @@categories.keys.map(&:to_s) : [cat_to_list]
-      if $frontend == 'stormfront'
-        output = "<output class=\"mono\"/>\n"
-      else
-        output = String.new
-      end
-      categories.each do |opt|
-        _respond("#{output}") if !output.empty?
-        _respond("#{monsterbold_start}= #{opt.capitalize} =#{monsterbold_end}\n")
-        @@categories[opt.to_sym].each do |id, _|
-          value = @settings[id]
-          value.class == Array ? print_array.call(id, value, 1) : print_value.call(id, value, 1)
-        end
-      end
-      if $frontend == 'stormfront'
-        output = "<output class=\"\"/>\n"
-        _respond("#{output}")
-      end
-    end
-
-    def self.update_setting(key, value)
-      setting = Setup.get_setting(key)
-      echo "** Setting #{key.inspect} does not exist" if setting.nil?
-      action = nil
-
-      if value =~ /^([+-])(.*)$/
-        action = Regexp.last_match(1)
-        value = Regexp.last_match(2).strip.downcase
-      end
-
-      if value == 'reset'
-        @settings.delete(key)
-        echo " Reset #{key}"
-      elsif @settings[key].class == Array
-        if value =~ /\d/ && @settings[key][value.to_i]
-          @settings[key].delete_at(value.to_i)
-        else
-          @settings[key].delete(value)
-        end
-
-        if action == '-'
-          echo " #{value.inspect} removed from #{key.inspect}"
-        else
-          @settings[key].push(value)
-          echo " #{value.inspect} added to #{key.inspect}"
-        end
-
-        echo " #{key.inspect} is now #{@settings[key].join(', ').inspect}"
-      else
-        if @settings[key].class == FalseClass || @settings[key].class == TrueClass
-          value = value =~ /^true|1|yes|on/ ? true : false
-        elsif @settings[key].class == Integer
-          value = value.to_i
-        end
-
-        echo "#{key.inspect} has been set to #{value.inspect}"
-        @settings[key] = value
+        EO::Settings.footer(ui, save, cancel)
       end
     end
   end
@@ -616,259 +525,158 @@ module Ecleanse
     }
   end
 
-  def self.load_profile
-    EO::Settings.load_profile('ecleanse') || Ecleanse.load_defaults
-  end
+  def self.load_profile = EO::Settings.load_profile('ecleanse') || Ecleanse.load_defaults
 end
 
-# Main Script Methods
+# Main Script Methods. The cures, the hazards, the disarm search and the
+# traps are libeo's (EO::Cleanse); each action here decides whether to
+# act, pauses the other scripts, and says what happened.
 module Ecleanse
   module Action
+    def self.settings = Ecleanse.data.settings
+    def self.policy = Ecleanse.data.policy
+    def self.sigil = Ecleanse.data.settings[:determination]
+
     def self.avoid_webs
-      return unless Ecleanse.data.settings[:avoid_webs]
+      return unless settings[:avoid_webs]
 
-      web_dispel_ready = !Ecleanse.data.webs.nil? && Util.able_to_cast
-
-      # Return unless able to perform an action to remove webs
-      return unless web_dispel_ready || EO::Cleanse::Hazards.cleave? || EO::Cleanse::Hazards.thieve?
-
-      # Return unless able to target object
-      unless EO::Cleanse.target(Ecleanse.data.web)
-        Ecleanse.data.bad_targets << Ecleanse.data.web.id
-        return
-      end
-
-      System.scripts_pause
-
-      EO::Cleanse::Hazards.clear(Ecleanse.data.web, web_dispel_ready ? Ecleanse.data.webs : nil)
+      Action.hazard(Ecleanse.data.web, :web)
       Ecleanse.data.web = nil
     end
 
     def self.avoid_globe
-      return unless Ecleanse.data.settings[:dispel_magic]
+      return unless settings[:dispel_magic]
 
-      globe_dispel_ready = !Ecleanse.data.dispel.nil? && Util.able_to_cast
-
-      # Return unless able to perform an action to remove globes
-      return unless globe_dispel_ready || EO::Cleanse::Hazards.cleave? || EO::Cleanse::Hazards.thieve?
-
-      # Return unless able to target object
-      unless Ecleanse.data.globe.name =~ EO::Cleanse::UNTARGETED_GLOBES
-        unless EO::Cleanse.target(Ecleanse.data.globe)
-          Ecleanse.data.bad_targets << Ecleanse.data.globe.id
-          return
-        end
-      end
-
-      System.scripts_pause
-
-      EO::Cleanse::Hazards.clear(Ecleanse.data.globe, globe_dispel_ready ? Ecleanse.data.dispel : nil)
+      Action.hazard(Ecleanse.data.globe, :globe)
       Ecleanse.data.globe = nil
     end
 
-    def self.avoid_runestone
-      return unless Ecleanse.data.settings[:break_runestone]
-
-      # Return unless able to target object
-      unless EO::Cleanse.target(Ecleanse.data.runestone)
-        Ecleanse.data.bad_targets << Ecleanse.data.runestone.id
-        return
-      end
-
-      System.scripts_pause
-
-      EO::Cleanse::Hazards.shatter(Ecleanse.data.runestone)
-
-      Ecleanse.data.runestone = nil
-    end
-
-    def self.change_stance(new_stance)
-      return if Effects::Debuffs.active?("Frenzy") || dead?
-      return if new_stance == 100 && Char.percent_stance >= 80
-
-      Lich::Gemstone::Stance.change(new_stance)
-    end
-
-    def self.determination
-      return unless Ecleanse.data.settings[:determination]
-      return unless Spell["Sigil of Determination"].known? && Spell["Sigil of Determination"].affordable?
-      return if Effects::Buffs.active?("Sigil of Determination")
-
-      System.scripts_pause
-      Spell["Sigil of Determination"].cast if Spell["Sigil of Determination"].affordable?
-    end
-
     def self.dispel_cloud
-      return unless Ecleanse.data.settings[:dispel_magic]
+      return unless settings[:dispel_magic]
 
-      cloud_dispel_ready = !Ecleanse.data.dispel.nil? && Util.able_to_cast
-      breeze_wind_ready  = !Ecleanse.data.breeze_wind.nil? && Util.able_to_cast
-      acidic_mist = Ecleanse.data.cloud.name.eql?(EO::Cleanse::ACIDIC_MIST)
-
-      if acidic_mist
-        return unless breeze_wind_ready
-      else
-        # Return unless able to perform an action to remove clouds
-        return unless cloud_dispel_ready || EO::Cleanse::Hazards.cleave? || EO::Cleanse::Hazards.thieve?
-
-        # Return unless able to target object
-        unless EO::Cleanse.target(Ecleanse.data.cloud)
-          Ecleanse.data.bad_targets << Ecleanse.data.cloud.id
-          return
-        end
-      end
-
-      System.scripts_pause
-
-      if breeze_wind_ready && acidic_mist && Ecleanse.data.breeze_wind.affordable?
-        EO::Cleanse::Hazards.blow_away(Ecleanse.data.cloud, Ecleanse.data.breeze_wind)
-      else
-        EO::Cleanse::Hazards.clear(Ecleanse.data.cloud, cloud_dispel_ready ? Ecleanse.data.dispel : nil)
-      end
+      Action.hazard(Ecleanse.data.cloud, :cloud)
       Ecleanse.data.cloud = nil
     end
 
-    def self.go2(place)
-      return if Room.current.id == place
+    # TARGET the hazard before pausing anything: a player's own is refused,
+    # and is not tried again.
+    def self.hazard(obj, kind)
+      return if obj.nil?
+      return unless EO::Cleanse::Hazards.clearable?(obj, kind, determination: sigil)
 
-      fput('unhide') if (hidden? || invisible?)
-
-      if Room.current.id.nil?
-        respond "Currently in an unmapped room - Need to go to #{place}"
+      unless EO::Cleanse::Hazards.aim(obj)
+        Ecleanse.data.bad_targets << obj.id
         return
       end
 
-      Script.run('go2', "#{place} --disable-confirm", { quiet: true, force: true })
-    end
-
-    def self.hive_traps_apparatus
-      return unless Ecleanse.data.settings[:hive_traps_apparatus]
-      return if Script.running?('go2')
-
-      trap_room = Ecleanse.data.hive_trap_room
-      return unless EO::Cleanse::Traps.here?(trap_room)
-
       System.scripts_pause
-
-      result = EO::Cleanse::Traps.search(trap_room)
-      EO::Cleanse::Traps.disarm(trap_room) if result == :found
-
-      # Clear the marker so queued duplicate events no-op, except when we bailed
-      # for a condition that clears on its own and the trap will re-announce.
-      Ecleanse.data.hive_trap_room = nil unless [:moved, :muckled].include?(result)
-
-      Util.wait_rt
+      EO::Cleanse::Hazards.clear(obj, kind, determination: sigil, aimed: true)
     end
 
-    def self.hive_traps_ground
-      return unless Ecleanse.data.settings[:hive_traps_ground]
-      return if Script.running?('go2')
+    def self.avoid_runestone
+      return unless settings[:break_runestone]
 
-      trap_room = Ecleanse.data.hive_trap_room
-      return unless EO::Cleanse::Traps.here?(trap_room)
+      stone = Ecleanse.data.runestone
+      Ecleanse.data.runestone = nil
+      return if stone.nil?
 
-      System.scripts_pause
-
-      result = EO::Cleanse::Traps.search(trap_room)
-      Ecleanse.data.hive_trap_room = nil unless [:moved, :muckled].include?(result)
-
-      Util.wait_rt
-    end
-
-    def self.itchy_curse
-      return unless Ecleanse.data.settings[:itchy_curse]
-
-      cursed_room = Room.current.id
-
-      if !Ecleanse.data.settings[:safe_room].to_s.empty?
-        safe_place = Ecleanse.data.settings[:safe_room]
-      else
-        safe_place = EO::Cleanse::Traps.safe_place
+      unless EO::Cleanse::Hazards.target(stone)
+        Ecleanse.data.bad_targets << stone.id
+        return
       end
 
       System.scripts_pause
-      Script.kill("go2") if Script.running?("go2")
-
-      Script.start("go2", "#{safe_place} --disable-confirm")
-
-      empty_hands
-
-      EO::Cleanse::Traps.wait_out_rash
-
-      fill_hands
-
-      Action.go2(cursed_room)
+      EO::Cleanse::Hazards.break_runestone(stone, aimed: true)
     end
 
-    # Snapshots the ids currently held in both hands at the moment a disarm
-    # is detected and files it under recover_stuff. Returns the new entry's
-    # key, or nil if the recovery feature is disabled - in which case
-    # nothing is tracked and no :recover event should be queued. Pass
-    # track: false for disarms RECOVER ITEM can't get back later (webbing,
-    # telekinetic); everything else is saved to UserVars.last_disarm here, not
-    # when the recovery runs, so being stopped or dying first can't lose it.
-    #
-    # Note: this intentionally does NOT dedupe against other pending entries
-    # by known_ids. In two-weapon combat, known_ids for a "one hand emptied"
-    # disarm is just the surviving weapon's id - and the same weapon is
-    # routinely the survivor across multiple, unrelated disarms of its
-    # partner over a session. Comparing known_ids across entries can match
-    # by coincidence and silently drop a genuine new disarm. Each entry is
-    # independently keyed and consumed by its own dispatch (see recover),
-    # so cross-entry dedup isn't needed for correctness.
+    def self.determination
+      return unless settings[:determination]
+      return unless EO::Cleanse.sigil?
+
+      System.scripts_pause
+      EO::Cleanse.cast_sigil
+    end
+
+    def self.remove_poison
+      return unless settings[:cleanse_poison]
+      return unless EO::Cleanse::Afflictions.curable?(:poison, determination: sigil)
+
+      System.scripts_pause
+      EO::Cleanse::Afflictions.cure(:poison, determination: sigil)
+    end
+
+    def self.remove_disease
+      return unless settings[:cleanse_disease]
+      return unless EO::Cleanse::Afflictions.curable?(:disease, determination: sigil)
+
+      System.scripts_pause
+      EO::Cleanse::Afflictions.cure(:disease, determination: sigil)
+    end
+
+    def self.remove_magical
+      return unless settings[:cleanse_magical]
+      return unless EO::Cleanse::Afflictions.curable?(:dispel, determination: sigil)
+
+      System.scripts_pause
+      EO::Cleanse::Afflictions.dispel(determination: sigil)
+    end
+
+    def self.remove_grounded
+      return unless settings[:cleanse_grounded]
+      return unless EO::Cleanse::Afflictions.ungroundable?
+
+      System.scripts_pause
+      EO::Cleanse::Afflictions.unground
+    end
+
+    def self.remove_stun
+      means = EO::Cleanse::Afflictions.stun_means(policy)
+      return if means.nil?
+
+      System.scripts_pause
+      EO::Cleanse::Afflictions.unstun(means)
+    end
+
+    def self.remove_web_bound
+      return unless settings[:avoid_webs] || settings[:use_berserk_webbed]
+
+      means = EO::Cleanse::Afflictions.web_means(policy)
+      return if means.nil?
+
+      System.scripts_pause
+      EO::Cleanse::Afflictions.unweb(means)
+    end
+
+    # Make the room safer, keep whatever another script slipped in paused,
+    # and stand defensive: the start of every recovery.
+    def self.brace
+      EO::Cleanse::Afflictions.settle_room(policy)
+      System.scripts_pause
+      Lich::Gemstone::Stance.change('defensive')
+    end
+
+    # Files a disarm under recover_stuff with the ids in hand right now, so
+    # the weapon that comes back is one that was not already there. Returns
+    # its key, or nil with recovery off. track: false for what RECOVER ITEM
+    # cannot get back later (webbing, telekinetic); the rest go on the saved
+    # list now, so being stopped or dying first cannot lose them.
     def self.record_disarm(noun, track: true)
-      return nil unless Ecleanse.data.settings[:recover_disarmed]
+      return nil unless settings[:recover_disarmed]
 
       disarm_id = track ? EO::Cleanse::Disarms.add(noun) : nil
       Action.queue_recover(Room.current, noun, disarm_id)
     end
 
     def self.queue_recover(room, noun, disarm_id)
-      known_ids = EO::Cleanse::Disarms.held_ids
       key = Ecleanse.data.recover_stuff_seq
       Ecleanse.data.recover_stuff_seq += 1
-      Ecleanse.data.recover_stuff[key] = { room: room, noun: noun, known_ids: known_ids, disarm_id: disarm_id }
+      Ecleanse.data.recover_stuff[key] = { room: room, noun: noun, known_ids: EO::Cleanse::Disarms.hands, disarm_id: disarm_id }
       key
     end
 
-    # ;ecleanse last disarm - lists what is still lost, newest first.
-    def self.disarm_report
-      disarms = EO::Cleanse::Disarms.list
-      Util.msg("yellow", " No unrecovered disarms.") if disarms.empty?
-      disarms.reverse_each do |entry|
-        Util.msg("yellow", " #{entry[:item]} - Room #{entry[:room]} #{entry[:title]} - #{(Time.now.to_i - entry[:at]) / 60} min ago")
-      end
-    end
-
-    # ;ecleanse disarmrecover - goes back for the most recent unrecovered disarm.
-    def self.disarm_recover
-      entry = EO::Cleanse::Disarms.list.last
-      if entry.nil?
-        Util.msg("yellow", " No unrecovered disarms to go back for.")
-        return
-      end
-      if dead?
-        Util.msg("yellow", " Can't go back for #{entry[:item]} while dead. It is in room #{entry[:room]}.")
-        return
-      end
-
-      # Room[nil] is a fuzzy title search rather than a miss, and an unmapped
-      # disarm room is saved with no id.
-      room = entry[:room].nil? ? nil : Room[entry[:room]]
-      if room.nil?
-        Util.msg("yellow", " Can't find the room #{entry[:item]} was lost in (#{entry[:title]}) on the map.")
-        return
-      end
-
-      Action.recover(Action.queue_recover(room, entry[:item], entry[:id]))
-    end
-
     def self.recover(key)
-      # standard disarm mechanics
-      details = Ecleanse.data.recover_stuff[key]
+      details = Ecleanse.data.recover_stuff.delete(key)
       return if details.nil? # already handled or never recorded (e.g. feature was off)
-
-      Ecleanse.data.recover_stuff.delete(key)
       return unless EO::Cleanse::Disarms.tracked?(details[:disarm_id]) # already turned up while searching for another disarm
 
       System.scripts_pause
@@ -876,227 +684,167 @@ module Ecleanse
       known_ids = details[:known_ids]
       item = details[:noun]
       disarm_id = details[:disarm_id]
-      room_id = details[:room].id
-      title = details[:room].title
+      room_id = details[:room]&.id
 
-      stops = [false, false]
+      EO.say("yellow", " ########## DISARMED!!! ##########")
+      EO.say("yellow", " ## Room#: #{room_id}")
+      EO.say("yellow", " ## Room Name: #{Array(details[:room]&.title).first}")
+      EO.say("yellow", " ## Looking for: #{item}")
+      EO.say("yellow", " ########## DISARMED!!! ##########")
+      EO.go2(room_id, force: true, unhide: :walking) if room_id
 
-      Util.msg("yellow", " ########## DISARMED!!! ##########")
-      Util.msg("yellow", " ## Room#: #{room_id}")
-      Util.msg("yellow", " ## Room Name: #{title.first}")
-      Util.msg("yellow", " ## Looking for: #{item}")
-      Util.msg("yellow", " ########## DISARMED!!! ##########")
-      Action.go2(room_id)
+      stops = EO::Cleanse::Disarms.prepare(policy)
 
-      Util.wait_rt
-
-      if Util.able_to_cast
-        stops = EO::Cleanse::Recovery.calm(use_213: Ecleanse.data.settings[:use_213], use_1011: Ecleanse.data.settings[:use_1011])
-        Util.wait_rt
-      end
-
-      if EO::Cleanse::Recovery.servant
+      if EO::Cleanse::Disarms.servant
+        lines = EO::Cleanse.command("sense", /You open your soul to the lesser/, silent: true, quiet: true)
+        fput "stop 213" if lines.any? { |l| l =~ /An obvious presence of peace saturates the area and a feeling of safety overwhelms you/ }
         EO::Cleanse::Disarms.remove(disarm_id)
         return
       end
 
-      # Make the room safer.
-      Action.settle_room
+      Action.brace
 
-      # Sometimes bigshot sneaks in an eloot
-      System.scripts_pause
+      # Only a bonded weapon can be back before RECOVER ITEM is sent; for
+      # anything else a weapon in hand now is another script's doing.
+      stashes = 0
+      if EO::Cleanse::Disarms.await_bonded(known_ids, item)
+        EO::Cleanse::Disarms.remove(disarm_id)
+      else
+        search = EO::Cleanse::Disarms.search(item, known_ids: known_ids, room_id: room_id, id: disarm_id) do |event, found|
+          case event
+          when :other then EO.say("yellow", " Recovered #{found} while looking for #{item}. Still searching.")
+          when :inferred then EO.say("yellow", " No recovery message seen, but hand state changed - treating #{item} as recovered.")
+          end
+        end
+        case search.outcome
+        when :cannot_search
+          EO.say("yellow", " Unable to search. #{item} is in room #{room_id}. Use #{$lich_char}#{Script.current.name} disarmrecover to try again.")
+        when :nothing_here
+          EO.say("yellow", " Nothing to recover in room #{room_id}. No longer tracking disarms there.")
+        end
+        stashes = search.stashes
+        EO.settle
+      end
 
-      # Change to defensive stance
-      Action.change_stance(100)
-
-      # It might be a bonded weapon, which comes back of itself. That has no
-      # words of its own to go by, so a hand filling with the right noun is
-      # all there is; only a character with a bonded weapon is given the wait.
-      already_recovered = EO::Cleanse::Recovery.await_bonded(known_ids, item)
-
-      EO::Cleanse::Disarms.remove(disarm_id) if already_recovered
-
-      # Each empty_hands saves its own set of items for one fill_hands to restore.
-      hand_fills = 1
-      hand_fills = EO::Cleanse::Recovery.search(item: item, known_ids: known_ids, room_id: room_id, disarm_id: disarm_id) unless already_recovered
-
-      EO::Cleanse::Recovery.restore_hands(hand_fills)
-
-      EO::Cleanse::Recovery.stop_calm(stops)
+      EO::Cleanse::Disarms.restore_hands(stashes)
+      EO::Cleanse::Disarms.stop(stops)
     end
 
     def self.recover_weapon_webbing(key)
-      details = Ecleanse.data.recover_stuff[key]
+      details = Ecleanse.data.recover_stuff.delete(key)
       return if details.nil?
 
-      Ecleanse.data.recover_stuff.delete(key)
       System.scripts_pause
-
-      item_noun = details[:noun]
-
-      stops = [false, false]
-
-      Util.wait_rt
-
-      if Util.able_to_cast
-        stops = EO::Cleanse::Recovery.calm(use_213: Ecleanse.data.settings[:use_213], use_1011: Ecleanse.data.settings[:use_1011])
-        Util.wait_rt
-      end
-
-      # Make the room safer.
-      Action.settle_room
-
-      # Sometimes bigshot sneaks in an eloot
-      System.scripts_pause
-
-      # Change to defensive stance
-      Action.change_stance(100)
-
-      unless EO::Cleanse::Recovery.pry(item_noun)
-        Util.wait_rt
-        ReadyList.check(silent: true, quiet: true) unless ReadyList.valid?
-      end
-
-      EO::Cleanse::Recovery.stop_calm(stops)
-    end
-
-    def self.remove_disease
-      return unless Ecleanse.data.settings[:cleanse_disease]
-      return unless Spell[113].known? && Util.able_to_cast
-
-      Lich::Gemstone::Mana.pulse(113)
-
-      return unless Spell[113].affordable?
-
-      System.scripts_pause
-
-      EO::Cleanse::Afflictions.cure_disease
-    end
-
-    def self.remove_grounded
-      return unless Ecleanse.data.settings[:cleanse_grounded]
-
-      if CMan.known?("Retreat")
-        EO::Cleanse::Afflictions.retreat(before: -> { System.scripts_pause })
-      elsif Effects::Debuffs.active?("Rooted") && Feat.available?('escapeartist', min_rank: 5) && Char.stamina >= 15
-        System.scripts_pause
-        Feat.use('escapeartist')
-      end
-    end
-
-    def self.remove_magical
-      return unless Ecleanse.data.settings[:cleanse_magical]
-      return unless Util.able_to_cast
-
-      # Return if we don't know how to do dispel
-      return if Ecleanse.data.dispel.nil?
-
-      EO::Cleanse::Afflictions.dispel_debuffs(Ecleanse.data.dispel, before: -> { System.scripts_pause })
-    end
-
-    def self.remove_poison
-      return unless Ecleanse.data.settings[:cleanse_poison]
-      return unless Spell[114].known? && Util.able_to_cast
-
-      Lich::Gemstone::Mana.pulse(114)
-
-      return unless Spell[114].affordable?
-
-      System.scripts_pause
-
-      EO::Cleanse::Afflictions.cure_poison
-    end
-
-    def self.remove_stun
-      settings = Ecleanse.data.settings
-      means = EO::Cleanse::Afflictions.stun_means(
-        stunned1040: settings[:use_stunned1040], barkskin: settings[:use_stunned_barkskin], beseech: settings[:use_1635],
-        berserk: settings[:use_berserk_stunned], stance1: settings[:use_stance1], stance2: settings[:use_stance2],
-        flee: settings[:use_flee], hide: settings[:use_hide]
-      )
-
-      return unless means.values.any?
-
-      System.scripts_pause
-
-      EO::Cleanse::Afflictions.break_stun(means)
-    end
-
-    def self.remove_web_bound
-      settings = Ecleanse.data.settings
-      return unless settings[:avoid_webs] || settings[:use_berserk_webbed]
-      return unless EO::Cleanse::Afflictions.web_escape?(berserk: settings[:use_berserk_webbed], beseech: settings[:use_1635])
-
-      System.scripts_pause
-
-      EO::Cleanse::Afflictions.break_web(berserk: settings[:use_berserk_webbed], beseech: settings[:use_1635])
-    end
-
-    def self.sanctum_recover
-      # Unholy Quickening by Lithe Veiled Sentinels in the Sanctum
-      return unless Ecleanse.data.settings[:recover_disarmed]
-      System.scripts_pause
-
-      creature = Ecleanse.data.creature
-
-      Util.wait_rt
-
-      # Make the room safer.
-      Action.settle_room
-
-      # Sometimes bigshot sneaks in an eloot
-      System.scripts_pause
-
-      # Change to defensive stance
-      Action.change_stance(100)
-
-      EO::Cleanse::Recovery.clench(creature)
-    end
-
-    def self.settle_room
-      return if GameObj.targets.empty?
-      return unless Util.able_to_cast
-
-      EO::Cleanse::Afflictions.settle_room(Ecleanse.data.settings.slice(:use_140, :use_619, :use_709, :use_919, :use_9811))
+      stops = EO::Cleanse::Disarms.prepare(policy)
+      Action.brace
+      EO::Cleanse::Disarms.pry(details[:noun])
+      EO.settle
+      ReadyList.check(silent: true, quiet: true) unless ReadyList.valid?
+      EO::Cleanse::Disarms.stop(stops)
     end
 
     def self.telekinetic_recover(key)
       # Telekinetic Disarm is cast in Moonsedge - Savant spell 1406
-      details = Ecleanse.data.recover_stuff[key]
+      details = Ecleanse.data.recover_stuff.delete(key)
       return if details.nil?
 
-      Ecleanse.data.recover_stuff.delete(key)
       System.scripts_pause
+      Action.brace
+      EO::Cleanse::Disarms.telekinetic(details[:noun], details[:known_ids])
+      EO.settle
+      ReadyList.check(silent: true, quiet: true) unless ReadyList.valid?
+    end
 
-      known_ids = details[:known_ids]
-      item = details[:noun]
+    def self.sanctum_recover
+      # Unholy Quickening by Lithe Veiled Sentinels in the Sanctum
+      return unless settings[:recover_disarmed]
 
-      # Make the room safer.
-      Action.settle_room
-
-      # Sometimes bigshot sneaks in an eloot
       System.scripts_pause
-
-      # Change to defensive stance
-      Action.change_stance(100)
-
-      # No reliable in-game confirmation text exists for telekinetic
-      # retrieval, so what the hands hold is the signal.
-      EO::Cleanse::Recovery.float_back(known_ids, item, Ecleanse.data.dispel)
+      EO.settle
+      Action.brace
+      EO::Cleanse::Disarms.clench(Ecleanse.data.creature)
     end
 
     def self.use_vat
       # A bite/spit maneuver from a Shambling Lurk in the Sanctum
+      vat_room = EO::Cleanse::Traps.vat_room
+      if vat_room.nil?
+        EO.say("yellow", " The infected wound is cleaned at the Sanctum's vat, which this map does not know.")
+        return
+      end
+
       System.scripts_pause
-
       current_room = Room.current.id
-      vat_room = Room.ids_from_uid(4216054).first
-      Action.go2(vat_room)
+      EO.go2(vat_room, force: true, unhide: :walking)
+      EO::Cleanse::Traps.clean_vat
+      EO.go2(current_room, force: true, unhide: :walking)
+    end
 
-      Util.get_res("clean vat")
-      Util.wait_rt
+    def self.hive_traps_apparatus = Action.hive_trap(:hive_traps_apparatus)
 
-      Action.go2(current_room)
+    def self.hive_traps_ground = Action.hive_trap(:hive_traps_ground)
+
+    # SEARCH out the trap where it went off; disarm an apparatus once found.
+    # The room is forgotten unless the search was cut short by something
+    # that clears by itself, and the trap announces itself again.
+    def self.hive_trap(kind)
+      return unless settings[kind]
+      return if Script.running?('go2')
+
+      room_id = Ecleanse.data.hive_trap_room
+      return unless room_id && Room.current.id == room_id
+
+      System.scripts_pause
+      outcome = EO::Cleanse::Traps.search(room_id)
+      EO::Cleanse::Traps.disarm(room_id) if outcome == :found && kind == :hive_traps_apparatus
+      Ecleanse.data.hive_trap_room = nil unless EO::Cleanse::Traps.retry?(outcome)
+      EO.settle
+    end
+
+    def self.itchy_curse
+      return unless settings[:itchy_curse]
+
+      cursed_room = Room.current.id
+      safe_place = EO::Cleanse::Traps.safe_room(settings[:safe_room])
+
+      System.scripts_pause
+      Script.kill("go2") if Script.running?("go2")
+      # the rash is waited out on the way there
+      Script.start("go2", "#{safe_place} --disable-confirm")
+      EO::Cleanse::Traps.wait_out_rash
+      EO.go2(cursed_room, force: true, unhide: :walking)
+    end
+
+    # ;ecleanse last disarm - lists what is still lost, newest first.
+    def self.disarm_report
+      disarms = EO::Cleanse::Disarms.list
+      EO.say("yellow", " No unrecovered disarms.") if disarms.empty?
+      disarms.reverse_each do |entry|
+        EO.say("yellow", " #{entry[:item]} - Room #{entry[:room]} #{entry[:title]} - #{(Time.now.to_i - entry[:at]) / 60} min ago")
+      end
+    end
+
+    # ;ecleanse disarmrecover - goes back for the most recent unrecovered disarm.
+    def self.disarm_recover
+      entry = EO::Cleanse::Disarms.list.last
+      if entry.nil?
+        EO.say("yellow", " No unrecovered disarms to go back for.")
+        return
+      end
+      if dead?
+        EO.say("yellow", " Can't go back for #{entry[:item]} while dead. It is in room #{entry[:room]}.")
+        return
+      end
+
+      # Room[nil] is a fuzzy title search rather than a miss, and an unmapped
+      # disarm room is saved with no id.
+      room = entry[:room].nil? ? nil : Room[entry[:room]]
+      if room.nil?
+        EO.say("yellow", " Can't find the room #{entry[:item]} was lost in (#{entry[:title]}) on the map.")
+        return
+      end
+
+      Action.recover(Action.queue_recover(room, entry[:item], entry[:id]))
     end
   end
 
@@ -1116,41 +864,43 @@ module Ecleanse
       Ecleanse.data.did_something = false
     end
 
+    # A line Lich knows as a disarm, the sanctum's transformation, the
+    # infected wound, a hive trap, the itchy curse or the entangling bind,
+    # queued as work. Runs on the game thread, ahead of other scripts' text
+    # handling, so the hands are read before anyone moves something into
+    # them; must not raise, or Lich drops the hook.
+    def self.heard(event, data)
+      queue = Ecleanse.data.event_stack
+      case event
+      when :disarm_seen
+        key = Action.record_disarm(data[:noun], track: data[:kind] == :recover)
+        queue << { event: data[:kind], key: key } unless key.nil?
+      when :sanctum_transform
+        Ecleanse.data.creature = data[:noun]
+        queue << :sanctum_recover unless queue.include?(:sanctum_recover)
+      when :infected_wound
+        queue << :use_vat unless queue.include?(:use_vat)
+      when :hive_trap
+        Ecleanse.data.hive_trap_room = Room.current.id
+        kind = data[:kind] == :ground ? :hive_traps_ground : :hive_traps_apparatus
+        queue << kind unless queue.include?(kind)
+      when :itchy_curse
+        queue << :itchy_curse unless queue.include?(:itchy_curse)
+      when :entangled
+        queue << :remove_web_bound unless queue.include?(:remove_web_bound)
+      end
+    end
+
     def self.set_hooks
+      # Lich's own message definitions, matched here in step with the line
+      # rather than on its event thread.
+      messages = Lich::Gemstone::Combat::Messages
       ecleanse_status = proc { |server|
-        if server =~ /Your <a exist="[^"]+" noun="([^"]+)">[^<]+<\/a> is knocked from your grasp/
-          key = Action.record_disarm(Regexp.last_match(1))
-          Ecleanse.data.event_stack << { event: :recover, key: key } unless key.nil?
-        elsif server =~ /your <a exist="[^"]+" noun="([^"]+)">[^<]+<\/a> at .+?\.  The weapon rebounds off of the hardened .+? and is wrenched from your hand\.  It slides along the ground and disappears into the shadows!\r?\n?$/
-          key = Action.record_disarm(Regexp.last_match(1))
-          Ecleanse.data.event_stack << { event: :recover, key: key } unless key.nil?
-        elsif server =~ /^Your <a exist="[^"]+" noun="([^"]+)">[^<]+<\/a> strikes one of the bony protrusions on <pushBold\/>an? <a exist="\d+" noun="[^"]+">[^<]+<\/a><popBold\/> \w+ and it is wrenched out of your grasp!\r?\n?$/
-          key = Action.record_disarm(Regexp.last_match(1))
-          Ecleanse.data.event_stack << { event: :recover, key: key } unless key.nil?
-        elsif server =~ /^You swing your <a exist="[^"]+" noun="([^"]+)">[^<]+<\/a> at <pushBold\/>(?:an?|the) <a exist="[^"]+" noun="[^"]+">[^<]+<\/a><popBold\/>\.  The weapon strikes one of the bony protrusions on the <pushBold\/><a exist="[^"]+" noun="[^"]+">[^<]+<\/a><popBold\/> \w+ and it is wrenched out of your grasp!\r?\n?$/
-          key = Action.record_disarm(Regexp.last_match(1))
-          Ecleanse.data.event_stack << { event: :recover, key: key } unless key.nil?
-        elsif server =~ /Your <a exist="[^"]+" noun="([^"]+)">[^<]+<\/a> tears free from your hands and floats/
-          key = Action.record_disarm(Regexp.last_match(1), track: false)
-          Ecleanse.data.event_stack << { event: :telekinetic_recover, key: key } unless key.nil?
-        elsif server =~ /Striking with a serpent's unsettling quickness, (?:.*)\.  Vile (?:.*), kindling it into an unholy semblance of life.  The (?:.*) form twists and mutates, sprouting scales and cold eyes as it transforms into a <a exist="\d+" noun="([^"]+)">[^<]+<\/a>\!/
-          Ecleanse.data.creature = Regexp.last_match(1)
-          Ecleanse.data.event_stack << :sanctum_recover unless Ecleanse.data.event_stack.include?(:sanctum_recover)
-        elsif server =~ /The flesh around the wound feels hot and cold at the same time, heavy with infection./
-          Ecleanse.data.event_stack << :use_vat unless Ecleanse.data.event_stack.include?(:use_vat)
-        elsif server =~ /The webbing entangles your <a exist=".*?" noun="(.*?)">.*?<\/a>, rendering it useless/
-          key = Action.record_disarm(Regexp.last_match(1), track: false)
-          Ecleanse.data.event_stack << { event: :recover_weapon_webbing, key: key } unless key.nil?
-        elsif server =~ /You notice a flickering glint in the shadows|The apparatus flickers with deadly radiance/
-          Ecleanse.data.hive_trap_room = Room.current
-          Ecleanse.data.event_stack << :hive_traps_apparatus unless Ecleanse.data.event_stack.include?(:hive_traps_apparatus)
-        elsif server =~ /The ground churns violently as flashes of chitin jut from its depths|The ground underfoot churns violently and huge chitinous mandibles flash as the insectoid monstrosity below goes into a feeding frenzy!|Hindered by the churning terrain, you are helpless as the concealed assailant's mandibles snap at you from the safety of its pit trap!/
-          Ecleanse.data.hive_trap_room = Room.current
-          Ecleanse.data.event_stack << :hive_traps_ground unless Ecleanse.data.event_stack.include?(:hive_traps_ground)
-        elsif server =~ /You shiver slightly as an invisible rash covers your body/
-          Ecleanse.data.event_stack << :itchy_curse unless Ecleanse.data.event_stack.include?(:itchy_curse)
-        elsif server =~ /^An unseen force entangles you, restricting your movement!\r?\n?$/
-          Ecleanse.data.event_stack << :remove_web_bound unless Ecleanse.data.event_stack.include?(:remove_web_bound)
+        begin
+          families = messages.table.by_name.values_at(:disarm, :hazard).compact
+          messages.scan(server, families: families).each { |event, data| System.heard(event, data) }
+        rescue StandardError => e
+          Lich.log("ecleanse: #{e.class}: #{e.message}")
         end
         server
       }
@@ -1180,111 +930,14 @@ module Ecleanse
   end
 
   module Util
-    def self.able_to_cast
-      return true if Lich::Gemstone::Injured.able_to_cast?
-
-      # Sigil of Determination cannot ignore rank 3
-      rank_three = XMLData.injuries.any? { |area, h| area =~ /nsys|head|(left|right)(Eye|Arm|Hand)/ && (h['scar'] > 2 || h['wound'] > 2) }
-      return false if rank_three
-
-      # Eval Sigil of Determination if known
-      Util.check_determination
-    end
-
-    def self.check_determination
-      return false unless Ecleanse.data.settings[:determination]
-      return false unless Spell["Sigil of Determination"].known?
-      return false unless Spell["Sigil of Determination"].affordable?
-
-      Action.determination unless Effects::Buffs.active?("Sigil of Determination")
-
-      # Lich's test lets everything short of rank 3 through under the sigil
-      Lich::Gemstone::Injured.able_to_cast?
-    end
-
-    def self.get_command(command, regex)
-      lines = []
-      regex = Regexp.union(regex, /(?:\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./)
-
-      loop do
-        lines = Lich::Util.issue_command(command, regex)
-        break unless lines.grep(/(?:\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i).any?
-
-        Util.wait_rt
-      end
-
-      return lines
-    end
-
-    def self.get_lines(command, regex)
-      lines = []
-      regex = Regexp.union(regex, /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./)
-
-      loop do
-        lines = Lich::Util.issue_command(command, regex, silent: true, quiet: true)
-        break unless lines.grep(/(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i).any?
-
-        Util.wait_rt
-      end
-
-      return lines
-    end
-
-    def self.get_res(command, regex = nil)
-      rt_regex = /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./
-      regex = regex.nil? ? Regexp.union(/.*?/, rt_regex) : Regexp.union(regex, rt_regex)
-      result = nil
-      loop do
-        result = dothistimeout(command, 3, regex)
-        break unless result =~ rt_regex
-
-        Util.wait_rt
-      end
-
-      return result
-    end
-
-    def self.get_script_version
-      data = Script.list.find { |x| x.name == Script.current.name }.inspect
-      return data[/version: (\d+\.\d+\.\d+)/i, 1]
-    end
-
     def self.help
-      rows = []
-      rows << ["#{$lich_char}#{Script.current.name} setup", "UI configuration tool"]
-      rows << ["#{$lich_char}#{Script.current.name} load", "Reloads all settings"]
-      rows << ["#{$lich_char}#{Script.current.name} list", "Lists all settings"]
-      rows << ["#{$lich_char}#{Script.current.name} last disarm", "Lists disarms not yet recovered (up to #{EO::Cleanse::Disarms::MAX})"]
-      rows << ["#{$lich_char}#{Script.current.name} disarmrecover", "Goes back for the most recent disarm not yet recovered"]
-
-      table = Terminal::Table.new :title => "#{Script.current.name.capitalize} ver #{Util.get_script_version}", :rows => rows
-      respond
-      respond table
-      respond
-    end
-
-    def self.msg(type = info, text)
-      # color options - set type to use
-      # yellow, orange, teal, green, plain
-
-      if text.class == Hash
-        text = text.inspect.gsub("#<", "#")
-      elsif text.class == Array
-        text = text.to_s
-      elsif text.class == String
-        text = text.gsub("#<", "#")
-      end
-
-      type = type == "debug" ? "speech" : type
-
-      Lich::Messaging.msg(type, text)
-    end
-
-    def self.wait_rt
-      sleep 0.2
-      waitcastrt?
-      waitrt?
-      sleep 0.2
+      EO.help([
+                ['setup', 'Setup window'],
+                ['load', 'Reloads all settings'],
+                ['list', 'Lists all settings'],
+                ['last disarm', "Lists disarms not yet recovered (up to #{EO::Cleanse::Disarms::MAX})"],
+                ['disarmrecover', 'Goes back for the most recent disarm not yet recovered'],
+              ])
     end
   end
 
@@ -1303,35 +956,26 @@ module Ecleanse
         end
       end
 
-      debuffs = Effects::Debuffs.to_h.keys.map(&:to_s)
+      bad = Ecleanse.data.bad_targets
+      Ecleanse.data.cloud = EO::Cleanse::Hazards.cloud(bad)
+      Ecleanse.data.globe = EO::Cleanse::Hazards.globe(bad)
+      Ecleanse.data.runestone = EO::Cleanse::Hazards.runestone(bad)
+      Ecleanse.data.web = EO::Cleanse::Hazards.web(bad)
 
-      # Assignments outside conditions for clarity
-      poisoned = checkpoison || debuffs.any? { |k| k =~ /Wall of Thorns Poison/ }
-      rooted_pressed = debuffs.any? { |k| k =~ /Rooted|Pressed/ }
-      dispell_debuffs = debuffs.any? { |k| k =~ Ecleanse.data.debuffs }
-      webbed_bound = checkwebbed || checkbound
-      Ecleanse.data.cloud = GameObj.loot.find { |l| l.name =~ /cloud/i && !Ecleanse.data.invalid_clouds.include?(l.name) && l.type !~ /\bgem\b/i && !Ecleanse.data.bad_targets.include?(l.id) }
-      if Ecleanse.data.cloud.nil? && !Ecleanse.data.breeze_wind.nil?
-        Ecleanse.data.cloud = GameObj.loot.find { |l| l.name.eql?("cloud of acidic mist") && !Ecleanse.data.bad_targets.include?(l.id) }
-      end
-      Ecleanse.data.globe = GameObj.loot.find { |l| l.name =~ Ecleanse.data.magic_globes && !Ecleanse.data.bad_targets.include?(l.id) }
-      Ecleanse.data.runestone = GameObj.loot.find { |l| l.name =~ Ecleanse.data.runestones && !Ecleanse.data.bad_targets.include?(l.id) }
-      Ecleanse.data.web = GameObj.loot.find { |l| l.noun =~ /web/i && !Ecleanse.data.bad_targets.include?(l.id) }
-      determination_injury = Ecleanse.data.settings[:determination] && Ecleanse.data.injury_locations.any? { |limb| XMLData.injuries[limb]["wound"] > 1 }
-
-      conditions = {
-        poisoned                => :remove_poison,
-        checkdisease            => :remove_disease,
-        checkstunned            => :remove_stun,
-        webbed_bound            => :remove_web_bound,
-        rooted_pressed          => :remove_grounded,
-        dispell_debuffs         => :remove_magical,
-        Ecleanse.data.cloud     => :dispel_cloud,
-        Ecleanse.data.globe     => :avoid_globe,
-        Ecleanse.data.runestone => :avoid_runestone,
-        Ecleanse.data.web       => :avoid_webs,
-        determination_injury    => :determination
-      }
+      # A list, not a Hash: two conditions true at once would be one key.
+      conditions = [
+        [EO::Cleanse::Afflictions.poisoned?, :remove_poison],
+        [checkdisease, :remove_disease],
+        [checkstunned, :remove_stun],
+        [checkwebbed || checkbound, :remove_web_bound],
+        [EO::Cleanse::Afflictions.grounded?, :remove_grounded],
+        [EO::Cleanse::Afflictions.magical?, :remove_magical],
+        [Ecleanse.data.cloud, :dispel_cloud],
+        [Ecleanse.data.globe, :avoid_globe],
+        [Ecleanse.data.runestone, :avoid_runestone],
+        [Ecleanse.data.web, :avoid_webs],
+        [Ecleanse.data.settings[:determination] && EO::Cleanse.sigil_wounds?, :determination]
+      ]
 
       # Add events if conditions are met
       conditions.each do |condition, event|
@@ -1343,14 +987,10 @@ module Ecleanse
     end
   end
 
-  unless Ecleanse.data
+  # A Data from an earlier version, still held this session, lacks the policy.
+  unless Ecleanse.data.respond_to?(:policy)
     Ecleanse.load(Ecleanse.load_profile)
   end
-
-  # What libeo's steps send, wait and say goes through this script's own
-  # helpers, so they retry, pause and walk the way they did here.
-  EO.use(command: Util.method(:get_command), lines: Util.method(:get_lines), result: Util.method(:get_res),
-         wait: Util.method(:wait_rt), go: Action.method(:go2), say: Util.method(:msg))
 
   case Script.current.vars[0]
   when /^setup$/i

@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.49.0')
-    EO.require('0.49.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.50.0')
+    EO.require('0.50.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,17 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.49.0
+       version: 0.50.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.50.0 (2026-11-13)
+    - EO::Cleanse is the one from Nisugi/libeo: a Policy holds the choices the settings
+      make, and each cure is the whole of it, the first way the policy allows
+      (Afflictions), with the hazards (Hazards), the hive traps, itchy curse and vat
+      (Traps), and a lost weapon (Disarms, which takes in EO::Cleanse::Recovery). They
+      send through the library's own helpers
+    - kept from this library: kneeling to search for a lost weapon is tried five times
   v0.49.0 (2026-11-13)
     - EO::Wander is the one from Nisugi/libeo: step(visited, avoid:) takes a step wherever
       the character is, find, hostile?, target! and target_random! choose and target a
@@ -348,8 +355,7 @@
 # earlier one defines.
 parts = %w[
   version command messages travel scripts help helpers posture settings settings/words settings/table settings/window containers hands town items boxes stow loot skinning selling locksmith locker hoard appraisal casting
-  cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
-  cleanse/afflictions cleanse/recovery
+  cleanse/tables cleanse/hazards cleanse/afflictions cleanse/disarms cleanse/traps
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
   guild/tables guild/policy guild/npcs guild/location guild/forage
   guild/taskmaster guild/assignments guild/guards guild/completion
