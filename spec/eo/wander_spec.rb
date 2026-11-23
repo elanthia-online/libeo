@@ -126,6 +126,23 @@ RSpec.describe EO::Wander do
       expect($mapdb_confluence_hot_pit).to eq(23283)
     end
 
+    it 'in GSIV gives the step up when the room keeps shifting under it' do
+      state[:room] = room_type.new(23282)
+      shifts = 0
+      allow(XMLData).to receive(:room_exits) { (shifts += 1).odd? ? %w[north] : %w[south] }
+      described_class.wander!(boundary: [], delay: 1.0)
+      expect(log).to be_empty
+      expect(shifts).to be < 50
+    end
+
+    it 'moves nowhere when a look after a failed move shows no exits' do
+      state[:game] = 'GSF'
+      state[:exits] = %w[north]
+      state[:moves]['north'] = false
+      described_class.wander!(boundary: [], delay: 1.0)
+      expect(log).to eq([[:move, 'north']])
+    end
+
     it 'forgets a landmark that is no longer where it was, hot side or cold' do
       $mapdb_confluence_cold_tranquility = 5
       $mapdb_confluence_hot_pit = 23283
