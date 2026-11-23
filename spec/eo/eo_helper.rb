@@ -2,6 +2,7 @@
 
 require_relative '../spec_helper'
 require_relative '../../scripts/eo/helpers'
+require_relative '../../scripts/eo/posture'
 
 # The libeo files are loaded by libeo.lic inside Lich. Specs load the one
 # file under test and stand in for the Lich globals it touches with
@@ -46,5 +47,13 @@ RSpec.shared_context 'Lich mana' do
   before do
     asked = pulses
     stub_const('Lich::Gemstone::Mana', Class.new { define_singleton_method(:pulse) { |spell = nil, **| asked << spell && false } })
+  end
+end
+
+# Standing and kneeling are tried and answered true, except in a spec
+# marked posture: true, which is about them.
+RSpec.configure do |config|
+  config.before do |example|
+    allow(EO).to receive_messages(stand: true, kneel: true) unless example.metadata[:posture]
   end
 end

@@ -153,10 +153,7 @@ module EO
           move_result = dothistimeout "go root", 3, Regexp.union(ROOT_UP, ROOT_REFUSED, ROOT_SLIPPED)
           if ROOT_UP.match(move_result)
             wait_while { Map.current.id != Map.ids_from_uid(13021008).first }
-            until standing? do
-              fput 'stand'
-              waitrt?
-            end
+            EO.stand
             return :out
           elsif ROOT_REFUSED.match(move_result)
             return :refused

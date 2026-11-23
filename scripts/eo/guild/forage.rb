@@ -144,15 +144,10 @@ module EO
         waitcastrt?
       end
 
-      # Kneel.
+      # Kneel, a few tries at most.
       #
-      # @return [void]
-      def kneel
-        until kneeling?
-          fput 'kneel'
-          EO.settle
-        end
-      end
+      # @return [Boolean] whether the character is kneeling
+      def kneel = EO.kneel
 
       # The yierka's aspect (650), Self Control's light (608) and hiding,
       # those the options allow, after kneeling and before the try.
@@ -229,7 +224,7 @@ module EO
       # @param options [Array<String>]
       # @return [void]
       def leave(options)
-        fput 'stand' until standing?
+        EO.stand
         fill_hands
         fput 'stop 213' if Stats.prof =~ /Cleric|Empath/i && options.include?('use_213') && sanctuary?
       end

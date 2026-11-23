@@ -48,18 +48,14 @@ module EO
       # @param item [String] the heirloom, as a pattern for its name
       # @return [void]
       def search(item)
-        until kneeling?
-          fput 'kneel'
-          sleep 0.2
-        end
+        EO.kneel
 
         empty_hands if checkleft || checkright
 
         fput 'search'
         EO.settle
 
-        fput 'stand' until standing?
-        EO.settle
+        EO.stand
 
         if checkright
           EO.result("stow ##{GameObj.right_hand.id}", Tables::PUT_RESULT)

@@ -88,14 +88,14 @@ module EO
     end
 
     # Get ready to skin: kneel while nothing is there to fight, Sigil of
-    # Resolve, and Nature's Touch (604) kept up past the skinning.
+    # Resolve, and Nature's Touch (604) kept up past the skinning, three casts at most.
     #
     # @param kneel [Boolean]
     # @param resolve [Boolean]
     # @param nature [Boolean] keep 604 up
     # @return [void]
     def prepare(kneel:, resolve:, nature:)
-      dothistimeout('kneel', 3, /You kneel down\.$|You move to|You are already kneeling\.$/) while GameObj.targets.empty? && kneel && !kneeling?
+      EO.kneel if GameObj.targets.empty? && kneel
 
       if resolve &&
          Spell['Sigil of Resolve'].affordable? &&
@@ -105,7 +105,9 @@ module EO
 
       return unless nature && Spell[604].affordable? && (!Spell[604].active? || (Spell[604].timeleft * 60).truncate <= 10)
 
-      until Spell[604].active? && (Spell[604].timeleft * 60).truncate > 5
+      3.times do
+        break if Spell[604].active? && (Spell[604].timeleft * 60).truncate > 5
+
         Spell[604].cast
         sleep(0.1)
       end
@@ -137,7 +139,7 @@ module EO
 
       prev_stance = Stance.current
       stance.call('offensive') if GameObj.targets.empty?
-      dothistimeout('stand', 3, /You stand|You quickly roll|You are already standing/) until standing?
+      EO.stand
       stance.call(prev_stance)
     end
   end
