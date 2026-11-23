@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 module EO
-  # Roundtime or "...wait N seconds" in a command's answer: the command did
-  # not run and is sent again once the wait is over.
-  ROUNDTIME = /(?:Roundtime:|\.\.\.wait) (\d+) [Ss]ec(?:onds)?\./i
+  # "...wait N seconds." in a command's answer: the character was still in
+  # roundtime, the command did not run, and it is sent again once the wait is
+  # over. A "Roundtime: N sec." line is what a command that did run leaves
+  # after it, and is part of its answer.
+  WAIT = /^\.\.\.wait \d+ seconds\.$/
 
   # Send a command and collect its answer, re-sending after a roundtime
   # refusal.
@@ -15,12 +17,12 @@ module EO
   # @param timeout [Numeric, nil] seconds to wait for the answer, nil for Lich's default
   # @return [Array<String>] the answer's lines
   def self.command(command, regex, silent: nil, quiet: false, timeout: nil)
-    stop = Regexp.union(regex, ROUNDTIME)
+    stop = Regexp.union(regex, WAIT)
     opts = { silent: silent, quiet: quiet }
     opts[:timeout] = timeout if timeout
     loop do
       lines = Lich::Util.issue_command(command, stop, **opts)
-      return lines unless lines.any? { |line| line.match?(ROUNDTIME) }
+      return lines unless lines.any? { |line| line.match?(WAIT) }
       # settle, not a bare waitrt?: its sleeps are where a script's guarded
       # sleep comes in (eloot's room cleanup checks its lease there)
       settle
@@ -35,10 +37,10 @@ module EO
   # @param timeout [Numeric] seconds to wait for the answer
   # @return [String, nil] the matching line, nil when nothing matched in time
   def self.result(command, regex, timeout: 3)
-    stop = Regexp.union(regex, ROUNDTIME)
+    stop = Regexp.union(regex, WAIT)
     loop do
       line = dothistimeout(command, timeout, stop)
-      return line unless line.to_s.match?(ROUNDTIME)
+      return line unless line.to_s.match?(WAIT)
       settle
     end
   end

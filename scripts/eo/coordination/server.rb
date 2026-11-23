@@ -8,7 +8,7 @@ require_relative 'bounded_frame'
 module EO
   module Coordination
     module Transport
-      # Read-only/query plus lifecycle write server for the active sessions API.
+      # Query and request server for the coordination protocol and its operations.
       #
       # The transport is intentionally local-only TCP to keep behavior consistent
       # across Linux, macOS, and Windows. The server delegates all state changes

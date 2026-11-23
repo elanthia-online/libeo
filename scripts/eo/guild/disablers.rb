@@ -174,21 +174,21 @@ module EO
         candidates.min_by { |e| Spell[e[:num]].mana_cost }&.fetch(:num)
       end
 
-      # TARGET RANDOM, learning the names the game refuses so they are not
-      # tried again.
+      # TARGET RANDOM, learning the hostile names the game refuses so they are
+      # not tried again. Waits five seconds for the answer; only what stood in
+      # the room before and after is learned, and never the child or a guard.
       #
       # @param policy [Policy] its untargetable list grows
       # @return [Boolean] whether something was targeted
       def target!(policy)
-        put 'target random'
-        while (line = get)
-          if line =~ /Could not find a valid target\./
-            policy.untargetable.push(*GameObj.npcs.to_a.map(&:name))
-            policy.untargetable.uniq!
-            return false
-          elsif line =~ /You are now targeting/
-            return true
-          end
+        before = GameObj.targets.to_a
+        clear
+        result = dothistimeout('target random', 5, /^Could not find a valid target\.$|^You are now targeting/)
+        return true if result =~ /^You are now targeting/
+
+        if result == 'Could not find a valid target.' && GameObj.targets.to_a == before
+          policy.untargetable.push(*before.map(&:name))
+          policy.untargetable.uniq!
         end
         false
       end

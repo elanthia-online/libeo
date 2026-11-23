@@ -10,10 +10,13 @@
           game: Gemstone
           tags: bounty, adventure's guild, advguild, bounties
       required: Lich >= 5.22.0
-       version: 1.16.1
+       version: 1.16.2
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v1.16.2 (2026-11-14)
+    - fix: the setup window's hint for the escort script says escortgo2, which is the default,
+      and not ego
   v1.16.1 (2026-11-14)
     - fix: a guard who tells of a rescue or a lost heirloom is taken as an answer, with no three
       second wait; a guard who does not answer no longer ends the visit and skips the other
@@ -1174,7 +1177,7 @@ module EBounty
                                                                                  tip: 'This should be the script name then any necessary parameters. Like this:  HoardingScriptName Parameters')
           end
           ui.stack(slot: '1', key: 'general-scripts-right', gap: 4) do
-            setup.render_inline_entry(ui, :escort_script, 'Escort Script:', hint: 'Defaults to ego')
+            setup.render_inline_entry(ui, :escort_script, 'Escort Script:', hint: 'Defaults to escortgo2')
             setup.render_inline_entry(ui, :rescue_script, 'Rescue Script:', hint: 'Defaults to echild')
             setup.render_inline_entry(ui, :gem_history, 'Gem History:', hint: 'Tracks bounty gems (optional)',
                                                                         tip: "This script will run after being given a gem bounty.\nUseful if you want to track frequency of different gems asked for.")
