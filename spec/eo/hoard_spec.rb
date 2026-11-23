@@ -204,6 +204,11 @@ RSpec.describe EO::Hoard do
       answers['locker manifest Solhaven'] = manifest
       expect(described_class.manifest_inventory('Solhaven', 'clothing wardrobe', 'gem')).to be_nil
     end
+
+    it 'has none, and asks for no manifest, for a container of no kind a manifest lists' do
+      expect(described_class.manifest_inventory('Solhaven', 'leather satchel', 'gem')).to be_nil
+      expect(sent).to be_empty
+    end
   end
 
   it 'shakes one item out of a jar and says when it was the last' do

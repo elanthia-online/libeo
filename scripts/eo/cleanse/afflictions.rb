@@ -223,15 +223,15 @@ module EO
       end
 
       # Get out of a web or bind by the first there is: 1040, berserk,
-      # beseech, Escape Artist. Berserk is used when it can be, whether or
-      # not it was allowed for web_escape?.
+      # beseech, Escape Artist.
       #
+      # @param berserk [Boolean] berserk is allowed for this
       # @param beseech [Boolean] beseech (1635) is allowed
       # @return [void]
-      def break_web(beseech:)
+      def break_web(berserk:, beseech:)
         if Spell[1040].known? && Spell[1040].affordable?
           fput 'shout 1040'
-        elsif CMan.available?('Berserk')
+        elsif berserk && CMan.available?('Berserk')
           self.berserk
         elsif beseech && Spell[1635].known? && Spell[1635].affordable?
           fput 'beseech'
