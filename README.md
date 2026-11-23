@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.38.0')             the version the script was built against
+EO.require('0.39.0')             the version the script was built against
 EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 ```
 
@@ -17,6 +17,10 @@ EO.use(command: ..., go: ...)    the script's own helpers, where it keeps them
 | `eo/version.rb` | `EO.require` and `EO.version`, the version gate |
 | `eo/helpers.rb` | `EO.command`, `EO.result`, `EO.lines`, `EO.settle`, `EO.go2` and `EO.say`: the library's own (`EO::Own`), or the running script's where it lent one (`EO.use`) |
 | `eo/posture.rb` | `EO.stand` and `EO.kneel`: standing up and kneeling down, a few tries at most |
+| `eo/settings.rb` | `EO::Settings`: a script's profile file (`load_profile`, `save_profile`), every e-script's settings held for the others to read (`read`), a profile used like CharSettings (`store`), whether Lich can open a setup window (`available?`) |
+| `eo/settings/words.rb` | `EO::Settings`: changing one setting from the command line (`update_from_words`, `coerce`, `setting_name`) |
+| `eo/settings/table.rb` | `EO::Settings::Registry` and `Listing`: a script's table of settings by category, with defaults, and its printed listing |
+| `eo/settings/window.rb` | `EO::Settings::Controls` and `ListForm`: the parts of a setup window the scripts share |
 | `eo/containers.rb` | `EO::Containers`: whether Lich has a container's contents, opening one that does not, waiting for contents, reading them fresh, closing |
 | `eo/hands.rb` | `EO::Hands`: what the hands hold, freeing one, taking an item, wearing one, putting one in a container, the READY list's STORE and READY; every outcome comes back as a word |
 | `eo/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a shop in a bounty's town within the region, Four Winds Isle and the way off it, the trash receptacle, the locksmith pool's worker |

@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.38.0')
-    EO.require('0.38.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.39.0')
+    EO.require('0.39.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,18 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.38.0
+       version: 0.39.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.39.0 (2026-11-13)
+    - EO::Settings, new to this library: a script's profile file, <data>/<game>/<character>/
+      <script>.yaml (load_profile, save_profile, profile_path); every e-script's settings
+      read into memory when libeo loads and kept current, for any script to read (read,
+      preload); a profile used like CharSettings (store, Store); the settings table and
+      its listing (Registry, Listing); one setting changed from the command line
+      (update_from_words); and the shared parts of the setup window (available?,
+      list_form, footer, Controls, ListForm)
   v0.38.0 (2026-11-13)
     - EO::Chain, new: chaining bounties with a full head. before_turn_in rubs planar and
       order when their effects are not up; reduce uses one reducer (a long-term boost,
@@ -267,7 +275,7 @@
 # The library's files, in the order they load: a file may use what an
 # earlier one defines.
 parts = %w[
-  version helpers posture containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
+  version helpers posture settings settings/words settings/table settings/window containers hands town items boxes stow loot skinning selling locksmith locker hoard casting
   cleanse/tables cleanse/hazards cleanse/traps cleanse/disarms
   cleanse/afflictions cleanse/recovery
   herbs/table herbs/injuries herbs/doses herbs/sack herbs/heal herbs/shop
@@ -284,4 +292,11 @@ begin
   parts.each { |part| load File.join(base, "#{part}.rb") }
 ensure
   $VERBOSE = verbose
+end
+
+# every e-script's settings, for any script to read (EO::Settings.read)
+begin
+  EO::Settings.preload
+rescue StandardError => e
+  Lich::Messaging.msg('warn', "libeo: could not read the e-script settings: #{e.message}")
 end
