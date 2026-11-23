@@ -30,6 +30,10 @@ module EO
       Lich::Stash.in_hand?(obj)
     end
 
+    # @param obj [GameObj]
+    # @return [Boolean] whether it lies in the room
+    def on_floor?(obj) = GameObj.loot.to_a.any? { |o| o.id == obj.id }
+
     # @param side [Symbol] :right or :left
     # @return [Boolean] whether that arm and hand can hold something
     def usable?(side)
@@ -132,6 +136,8 @@ module EO
     #   :crumbled, or :failed
     def store(bag, item, loose: false, on_closed: nil)
       return :gone if item.nil? || item.name == 'Empty'
+      held = holding?(item)
+      floor = !held && on_floor?(item)
       5.times do
         lines = EO.command("_drag ##{item.id} ##{bag.id}", PUT)
         if lines.any? { |l| l =~ /You can't.*?It's closed!/ }
@@ -144,6 +150,10 @@ module EO
         return :unlootable if lines.any? { |l| l =~ /put something that you can't hold/ }
         return :full if lines.any? { |l| l =~ /won't fit/i }
         return :crumbled if lines.any? { |l| l =~ /crumbles? and decays? away|crumbles? into a pile of dust/i }
+        # none of the refusals, and gone from where it was (the hand, or the
+        # floor): stored, whatever the container says (some have their own
+        # message), and though a disk's contents are never refreshed
+        return :stored if !holding?(item) && (held || (floor && !on_floor?(item)))
 
         Containers.ensure_open(bag) unless bag.contents.is_a?(Array) || loose
         20.times do

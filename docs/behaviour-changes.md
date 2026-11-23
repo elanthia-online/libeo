@@ -13,7 +13,7 @@ run in the game.**
 
 | Script | Upstream | Here | PRs |
 |---|---|---|---|
-| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.2 | #52, #54 |
+| eloot | elanthia-online/scripts PR #2578 (2.15.0) | 2.18.9 | #52, #54, #65 |
 | ebounty | PR #2579 (1.13.0) | 1.16.2 | #51, #56 |
 | ewaggle | PR #2580 (2.2.0) | 2.5.1 | #47, #55 |
 | eherbs | PR #2587 (2.3.0) | 2.6.1 | #49, #59 |
@@ -23,7 +23,7 @@ run in the game.**
 | ewander | main (2.0.1) | 2.3.0 | #44, #57 |
 
 The upstream side of the first five is the open WebUI pull request for each,
-since that is the version these were built from. The library is libeo 0.52.1. Its own PRs
+since that is the version these were built from. The library is libeo 0.62.0. Its own PRs
 are #1-#43, #50, #53 and #60; libeo 0.46.0 to 0.51.0 arrived with #54 to #59, and this file
 is #61. The fixes that came out of reviewing the stack are #62 and the PRs after it.
 
@@ -217,6 +217,12 @@ These recur; the script tables do not repeat the detail.
 | 65 | A LOCKER INFO that got no answer is asked again (upstream kept the nothing for the run) | fix | #64 |
 | 66 | Taking an item into "a hand" picks the right hand when it is free and usable, else the left; upstream picked the right whenever it was empty, so a crippled right arm made the drag fail after a five second wait | fix | #63 |
 | 67 | A box moved aside to make room is taken from the box bag or an overflow bag and goes to the box bag or another overflow bag; upstream took it from any bag on the item's route and put it in any worn container with room, including one kept for things always at hand | fix | #64 |
+| 68 | A put the game did not refuse counts as stored once the item has left the hand or the floor it was on, whatever the container's message, even when the bag's contents are not seen again, as with a disk | fix | #65 |
+| 69 | When libeo loads, for a character with eloot settings, it sends `flag righthand off`, `flag lefthand off` and `inventory full weapons`, reads Lich's READY and STOW lists when Lich has not, and sets eloot's entries in them (skinning weapons and sheaths, a hidden sheath by `pull my sheath`; overflow and appraisal bags). Any e-script that loads libeo causes it; upstream did this at the start of each eloot run only, which eloot still does | rule | #65 |
+| 70 | Room for an item is made before it is picked up when no bag on its route has the room; a box was moved aside (row 34) only once the item was in hand | fix | #65 |
+| 71 | With use_disk on, a box moved aside to make room goes into the disk first, the heaviest of the bag; a disk that has refused a box gives up its lightest box to the box bag or an overflow bag first. Upstream never moved a box into the disk | rule | #65 |
+| 72 | A box on the floor heavier than the lightest box on a disk takes its place, that one going to the box bag or an overflow bag with room, whether or not the disk is full; a box that is not heavier is tried as one more on the disk, as upstream, and goes to a bag when the disk refuses it. Upstream never moved a box off a disk. Which disk is tried, and when a disk counts as full (the game refused a box), are upstream's | rule | #65 |
+| 73 | The swap of row 72 is made only for a box still on the floor: one already in hand is tried on the disk and then the bags, as upstream | rule | #65 |
 
 The command-line dispatch is the same text apart from row 61, which moves one
 branch ahead of two others. About 2,100 of the 2,250 lines in Sell are

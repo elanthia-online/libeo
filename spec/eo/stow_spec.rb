@@ -259,17 +259,151 @@ RSpec.describe EO::Stow do
       expect(stow.room_in(third)).to eq(100)
     end
 
-    it 'tells a disk full by its count or its 500 lbs' do
-      inside = Array.new(7) { feed.new(children: [], opaque?: false) }
-      disk = feed.new(id: '60', total_weight: 100, children: inside)
-      snapshot.items['60'] = disk
-      disk_obj = obj.new(id: '60', name: 'Nisugi disk')
-      expect(stow.disk_room?(disk_obj, big, limit: 8)).to be(true)
-      inside << chest
-      expect(stow.disk_room?(disk_obj, big, limit: 8)).to be(false)
-      expect(stow.disk_room?(disk_obj, big, limit: 9)).to be(true)
-      disk.total_weight = 460
-      expect(stow.disk_room?(disk_obj, big, limit: 20)).to be(false)
+    context 'with a disk' do
+      let(:heavy) { obj.new(id: '9', name: 'gold ingot', type: 'box') }
+      let(:crate) { feed.new(id: '51', total_weight: 20, type: 'box', children: [], opaque?: true) }
+      let(:disk) { obj.new(id: '60', name: 'Nisugi disk') }
+      let(:moves) { [] }
+
+      before do
+        snapshot['2'].children << crate
+        snapshot.items['60'] = feed.new(id: '60', total_weight: 0, children: [])
+        allow(stow).to receive(:weight_of).and_call_original
+        allow(stow).to receive(:weight_of).with(heavy).and_return(60)
+        log = moves
+        allow(EO::Hands).to receive(:store) { |bag, box, **| log << [bag.id, box.id] && :stored }
+        live = { '3' => third, '50' => big, '60' => disk }
+        %w[51 70 71].each { |id| live[id] = obj.new(id: id, name: 'iron crate', type: 'box') }
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| live[id] } })
+      end
+
+      def in_disk(*weights)
+        weights.each_with_index.map { |w, i| feed.new(id: (70 + i).to_s, total_weight: w, type: 'box', children: [], opaque?: true) }
+      end
+
+      it 'puts the heaviest box in the disk, not the lightest that would do' do
+        expect(stow.make_room(heavy, disk: disk)).to eq(sack)
+        expect(moves).to eq([%w[60 50]])
+        expect(stow.room_in(sack)).to eq(97)
+      end
+
+      it 'takes the lightest box out of a disk that refused one, and puts the heaviest in' do
+        snapshot['60'].children = in_disk(30, 5)
+        expect(stow.make_room(heavy, disk: disk, full: true)).to eq(sack)
+        expect(moves).to eq([%w[3 71], %w[60 50]])
+        expect(stow.room_in(third)).to eq(95)
+      end
+
+      it 'leaves a full disk alone when nothing in it is lighter, and moves a box to another bag' do
+        snapshot['60'].children = in_disk(57, 80)
+        expect(stow.make_room(heavy, disk: disk, full: true)).to eq(sack)
+        expect(moves).to eq([%w[3 51]])
+      end
+
+      it 'leaves a full disk alone when its lightest box fits no box or overflow bag' do
+        snapshot['60'].children = in_disk(30, 5)
+        snapshot['2'].space_left = 4
+        snapshot['3'].space_left = 4
+        expect(stow.make_room(heavy, disk: disk, full: true)).to be_nil
+        expect(moves).to be_empty
+      end
+
+      it 'goes to another bag when the disk refuses the box' do
+        log = moves
+        allow(EO::Hands).to receive(:store) { |bag, box, **| log << [bag.id, box.id] && (bag.id == '60' ? :full : :stored) }
+        expect(stow.make_room(heavy, disk: disk)).to eq(sack)
+        expect(moves).to eq([%w[60 50], %w[3 51]])
+        expect(stow.room_in(sack)).to eq(60)
+      end
+    end
+
+    describe '#disk_slot' do
+      let(:ground) { obj.new(id: '9', name: 'iron strongbox', type: 'box') }
+      let(:mine) { obj.new(id: '60', name: 'Nisugi disk') }
+      let(:ann) { obj.new(id: '61', name: 'Ann disk') }
+      let(:moves) { [] }
+      let(:live) { { '3' => third, '2' => sack, '60' => mine, '61' => ann } }
+
+      def boxes(*pairs) = pairs.map { |id, w| feed.new(id: id, total_weight: w, type: 'box', children: [], opaque?: true) }
+
+      before do
+        snapshot.items['60'] = feed.new(id: '60', total_weight: 35, children: boxes(['70', 5], ['71', 30]))
+        snapshot.items['61'] = feed.new(id: '61', total_weight: 40, children: boxes(['72', 10], ['73', 30]))
+        allow(stow).to receive(:weight_of).and_call_original
+        allow(stow).to receive(:weight_of).with(ground).and_return(40)
+        log = moves
+        allow(EO::Hands).to receive(:store) { |bag, box, **| log << [box.id, bag.id] && :stored }
+        %w[70 71 72 73 74].each { |id| live[id] = obj.new(id: id, name: 'crate', type: 'box') }
+        table = live
+        stub_const('GameObj', Module.new { define_singleton_method(:[]) { |id| table[id] } })
+      end
+
+      it 'takes the lightest box of all the disks out, into the box or overflow bag with the most room' do
+        expect(stow.disk_slot(ground, [mine, ann])).to eq(mine)
+        expect(moves).to eq([%w[70 3]])
+        expect(stow.room_in(third)).to eq(95)
+      end
+
+      it 'takes it from a group member\'s disk when that one holds the lightest' do
+        snapshot.items['60'].children = boxes(['70', 20], ['71', 30])
+        expect(stow.disk_slot(ground, [mine, ann])).to eq(ann)
+        expect(moves).to eq([%w[72 3]])
+      end
+
+      it 'swaps nothing when no box on a disk is lighter' do
+        allow(stow).to receive(:weight_of).with(ground).and_return(5)
+        expect(stow.disk_slot(ground, [mine, ann])).to be_nil
+        expect(moves).to be_empty
+      end
+
+      it 'swaps nothing when the lighter box fits no box or overflow bag' do
+        snapshot.items['2'].space_left = 4
+        snapshot.items['3'].space_left = 4
+        expect(stow.disk_slot(ground, [mine])).to be_nil
+        expect(moves).to be_empty
+      end
+
+      it 'never takes a box from a disk it was not given (a stranger\'s), though the snapshot shows it' do
+        snapshot.items['62'] = feed.new(id: '62', total_weight: 1, children: boxes(['75', 1]))
+        live['62'] = obj.new(id: '62', name: 'Bob disk')
+        live['75'] = obj.new(id: '75', name: 'crate', type: 'box')
+        snapshot.items['60'].children = boxes(['70', 45], ['71', 50])
+        expect(stow.disk_slot(ground, [mine])).to be_nil
+        expect(moves).to be_empty
+      end
+
+      it 'leaves out a disk the snapshot does not know, though this pass put a box on it' do
+        cy = obj.new(id: '63', name: 'Cy disk')
+        live['63'] = cy
+        small = obj.new(id: '74', name: 'tiny coffer', type: 'box')
+        snapshot.items['74'] = feed.new(id: '74', total_weight: 2, type: 'box')
+        stow.placed(cy, small)
+        expect(stow.disk_slot(ground, [cy])).to be_nil
+        expect(moves).to be_empty
+      end
+
+      it 'counts a box it put on a disk this pass, and swaps that one out when it is the lightest' do
+        small = obj.new(id: '74', name: 'tiny coffer', type: 'box')
+        snapshot.items['74'] = feed.new(id: '74', total_weight: 2, type: 'box')
+        stow.placed(mine, small)
+        expect(stow.disk_slot(ground, [mine])).to eq(mine)
+        expect(moves).to eq([%w[74 3]])
+      end
+
+      it 'does not take a box out twice' do
+        stow.disk_slot(ground, [mine])
+        expect(stow.disk_slot(ground, [mine])).to eq(mine)
+        expect(moves).to eq([%w[70 3], %w[71 3]])
+      end
+
+      it 'counts the boxes on a disk, with what this pass moved out or put on' do
+        expect(stow.boxes_on(mine)).to eq(2)
+        stow.disk_slot(ground, [mine])
+        expect(stow.boxes_on(mine)).to eq(1)
+        stow.placed(mine, ground)
+        expect(stow.boxes_on(mine)).to eq(2)
+        expect(stow.boxes_on(obj.new(id: '62', name: 'Bob disk'))).to eq(0)
+      end
     end
   end
 end

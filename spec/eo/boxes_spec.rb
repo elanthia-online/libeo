@@ -100,5 +100,13 @@ RSpec.describe EO::Boxes do
     it 'keeps to its own disk unless the group is allowed' do
       expect(described_class.to_disk(box, full: {}, put: ->(_id, _box) { false })).to be_nil
     end
+
+    it 'names the disks here a box may go on, its own first, and none that is gone' do
+      stub_const('Disk', Module.new { define_singleton_method(:find_by_name) { |name| name != 'Gone' } })
+      group = [disk.new('20', 'Friend'), disk.new('30', 'Gone'), disk.new('10', 'Me')]
+      stub_const('Group', Module.new { define_singleton_method(:disks) { group } })
+      expect(described_class.disks(group: true).map(&:name)).to eq(%w[Me Friend])
+      expect(described_class.disks.map(&:name)).to eq(%w[Me])
+    end
   end
 end
