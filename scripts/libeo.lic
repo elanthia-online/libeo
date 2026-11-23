@@ -7,8 +7,8 @@
   against and the library refuses a mismatch loudly:
 
     Script.loadlib('libeo')
-    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.30.0')
-    EO.require('0.30.0')
+    Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.31.0')
+    EO.require('0.31.0')
 
   This file only loads the library. The library itself is scripts/eo/, one file per
   concern; each file opens with what it holds, and README.md has the list.
@@ -18,10 +18,14 @@
           game: Gemstone
           tags: library, utility, eo
       required: Lich >= 5.22.0
-       version: 0.30.0
+       version: 0.31.0
 
   Version Control:
   Major_change.feature_addition.bugfix
+  v0.31.0 (2026-11-13)
+    - EO::Hands: an object with no id is in neither hand (holding?); with both arms
+      beyond use neither hand is emptied (free_hand answers :crippled); a take waits for
+      the drag's own answer, a pickup from the ground included (take, GET)
   v0.30.0 (2026-11-13)
     - EO::Herbs::Injuries: an escort's limb wounds are read only from a line that names
       a leg, arm or hand after "right" or "left"; a left arm scarred to rank 3 is a
