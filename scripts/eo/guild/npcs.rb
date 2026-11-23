@@ -2,88 +2,74 @@
 
 module EO
   module Guild
-    # Finding the guild's people: someone in the room by name, the
-    # taskmaster, and a town's guards.
-    #
-    # Walks and waits go through the running script's helpers (EO.use). The
-    # helpers this needs: go(place), wait(), and say(type, text).
+    # Finding the guild's people: an NPC in the room, the taskmaster, the
+    # guards of a town.
     module NPCs
       module_function
 
-      # Someone in the room whose name matches, looked for five times with
-      # a wait between: what the room shows can lag behind arriving in it.
+      # The first NPC in the room whose name matches, trying five times with a
+      # settle between, since the room's objects can lag a move.
       #
       # @param names [Regexp]
-      # @return [GameObj, nil] nil when nobody matched
+      # @return [GameObj]
+      # @raise [NotFound] when nobody matched after five tries
       def find(names)
-        EO.say('debug', " find_npc | caller: #{caller(1..1).first}")
-
-        readable = names.source.gsub('(?i-mx:', '').gsub(')', '')
-        npc = nil
-
-        (1..5).each do |attempt|
+        5.times do |attempt|
           npc = (GameObj.room_desc.to_a + GameObj.npcs.to_a).find { |t| t.name =~ names }
-          break if npc
-
-          echo
-          EO.say('yellow', "Trying to detect NPC: #{readable} (attempt #{attempt})") if attempt > 1
-          echo
-
+          return npc if npc
+          Lich::Messaging.msg('warn', "NPC #{names.source} not here yet (attempt #{attempt + 1})") if attempt.positive?
           EO.settle
         end
-
-        npc
+        raise NotFound, "NPC #{names.source} not found after 5 attempts"
       end
 
-      # Go to the guild unless already there, and name the taskmaster to
-      # ask: Taskmaster; Halfwhistle in the Hinterwilds; or First Mate
-      # Seldit on Sailor's Grief, who wanders the boat and is looked for
-      # through it three times.
+      # Walk to the guild if not already there and name the taskmaster to ask:
+      # Taskmaster, Halfwhistle in the Hinterwilds, or First Mate Seldit on
+      # Sailor's Grief, who wanders the boat and has to be found.
       #
-      # @return [String, nil] nil when Seldit was not found
+      # @return [String] the name to ASK
+      # @raise [NotFound] when Seldit is nowhere on the boat after three sweeps
       def taskmaster
-        EO.say('debug', " find_taskmaster | caller: #{caller(1..1).first}")
-
-        boat = Tables::SAILORS_GRIEF_UIDS
-        current_room = Room.current.uid.first
-
-        unless Room.current.tags.include?('advguild') || boat.include?(current_room)
+        here = Room.current.uid.first
+        unless Room.current.tags.include?('advguild') || Tables::SAILORS_GRIEF_UIDS.include?(here)
           EO.go2('advguild')
           EO.settle
-          current_room = Room.current.uid.first
+          here = Room.current.uid.first
         end
-
-        return 'Halfwhistle' if current_room == Tables::HINTERWILDS_GUILD_UID
-        return 'Taskmaster' unless boat.include?(current_room)
-
-        return 'Seldit' if GameObj.npcs.any? { |npc| npc.name =~ /Seldit/i }
+        return 'Halfwhistle' if here == Tables::HINTERWILDS_GUILD_UID
+        return 'Taskmaster' unless Tables::SAILORS_GRIEF_UIDS.include?(here)
+        return 'Seldit' if seldit_here?
 
         3.times do
-          boat.each do |spot|
-            EO.go2("u#{spot}")
-            return 'Seldit' if GameObj.npcs.any? { |npc| npc.name =~ /Seldit/i }
-
-            echo "Looking for the lousy First Mate Seldit in #{spot}"
+          Tables::SAILORS_GRIEF_UIDS.each do |uid|
+            EO.go2("u#{uid}")
+            return 'Seldit' if seldit_here?
+            echo "Looking for the lousy First Mate Seldit in #{uid}"
           end
         end
-
-        nil
+        raise NotFound, "searched the boat 3 times and could not find Seldit (rooms #{Tables::SAILORS_GRIEF_UIDS.join(', ')})"
       end
 
-      # The rooms with a guard of the adventurer's guild that belong to a
-      # town and can be walked to from it.
+      # @return [Boolean]
+      def seldit_here?
+        GameObj.npcs.any? { |npc| npc.name =~ /Seldit/i }
+      end
+
+      # The advguard rooms that belong to a town and can be walked to from its
+      # square. Two tasks name their guard by a phrase the Bounty parser does
+      # not turn into a town yet; they are mapped here.
       #
       # @param town [String] the task's town
-      # @param towns [Hash{String => String}] Tables.town_uids
+      # @param bounty_text [String] the task text, for the two unparsed guards
       # @return [Array<Integer>] room ids
-      def guard_rooms(town, towns = Tables.town_uids)
-        square = Room[towns[town]]
-        places = Room.list.find_all do |r|
-          r.tags.any? { |tag| tag =~ /advguard/ } && !r.tags.to_s.empty? && Room[r.find_nearest_by_tag('town')] == square && !square.path_to(r).nil?
+      def guard_rooms(town, bounty_text = '')
+        town = "Kraken's Fall" if bounty_text =~ /the sentry just outside town\.$/
+        town = 'Cold River' if bounty_text =~ /the tavernkeeper at Rawknuckle's Common House\.$/
+        square = Tables.town_room(town)
+        return [] if square.nil?
+        Room.list.select do |r|
+          r.tags.any? { |tag| tag =~ /advguard/ } && Room[r.find_nearest_by_tag('town')] == square && !square.path_to(r).nil?
         end.map(&:id)
-
-        EO.say('debug', "town: #{square} | guard_list places: #{places}")
-        places
       end
     end
   end

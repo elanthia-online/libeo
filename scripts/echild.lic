@@ -17,8 +17,12 @@
           game: Gemstone
           tags: escort, child, advguild, adventurer guild, guild
       required: Lich >= 5.22.0
-       version: 1.22.0
+       version: 1.23.0
 
+  2026-11-13 - 1.23.0
+    - the walk home with the child is libeo's whole (EO::Guild::Rescue), with the disablers
+      (EO::Guild::Disablers); this script keeps its settings and starts the walk. Needs
+      libeo 0.48.0
   2026-11-13 - 1.22.0
     - settings live in the character's echild.yaml profile, so other scripts can read them
       (EO::Settings.read(:echild)); the first run copies them from CharSettings and leaves
@@ -122,11 +126,12 @@ Old Changelog:
 2010-02-19 - added illistim and disabled automatic reward collection
 =end
 
-# Script.loadlib loads libeo once a session; a copy older than this script
-# needs is run again.
+# A libeo loaded earlier in this Lich session may be older than this script
+# needs; load it again unless the one loaded is new enough.
+# Script.loadlib loads libeo once a session; a copy older than this script needs is run again
 Script.loadlib('libeo')
-Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.43.0')
-EO.require('0.43.0')
+Script.run('libeo') if Gem::Version.new(::EO::VERSION) < Gem::Version.new('0.48.0')
+EO.require('0.48.0')
 
 module EChild
   #------------------------------------------------------------------------------#
@@ -149,7 +154,6 @@ module EChild
   char_settings['min_mana'] ||= 0
   char_settings['use_disablers'] = true if char_settings['use_disablers'].nil?
   char_settings['custom_disabler'] ||= false
-  stop_1011 = false
 
   if Script.current.vars[0] =~ /list|help/
     echo "Current Disabler Usage: #{char_settings['use_disablers']}"
@@ -185,162 +189,45 @@ module EChild
     end
   end
 
+  # The library's view of these settings. The untargetable list is shared, so
+  # names the walk learns are saved for next time.
+  disablers = EO::Guild::Disablers::Policy.new(
+    enabled: char_settings['use_disablers'],
+    min_mana: char_settings['min_mana'],
+    forced: char_settings['custom_disabler'],
+    untargetable: Settings['untargetable']
+  )
+
   #------------------------------------------------------------------------------#
   # go2 settings
   #------------------------------------------------------------------------------#
   seeking = $go2_use_seeking
   $go2_use_seeking = false
-  #------------------------------------------------------------------------------#
-  # on exit
-  #------------------------------------------------------------------------------#
   before_dying {
-    DownstreamHook.remove("#{Script.current.name}_check_justice")
     $go2_use_seeking = seeking
-    if stop_1011
-      waitrt?
-      fput 'stop 1011'
-    end
+    Settings['untargetable'] = disablers.untargetable.uniq
   }
-  #------------------------------------------------------------------------------#
-  # disablers
-  #------------------------------------------------------------------------------#
-  best_disabler = lambda do |skip_can_cast = false|
-    EO::Guild::Disablers.best(min_mana: char_settings['min_mana'], custom: char_settings['custom_disabler'],
-                              untargetable: Settings['untargetable'], skip_can_cast: skip_can_cast)
-  end
 
-  if char_settings['use_disablers']
-    can_cast_disabler = !best_disabler.call(true).nil?
-    echo "Note: No disablers known" if can_cast_disabler == false
-  else
-    can_cast_disabler = false
-  end
   #------------------------------------------------------------------------------#
   # child
   #------------------------------------------------------------------------------#
-  child = nil
-  $child_last_seen = nil
-
-  if Script.current.vars[0] =~ /--test[:=]([^ ]+)\b/
-    npc_noun = $1
-    echo "testing #{npc_noun}"
-    test_npc = nil
-    GameObj.npcs.each { |n|
-      if n.noun == npc_noun
-        child = n.id
-        test_npc = n
-        break
-      end
-    }
-    $child_last_seen = Map.current.id
-    respond test_npc.inspect
-  else
-    child = EO::Guild::Rescue.child
-    $child_last_seen = Map.current.id if !child.nil?
-  end
-
+  noun = Script.current.vars[0] =~ /--test[:=]([^ ]+)\b/ ? $1 : 'child'
+  echo "testing #{noun}" if noun != 'child'
+  child = EO::Guild::Rescue.find_child(noun: noun)
   if child.nil?
-    echo "child not found, waiting a few"
-    child = EO::Guild::Rescue.await_child(5)
-    if child.nil?
-      echo "child not found, quitting"
-      exit
-    end
-  end
-  #------------------------------------------------------------------------------#
-  # dropoff_points
-  #------------------------------------------------------------------------------#
-  dropoff_points = EO::Guild::Rescue.dropoffs
-  child_homes = EO::Guild::Rescue.homes
-
-  if Script.current.vars[0] =~ /(u?\d+)/
-    place = Map[$1].find_nearest(dropoff_points)
-  else
-    home = EO::Guild::Rescue.ask_home
-    if home.nil?
-      place = Map.current.find_nearest(dropoff_points)
-    elsif child_homes.include?(home)
-      place = Map[child_homes[home]].find_nearest(dropoff_points)
-    else
-      _respond Lich::Messaging.monsterbold("missing child_homes entry for [#{home}], please report to elanthia-online.")
-      place = Map.current.find_nearest(dropoff_points)
-    end
+    echo "child not found, quitting"
+    exit
   end
 
-  dropoff_points.delete(place)
-  original_place = place
   #------------------------------------------------------------------------------#
-  # kill switch
+  # where to
   #------------------------------------------------------------------------------#
-  Watchfor.new(EO::Guild::Rescue::FAILED) {
-    Script.start('go2', "#{original_place}")
-    Script.self.kill
-  }
-  #------------------------------------------------------------------------------#
-  # Maaghara Labyrinth
-  #------------------------------------------------------------------------------#
-  maaghara_exits = EO::Guild::Rescue.maaghara_exits
-  maaghara_move = proc {
-    case EO::Guild::Rescue.climb_root
-    when :out
-      # restore original destination
-      place = original_place
-    when :refused
-      # set destination to next way out
-      place = maaghara_exits[Map.current.id] if maaghara_exits.key?(Map.current.id)
-    end
-  }
+  points = EO::Guild::Rescue.dropoffs
+  near = Script.current.vars[0] =~ /(u?\d+)/ ? $1 : nil
+  place = EO::Guild::Rescue.destination(points, near: near)
 
   #------------------------------------------------------------------------------#
-  # loop
+  # the walk
   #------------------------------------------------------------------------------#
-  child_no_wait = []
-
-  loop do
-    loop do
-      maaghara_move.call() if maaghara_exits.key?(Map.current.id)
-      if Map.current.id != place
-        thatroom = Map.current.id
-        waitrt?
-        Script.run(step_script, "#{place}")
-        wait_while { running?(step_script) }
-        wait_until { thatroom != Map.current.id }
-        waitrt?
-        if can_cast_disabler && EO::Guild::Rescue.threat?(child, Settings['untargetable'])
-          if EO::Guild::Disablers.target_random
-            candidate_spell = best_disabler.call
-            unless candidate_spell.nil?
-              stop_1011 = true if EO::Guild::Disablers.cast(candidate_spell)
-            end
-          else
-            unless GameObj.npcs.nil?
-              Settings['untargetable'].push(*GameObj.npcs.map { |i| i.name })
-              Settings['untargetable'] = Settings['untargetable'].uniq
-            end
-          end
-        end
-
-        EO::Guild::Rescue.await(child, child_no_wait)
-        $child_last_seen = Map.current.id if EO::Guild::Rescue.here(child)
-        if Map.current.id != place
-          waitrt?
-          redo
-        else
-          waitrt?
-          break
-        end
-      else
-        break
-      end
-    end
-
-    if Map.current.id == place and !npc = EO::Guild::Rescue.reportee
-      place = Map.current.find_nearest(dropoff_points)
-      dropoff_points.delete(place)
-    else
-      fput "ask ##{npc.id} about bounty"
-      $child_last_seen = nil
-      break
-    end
-  end
+  EO::Guild::Rescue.escort(child: child, to: place, points: points, disablers: disablers, step: step_script)
 end

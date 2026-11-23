@@ -2,139 +2,207 @@
 
 module EO
   module Guild
-    # When a task is done enough to go back to town, and counting what a
-    # skin or gem task has gathered so far.
-    #
-    # Commands go through the running script's helpers (EO.use). The helper
-    # this needs: command(text, pattern) answering the lines.
+    # When a task is done enough to stop hunting and go to town: a Rule the
+    # driver evaluates with what the game says now (a driver that needs a
+    # string to eval wraps the call), and the skin and gem counting that
+    # goes with it.
     module Completion
       module_function
 
-      # A task that asks for a child to be found.
-      CHILD_TASK = /A local divinist has had visions of the child fleeing/
-      # A task that asks for skins, and its count and skin.
-      SKIN_TASK = /You have been tasked to retrieve(.*)of at least/
-      SKIN_COUNT = /You have been tasked to retrieve (\d+) (.*?)(?:s)? of at/
-      # A task that asks for gems.
-      GEM_TASK = /The gem dealer/
-      # The last two words of a skin's name, which a bundle is named by.
-      BUNDLE_WORDS = /(\w+)\s+(\w+)\s*\Z/
+      # The task text when it is over, one way or another.
+      DONE = /^You.*?(succeeded|located|failed )|your task is failed/
 
-      # The rule a hunting script is given to stop on, as Ruby for it to
-      # evaluate each time round: the task done and the mind full enough,
-      # a bandit task done, a new task on offer, and what the task at hand
-      # adds. It is evaluated inside the hunting script, so it names that
-      # script's own measures (@CORRECT_PERCENT_MIND, $bigshot_bandits) and
-      # reads ebounty's data as it stands then.
+      # No task held.
+      NO_TASK = /^You are not currently assigned /
+
+      # A rescue task once the child has been found.
+      CHILD_CONTACT = /^You have made contact with the child/
+
+      # What the task calls a skin, as the item in a container is named:
+      # singular, and the few plurals that are not an s.
       #
-      # @param bounty [String] the task's text
-      # @param exp_pause [Boolean] rest when the mind reaches the hunting
-      #   script's own limit
-      # @param keep_hunting [Boolean] hunt on while the mind is not saturated
-      # @param bundle_skin [Object] what a skin task's bundle is named by
-      # @param skin [String, nil] the skin a task wants
-      # @param gem [String, nil] the gem a task wants
-      # @return [String]
-      def rule(bounty, exp_pause:, keep_hunting:, bundle_skin: nil, skin: nil, gem: nil)
-        text = if exp_pause
-                 %Q{!!(checkbounty =~ /^You.*?(succeeded|located|failed )|your task is failed/ && !$bigshot_bandits && @CORRECT_PERCENT_MIND >= UserVars.op['fried'].to_i)}
-               elsif keep_hunting
-                 %Q{!!(checkbounty =~ /^You.*?(succeeded|located|failed )|your task is failed/ && checkmind != 'saturated' && !$bigshot_bandits && @CORRECT_PERCENT_MIND >= 100)}
-               else
-                 %Q{!!(checkbounty =~ /^You.*?(succeeded|located|failed )|your task is failed/ && !$bigshot_bandits && @CORRECT_PERCENT_MIND >= 100)}
-               end
-
-        text += %Q{ || !!(checkbounty =~ /^You.*?(succeeded|located|failed )|your task is failed/ && $bigshot_bandits)}
-        text += %Q{ || !!(checkbounty =~ /^You are not currently assigned / && !Effects::Cooldowns.to_h.include?('Next Bounty'))}
-
-        if bounty =~ CHILD_TASK
-          text += %Q{ || !!(checkbounty =~ /^You have made contact with the child/ && GameObj.npcs.any? { |npc| npc.name =~ /\\bchild\\b/ })}
-        elsif bounty =~ SKIN_TASK
-          # one count: a bundle by what MEASURE says of it, and each loose skin
-          text += %Q{ || !!(count = 0;EBounty.data.containers.each{|i| i.contents.each{ |k| if k.name =~ /bundle of #{bundle_skin}/ && !EBounty.data.bundle_skin.to_s.empty? && !hidden?; lines = Lich::Util.quiet_command_xml("measure #"+k.id.to_s, /You glance through/);count += lines.sum { |l| l.scan(/count a total of (\\d+) <a exist/).flatten.map(&:to_i).sum };elsif k.name =~ /#{skin}/i && !EBounty.data.skin.to_s.empty?; count += 1;end;};};count >= EBounty.data.remaining_skins.to_i && @CORRECT_PERCENT_MIND >= EBounty.data.complete_mind)}
-        elsif bounty =~ GEM_TASK
-          text += %Q{ || !!(t=0;EBounty.data.containers.each{|k| t += k.contents.count{|v| v.name =~ /#{gem.strip}$/i && !EBounty.data.gem.to_s.empty?}.to_i}; t>= EBounty.data.remaining_gems.to_i && @CORRECT_PERCENT_MIND >= EBounty.data.complete_mind)}
-        end
-
-        text
-      end
-
-      # What a skin task asks for, from its text.
-      #
-      # @param bounty [String]
-      # @return [Array(Integer, String), nil] how many, and the skin as
-      #   the task words it; nil when the text does not say
-      def skin_wanted(bounty)
-        return nil unless bounty =~ SKIN_COUNT
-
-        [Regexp.last_match(1).to_i, Regexp.last_match(2)]
-      end
-
-      # A skin's name as items carry it: singular, and a few plurals that
-      # are not made with an s.
-      #
-      # @param skin [String] the skin as the task words it
+      # @param skin [String]
       # @return [String]
       def skin_name(skin)
-        skin.strip.downcase
-            .gsub(/s$/, '')
-            .gsub(/teeth/, 'tooth')
-            .gsub(/hooves?/, 'hoof')
-            .gsub(/ruffs?/, 'ruff')
+        skin.to_s.strip.downcase.sub(/s$/, '').gsub(/teeth/, 'tooth').gsub(/hooves?/, 'hoof').gsub(/ruffs?/, 'ruff')
       end
 
-      # Count the skins held for a task: those in a bundle, by measuring
-      # it, and each loose one.
+      # The last two words of the skin name, which is how a bundle of them reads.
+      #
+      # @param skin [String]
+      # @return [String, nil]
+      def bundle_name(skin)
+        m = skin.to_s.match(/(\w+)\s+(\w+)\s*\Z/)
+        m && m[0].strip
+      end
+
+      # Skins held: loose ones by name, plus the contents of a bundle of
+      # them, counted with MEASURE. A bundle is not measured while hidden,
+      # since MEASURE would break the hiding; with a BundleTally it is
+      # measured once and then counted as skins are added to it, hidden or
+      # not, without a MEASURE every check.
       #
       # @param containers [Array<GameObj>]
-      # @param bundle_skin [Object] what the bundle is named by
-      # @param skin [String] from skin_name
-      # @param open [Proc] given a container, sees it open
+      # @param skin [String] as the task names it
+      # @param hidden [Boolean]
+      # @param tally [BundleTally, nil]
       # @return [Integer]
-      def skins_held(containers, bundle_skin, skin, open:)
-        count = 0
+      def skins_held(containers, skin, hidden: false, tally: nil)
+        single = skin_name(skin)
+        bundle = bundle_name(skin)
+        loose = 0
+        bundles = []
         containers.each do |container|
-          open.call(container)
-          container.contents.each do |item|
-            if item.name =~ /bundle of #{bundle_skin}/
-              lines = EO.command("measure ##{item.id}", /You glance through/)
-              lines.each { |l| count += Regexp.last_match(1).to_i if l =~ /count a total of (\d+) <a exist/ }
-            elsif item.name =~ /#{skin}/
-              count += 1
+          container.contents.to_a.each do |item|
+            if bundle && item.name =~ /bundle of #{Regexp.escape(bundle)}/
+              bundles << item
+            elsif !single.empty? && item.name =~ /#{Regexp.escape(single)}/i
+              loose += 1
             end
           end
         end
+        loose + bundled(bundles, hidden: hidden, tally: tally)
+      end
+
+      # @api private
+      def bundled(bundles, hidden:, tally:)
+        return 0 if bundles.empty?
+        return tally.total if tally&.known?
+        return (tally ? tally.total : 0) if hidden
+
+        count = bundles.sum { |b| measure(b) }
+        tally&.measured!(count)
         count
       end
 
-      # Count the gems held for a task.
+      # A bundle's count kept between MEASUREs: the last MEASURE, plus one
+      # for each skin the game says went into the bundle since ("You
+      # carefully add your triton hide to your bundle of triton hides
+      # inside ..."). Install it for the hunt and remove it after.
+      class BundleTally
+        ADDED = /You carefully add your .+? to your bundle of (.+?) inside/
+
+        attr_reader :added
+
+        # @param skin [String] the task's skin
+        def initialize(skin)
+          @bundle = Completion.bundle_name(skin).to_s.downcase
+          @base = nil
+          @added = 0
+          @hook = "eo_bundle_tally_#{object_id}"
+        end
+
+        # @return [Boolean] whether a MEASURE has given the base yet
+        def known? = !@base.nil?
+
+        # @return [Integer] the last MEASURE plus the skins added since
+        def total = @base.to_i + @added
+
+        # A fresh MEASURE: the base, and the adds counted from here.
+        #
+        # @param count [Integer]
+        def measured!(count)
+          @base = count
+          @added = 0
+        end
+
+        # Count a game line, when it adds one of these skins to the bundle.
+        #
+        # @param line [String]
+        # @return [void]
+        def see(line)
+          @added += 1 if line =~ ADDED && Regexp.last_match(1).downcase.include?(@bundle)
+        end
+
+        # @return [void]
+        def install
+          tally = self
+          DownstreamHook.add(@hook, proc do |line|
+            tally.see(line.to_s.gsub(/<[^>]*>/, ''))
+            line
+          end)
+        end
+
+        # @return [void]
+        def remove = DownstreamHook.remove(@hook)
+      end
+
+      # @param item [GameObj] a bundle
+      # @return [Integer] how many it holds, from MEASURE
+      def measure(item)
+        lines = Lich::Util.quiet_command_xml("measure ##{item.id}", /You glance through/)
+        lines.sum { |l| l.scan(/count a total of (\d+) <a exist/).flatten.map(&:to_i).sum }
+      end
+
+      # Gems held whose name ends with the task's gem.
       #
       # @param containers [Array<GameObj>]
-      # @param gem [String] the gem, as its name ends
-      # @param open [Proc] given a container, sees it open
+      # @param gem [String] as the task names it ("an uncut diamond")
       # @return [Integer]
-      def gems_held(containers, gem, open:)
-        count = 0
-        containers.each do |container|
-          open.call(container)
-          container.contents.each { |item| count += 1 if item.name =~ /#{gem}$/ }
-        end
-        count
+      def gems_held(containers, gem)
+        name = gem.to_s.sub(/^an? /, '').strip
+        return 0 if name.empty?
+        containers.sum { |c| c.contents.to_a.count { |item| item.name =~ /#{Regexp.escape(name)}$/i } }
       end
 
-      # How long until the experience over the mind's limit is absorbed,
-      # by a guess at what a pulse absorbs: 25, a fifth of the Logic bonus,
-      # 2 for a supernode, a two-hundredth of the experience held (10 at
-      # most), and 1 for a group.
+      # The rule for one task. Built once when the hunt starts; asked each
+      # tick with the game's current state.
       #
-      # @return [Integer] minutes
-      def minutes_to_absorb
-        experience = Lich::Gemstone::Experience
-        extra_exp = [experience.fxp_current - experience.fxp_max, 0].max
-        absorption = 25 + (Stats.enhanced_log[1] / 5) + 2 + [experience.fxp_current / 200, 10].min + 1
+      # mind_needed: the mind percent the task text must be matched with for
+      # an ordinary task (100, or the fried setting under exp_pause). A
+      # bandit task ignores mind. count_mind: the mind percent a skin or gem
+      # count must be matched with (the fried setting capped at 100).
+      # keep_hunting: an ordinary task is not done while the mind is saturated.
+      class Rule
+        attr_reader :type, :number, :skin, :gem, :tally
 
-        # a pulse every two minutes
-        ((extra_exp / absorption) * 120) / 60
+        # @param task [Lich::Gemstone::Bounty::Task, nil] the task held, or nil
+        # @param mind_needed [Integer]
+        # @param count_mind [Integer]
+        # @param extra_skin [Integer] skins to gather beyond the task's number
+        # @param keep_hunting [Boolean]
+        # @param tally [BundleTally, nil] counts a skin bundle between MEASUREs
+        def initialize(task:, mind_needed: 100, count_mind: 100, extra_skin: 0, keep_hunting: false, tally: nil)
+          @type = task&.type
+          need = task&.requirements || {}
+          @number = need[:number].to_i
+          @skin = need[:skin]
+          @gem = need[:gem]
+          @mind_needed = mind_needed
+          @count_mind = count_mind
+          @extra_skin = extra_skin.to_i
+          @keep_hunting = keep_hunting
+          @tally = tally
+        end
+
+        # @param bounty_text [String] what BOUNTY says now
+        # @param mind_percent [Numeric] the hunter's mind
+        # @param bandit [Boolean] hunting bandits (the task text alone ends it)
+        # @param saturated [Boolean] the mind is saturated
+        # @param cooldown [Boolean] the Next Bounty cooldown is running
+        # @param containers [Array<GameObj>] where skins and gems are kept
+        # @param npcs [Array<GameObj>] who is in the room (the rescued child)
+        # @param hidden [Boolean]
+        # @return [Boolean]
+        def complete?(bounty_text:, mind_percent:, bandit: false, saturated: false, cooldown: false,
+                      containers: [], npcs: [], hidden: false)
+          text = bounty_text.to_s
+          return true if text =~ NO_TASK && !cooldown
+          if text =~ DONE
+            return true if bandit
+            return true if mind_percent >= @mind_needed && !(@keep_hunting && saturated)
+          end
+          case @type
+          when :rescue
+            text =~ CHILD_CONTACT && npcs.any? { |npc| npc.name.to_s =~ /\bchild\b/ } ? true : false
+          when :skin
+            mind_percent >= @count_mind && Completion.skins_held(containers, @skin, hidden: hidden, tally: @tally) >= @number + @extra_skin
+          when :gem
+            mind_percent >= @count_mind && Completion.gems_held(containers, @gem) >= @number
+          else
+            false
+          end
+        end
       end
     end
   end
