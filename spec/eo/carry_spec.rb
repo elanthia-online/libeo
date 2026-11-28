@@ -3,7 +3,7 @@
 require 'tmpdir'
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/settings'
-require_relative '../../scripts/eo/carry'
+require_relative '../../scripts/eo/inventory/carry'
 
 # Nisugi's measurements on 2026-11-12: Half-Elf, base STR 100 / CON 97,
 # enhanced STR 115 (151 under Assume Lion), 509 and 606 up, Physical Fitness

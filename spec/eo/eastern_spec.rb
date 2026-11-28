@@ -3,7 +3,7 @@
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/settings'
 require_relative '../../scripts/eo/brooch'
-require_relative '../../scripts/eo/carry'
+require_relative '../../scripts/eo/inventory/carry'
 
 # Times the game prints in US Eastern, read the same on a machine in any zone.
 RSpec.describe 'Eastern time' do

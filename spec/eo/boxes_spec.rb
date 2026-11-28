@@ -2,8 +2,8 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/containers'
-require_relative '../../scripts/eo/boxes'
+require_relative '../../scripts/eo/inventory/containers'
+require_relative '../../scripts/eo/inventory/boxes'
 
 RSpec.describe EO::Boxes do
   let(:obj) { Struct.new(:id, :name, :contents, keyword_init: true) }

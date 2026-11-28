@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
-require_relative '../../scripts/eo/locksmith'
+require_relative '../../scripts/eo/town/locksmith'
 
 RSpec.describe EO::Locksmith do
   let(:box) { Struct.new(:id, :name, :noun, :type, keyword_init: true) }

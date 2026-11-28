@@ -2,7 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/containers'
+require_relative '../../scripts/eo/inventory/containers'
 require_relative '../../scripts/eo/guild/tables'
 require_relative '../../scripts/eo/guild/npcs'
 require_relative '../../scripts/eo/guild/taskmaster'

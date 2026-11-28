@@ -2,10 +2,10 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/containers'
-require_relative '../../scripts/eo/hands'
-require_relative '../../scripts/eo/carry'
-require_relative '../../scripts/eo/stow'
+require_relative '../../scripts/eo/inventory/containers'
+require_relative '../../scripts/eo/inventory/hands'
+require_relative '../../scripts/eo/inventory/carry'
+require_relative '../../scripts/eo/inventory/stow'
 
 RSpec.describe EO::Stow do
   let(:obj) { Struct.new(:id, :name, :type, keyword_init: true) }

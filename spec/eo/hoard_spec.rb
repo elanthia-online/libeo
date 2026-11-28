@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
-require_relative '../../scripts/eo/hoard'
+require_relative '../../scripts/eo/inventory/hoard'
 
 RSpec.describe EO::Hoard do
   it 'names an item the way a jar label does' do

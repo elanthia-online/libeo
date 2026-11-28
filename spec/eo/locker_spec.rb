@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
-require_relative '../../scripts/eo/locker'
+require_relative '../../scripts/eo/town/locker'
 require_relative '../../scripts/eo/skinning'
-require_relative '../../scripts/eo/appraisal'
+require_relative '../../scripts/eo/town/appraisal'
 
 RSpec.describe EO::Locker do
   it 'names a town the way the map does' do

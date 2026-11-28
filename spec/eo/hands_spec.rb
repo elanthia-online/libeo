@@ -2,7 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/hands'
+require_relative '../../scripts/eo/inventory/hands'
 
 RSpec.describe EO::Hands do
   describe '.store' do

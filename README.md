@@ -6,7 +6,7 @@ about one thing and readable on its own.
 
 ```
 Script.loadlib('libeo')         how a script loads it, once per session
-EO.require('0.62.1')             the version the script was built against
+EO.require('0.62.2')             the version the script was built against
 ```
 
 ## What is in it
@@ -16,19 +16,19 @@ EO.require('0.62.1')             the version the script was built against
 | `eo/version.rb` | `EO.require` and `EO.version`, the version gate |
 | `eo/command.rb` | `EO.command`, `EO.result`, `EO.settle`, `EO.stand`, `EO.kneel`: a command and its answer, sent again after roundtime; waiting roundtime out; standing up and kneeling down, a few tries at most |
 | `eo/messages.rb` | `EO.say`, `EO.word_wrap`: a message in one of Lich's colours |
-| `eo/travel.rb` | `EO.go2`, `EO.at?`, `EO.nearest`, `EO.visit`, `EO.wander`, `EO.room_id`, `EO.fwi?`, `EO.fog_wanted?`: walking and where the character is |
+| `eo/travel/travel.rb` | `EO.go2`, `EO.at?`, `EO.nearest`, `EO.visit`, `EO.wander`, `EO.room_id`, `EO.fwi?`, `EO.fog_wanted?`: walking and where the character is |
 | `eo/scripts.rb` | `EO.run_scripts`, `EO.split_script`: running a list of scripts with their arguments |
 | `eo/help.rb` | `EO.help`: a script's table of commands |
 | `eo/settings.rb` | `EO::Settings`: a script's profile file (`load_profile`, `save_profile`), every e-script's settings held for the others to read (`read`), a profile used like CharSettings (`store`), whether Lich can open a setup window (`available?`) |
 | `eo/settings/words.rb` | `EO::Settings`: changing one setting from the command line (`update_from_words`, `coerce`, `setting_name`) |
 | `eo/settings/table.rb` | `EO::Settings::Registry` and `Listing`: a script's table of settings by category, with defaults, and its printed listing |
 | `eo/settings/window.rb` | `EO::Settings::Controls` and `ListForm`: the parts of a setup window the scripts share |
-| `eo/containers.rb` | `EO::Containers`: open a container only when it is closed, see one open, read contents the game does not refresh; a carried container is asked of Lich's `Inventory`, the rest by LOOK IN |
-| `eo/hands.rb` | `EO::Hands`: free a hand, take an item, wear, put into a container, the READY list; every outcome comes back as a word, over Lich's `Stash` for which hand holds what and opening the way to an item |
-| `eo/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a bounty town's region, Four Winds Isle, the trash can, the locksmith pool's worker, depositing all but the silver to keep |
-| `eo/items.rb` | `EO::Items`: toss unless marked, phase and unphase a box, lift a curse, and the disk that follows the character |
-| `eo/boxes.rb` | `EO::Boxes`: opening a box, its coins by GET or a coin charm, which emptied box to keep, setting a box on a disk |
-| `eo/stow.rb` | `EO::Stow`: where an item goes by the STOW list (its type's bag, the default, the overflow bags in order), which bags are full or, by the inventory feed's weights, lack the room, moving a box to make room, the bags to open before looting, and what a put taught: a bag that closes itself, a crumbly or unlootable item |
+| `eo/inventory/containers.rb` | `EO::Containers`: open a container only when it is closed, see one open, read contents the game does not refresh; a carried container is asked of Lich's `Inventory`, the rest by LOOK IN |
+| `eo/inventory/hands.rb` | `EO::Hands`: free a hand, take an item, wear, put into a container, the READY list; every outcome comes back as a word, over Lich's `Stash` for which hand holds what and opening the way to an item |
+| `eo/town/town.rb` | `EO::Town`: which shop to walk to and whether to go at all, a bounty town's region, Four Winds Isle, the trash can, the locksmith pool's worker, depositing all but the silver to keep |
+| `eo/inventory/items.rb` | `EO::Items`: toss unless marked, phase and unphase a box, lift a curse, and the disk that follows the character |
+| `eo/inventory/boxes.rb` | `EO::Boxes`: opening a box, its coins by GET or a coin charm, which emptied box to keep, setting a box on a disk |
+| `eo/inventory/stow.rb` | `EO::Stow`: where an item goes by the STOW list (its type's bag, the default, the overflow bags in order), which bags are full or, by the inventory feed's weights, lack the room, moving a box to make room, the bags to open before looting, and what a put taught: a bag that closes itself, a crumbly or unlootable item |
 | `eo/loot.rb` | `EO::Loot`: the room's non-loot (features, spell effects, disks), which loot a `Policy` wants (read from eloot's settings or built), and searching the dead: LOOT's answers, a find at your feet or in your hand |
 | `eo/loot/context.rb` | `EO::Loot::Context`: what a looting pass reads and keeps (the settings, the stow, hands, disk, coin and gambling-kit state, the loot patterns), where it says something and saves what it learned. Nothing uses it yet; the looting code in eloot moves onto it step by step |
 | `eo/loot/pickup.rb` | `EO::Loot::Pickup`: picking up one item for a looting pass: a box into a disk, an item into the first bag on its route, a box moved aside when none has room (it answers :stored, :no_room or :no_default and leaves what to do about a full pack to the caller), and LOOT into its bag |
@@ -38,11 +38,11 @@ EO.require('0.62.1')             the version the script was built against
 | `eo/loot/hooks.rb` | `EO::Loot::Hooks` and `EO::Loot.build`: the standard hooks of a looting pass the way eloot has them (commands and their roundtime retries, the sell inventory, the disk, decurse, toss, unlootable, stance), what the character carries, and a pass ready to run for a script that is not eloot |
 | `eo/skinning.rb` | `EO::Skinning`: who needs a blunt tool, which dead to skin and with which tool, the tool drawn and put back, getting ready, the skinning and what it learned, standing up after |
 | `eo/skinning/pass.rb` | `EO::Skinning::Pass`: the skinning of a looting pass a tool group at a time (start, step, finish, run): which dead take which tool, the tool drawn and put away, what the game said cannot be skinned; the hands are free between steps |
-| `eo/selling.rb` | `EO::Selling`: sell one item at a shop: sold, refused or kept |
-| `eo/locksmith.rb` | `EO::Locksmith`: the town locksmith (activator, open, fee) and the locksmith pool (box order, incremental tips, the give, the list and depth, taking boxes back) |
-| `eo/locker.rb` | `EO::Locker`: the character's locker rooms, getting into a booth (taken, elsewhere, a debt), opening it to a container, leaving |
-| `eo/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, reading a jar, the stash inventory by looking or from a premium locker manifest, filling and shaking |
-| `eo/appraisal.rb` | `EO::Appraisal`: ask a shop what an item is worth and read the answer |
+| `eo/town/selling.rb` | `EO::Selling`: sell one item at a shop: sold, refused or kept |
+| `eo/town/locksmith.rb` | `EO::Locksmith`: the town locksmith (activator, open, fee) and the locksmith pool (box order, incremental tips, the give, the list and depth, taking boxes back) |
+| `eo/town/locker.rb` | `EO::Locker`: the character's locker rooms, getting into a booth (taken, elsewhere, a debt), opening it to a container, leaving |
+| `eo/inventory/hoard.rb` | `EO::Hoard`: hoarding gems and reagents in jars: label names, the kind check, reading a jar, the stash inventory by looking or from a premium locker manifest, filling and shaking |
+| `eo/town/appraisal.rb` | `EO::Appraisal`: ask a shop what an item is worth and read the answer |
 | `eo/casting.rb` | `EO::Casting`: casting a spell at a target and reading the answer (hindrance retried, with a recheck before each retry), the multicast limit, making mana by a society's power or waiting for it (`Resources`), stamina, another character's active spells, manna bread summoned, eaten and dropped |
 | `eo/cleanse/tables.rb` | `EO::Cleanse`: the dispellable debuffs, the hazards and TARGET's answers, the `Policy`, the spell this character has for a job, whether the wounds allow a cast (the Sigil of Determination cast when it helps) |
 | `eo/cleanse/hazards.rb` | `EO::Cleanse::Hazards`: clouds, magic globes, webs and runestones in the room: find one, target it, dispel, cleave or thieve it (counted only when the game says it hit the wards), break a runestone |
@@ -69,10 +69,10 @@ EO.require('0.62.1')             the version the script was built against
 | `eo/guild/escort.rb` | `EO::Guild::Escort`: the escort: the trip from the task, fetching the client, the road, the room checks and the ambush watch |
 | `eo/guild/disablers.rb` | `EO::Guild::Disablers`: choosing and casting a spell that stops what is met on a walk without killing it |
 | `eo/guild/rescue.rb` | `EO::Guild::Rescue`: the lost child: finding it, its home, the walk to a guard, the way out of the Maaghara Labyrinth; running a rescue script with its retries |
-| `eo/wander.rb` | `EO::Wander`: a step from wherever the character is (the Elemental Confluence its own way, anywhere else `EO.wander`), the first live creature of a list of names, whether it is hostile, targeting it and learning what TARGET accepts |
+| `eo/travel/wander.rb` | `EO::Wander`: a step from wherever the character is (the Elemental Confluence its own way, anywhere else `EO.wander`), the first live creature of a list of names, whether it is hostile, targeting it and learning what TARGET accepts |
 | `eo/brooch.rb` | `EO::Brooch`: the quintuple orb brooch: rubbing an orb, or chaos when it gives that orb, with the day's rubs tallied so ANALYZE is seldom asked; `EO.eastern_day` |
-| `eo/chain.rb` | `EO::Chain`: chaining bounties: the rubs before a turn-in, one reducer after it when the head is over its cap, and the chaos roll when a gem or heirloom task starts |
-| `eo/carry.rb` | `EO::Carry`: what the character can carry before encumbrance and what it carries now, from the formula, the inventory feed's weights and a correction learned from the encumbrance bar; the floating disk's limit |
+| `eo/travel/chain.rb` | `EO::Chain`: chaining bounties: the rubs before a turn-in, one reducer after it when the head is over its cap, and the chaos roll when a gem or heirloom task starts |
+| `eo/inventory/carry.rb` | `EO::Carry`: what the character can carry before encumbrance and what it carries now, from the formula, the inventory feed's weights and a correction learned from the encumbrance bar; the floating disk's limit |
 | `eo/coordination/` | `EO::Coordination`: opt-in coordination between independent Lich sessions: a bounded loopback transport, read-only observations, discovery, explicitly granted operations, a parser projection. Loading it starts nothing (from eohunter's libeocoordination) |
 
 What lives here is script-side glue that Lich itself should not carry.

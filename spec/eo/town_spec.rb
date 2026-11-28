@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
-require_relative '../../scripts/eo/travel'
+require_relative '../../scripts/eo/travel/travel'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/containers'
-require_relative '../../scripts/eo/hands'
-require_relative '../../scripts/eo/town'
+require_relative '../../scripts/eo/inventory/containers'
+require_relative '../../scripts/eo/inventory/hands'
+require_relative '../../scripts/eo/town/town'
 
 RSpec.describe EO::Town do
   include_context 'a fake map'

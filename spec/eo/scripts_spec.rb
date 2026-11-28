@@ -2,7 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/scripts'
-require_relative '../../scripts/eo/travel'
+require_relative '../../scripts/eo/travel/travel'
 
 RSpec.describe 'EO.run_scripts and EO.fog_wanted?' do
   it 'splits an entry into the script and its arguments' do
