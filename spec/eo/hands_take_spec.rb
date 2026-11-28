@@ -2,7 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/hands'
+require_relative '../../scripts/eo/inventory/hands'
 
 RSpec.describe EO::Hands, '.take' do
   let(:torch) { Struct.new(:id, :name).new('777', 'torch') }

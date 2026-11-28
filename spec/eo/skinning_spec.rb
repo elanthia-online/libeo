@@ -2,7 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/hands'
+require_relative '../../scripts/eo/inventory/hands'
 require_relative '../../scripts/eo/loot'
 require_relative '../../scripts/eo/skinning'
 

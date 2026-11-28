@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
-require_relative '../../scripts/eo/travel'
+require_relative '../../scripts/eo/travel/travel'
 require_relative '../../scripts/eo/guild/tables'
 require_relative '../../scripts/eo/guild/escort'
 require_relative '../../scripts/eo/guild/heirloom'

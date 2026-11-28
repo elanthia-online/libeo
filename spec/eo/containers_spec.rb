@@ -2,8 +2,8 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/command'
-require_relative '../../scripts/eo/containers'
-require_relative '../../scripts/eo/hands'
+require_relative '../../scripts/eo/inventory/containers'
+require_relative '../../scripts/eo/inventory/hands'
 
 module EOSpec
   # GameObj's container registry: contents by container id.

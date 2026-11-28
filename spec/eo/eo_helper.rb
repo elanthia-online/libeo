@@ -3,7 +3,7 @@
 require_relative '../spec_helper'
 require_relative '../../scripts/eo/command'
 require_relative '../../scripts/eo/messages'
-require_relative '../../scripts/eo/travel'
+require_relative '../../scripts/eo/travel/travel'
 
 # The libeo files are loaded by libeo.lic inside Lich. Specs load the one
 # file under test and stand in for the Lich globals it touches with

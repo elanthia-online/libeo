@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'eo_helper'
-require_relative '../../scripts/eo/wander'
+require_relative '../../scripts/eo/travel/wander'
 
 RSpec.describe EO::Wander do
   let(:npc) { Struct.new(:id, :name, :noun, :status, keyword_init: true) }

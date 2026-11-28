@@ -2,7 +2,7 @@
 
 require_relative 'eo_helper'
 require_relative '../../scripts/eo/brooch'
-require_relative '../../scripts/eo/chain'
+require_relative '../../scripts/eo/travel/chain'
 
 RSpec.describe EO::Chain do
   let(:fxp) { [1800, 1800] }
